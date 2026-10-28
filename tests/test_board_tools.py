@@ -45,6 +45,32 @@ def test_fake_session_creates_updates_attaches_and_asks_with_real_log_links(tmp_
         assert manager.board_link(1, projection['revision'])['log_end'] == cards[0]['log_end']
 
 
+def test_triage_from_a_session_records_that_session_as_the_reviewer(tmp_path):
+    """The tool runs as the calling session, so the review must be attributed to it."""
+    config = Config(home=tmp_path, cwd=tmp_path)
+    config.board.enabled = True
+
+    def triage(messages, tools):
+        names = [item['function']['name'] for item in tools]
+        assert 'board_triage_intake' in names
+        return {'tool_calls': [{'id': 'triage', 'name': 'board_triage_intake',
+                                'arguments': {'card_id': 'intake-tool', 'subject': 'fix',
+                                              'compatibility': 'clean'}}]}
+
+    backend = FakeBackend([triage, 'Triaged the gathered card.'])
+    with SessionManager(config, backend_factory=lambda *args: backend) as manager:
+        manager.create('one')
+        # Gathered by another thread, so the reviewer and the gatherer cannot be confused.
+        manager.board.create('Gathered PR', 'ops', 0, 0, card_id='intake-tool',
+                             intake={'reference': 'owner/repo#15', 'summary': 'body'})
+        manager.submit('one', 'Triage the gathered card')
+        assert manager.wait('one', 5)
+        card = manager.board.get('intake-tool')
+        assert card['status'] == 'intake'
+        assert card['intake']['subject'] == 'fix'
+        assert card['updated_by'] == 'one'
+
+
 def test_disabled_board_registers_no_tools_and_does_not_create_journal(tmp_path):
     config = Config(home=tmp_path, cwd=tmp_path)
     with SessionManager(config, backend_factory=lambda *args: FakeBackend([])) as manager:

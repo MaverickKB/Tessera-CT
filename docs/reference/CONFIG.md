@@ -537,6 +537,10 @@ Default: `{}`. Maps role names to configured backend names.
 
 | Key | Default | Environment override | Availability |
 | --- | --- | --- | --- |
+| `roles.main` | `""` | `TESSERA_ROLES_MAIN` | Settings row |
+| `roles.fast` | `""` | `TESSERA_ROLES_FAST` | Settings row |
+| `roles.compactor` | `""` | `TESSERA_ROLES_COMPACTOR` | Settings row |
+| `roles.failover` | `""` | `TESSERA_ROLES_FAILOVER` | Settings row |
 | `roles.*` | `""` | `TESSERA_ROLES_*` | file-only: no Settings row — set this in config.toml |
 
 ## `server`

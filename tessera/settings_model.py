@@ -534,6 +534,18 @@ def catalog(config, approval):
         (Spec('roles.main', 'models', 'enum', 'Chat model', 'live', ('roles', 'main'), options=tuple(chat),
               hint='Cloud providers are supported but will burn budgets and run API costs fast; local models are the recommended workhorse. A cloud choice is your call, made here.'),
          config.roles.get('main', '')),
+        (Spec('roles.fast', 'models', 'enum', 'Fast model', 'live', ('roles', 'fast'),
+              tier='optional',
+              options=(('', 'Use chat model'), *chat),
+              hint='Direct-routed turns and fallback judging. Empty uses the chat model.',
+              empty_removes=True),
+         config.roles.get('fast', '') or ''),
+        (Spec('roles.compactor', 'models', 'enum', 'Compactor model', 'live', ('roles', 'compactor'),
+              tier='optional',
+              options=(('', 'Use chat model'), *chat),
+              hint='Background summaries for long sessions. Empty uses the chat model.',
+              empty_removes=True),
+         config.roles.get('compactor', '') or ''),
         (Spec('roles.failover', 'models', 'enum', 'Failover', 'live', ('roles', 'failover'),
               tier='optional',
               options=(('', 'Off'), *chat), hint='Used when the chat model is unreachable.', empty_removes=True),
@@ -951,6 +963,27 @@ def _provider_fields(config, name, backend):
 
 def _provider_actions(config, name, backend):
     return ['edit', 'remove']
+
+
+def _local_first_chat_backend(config, exclude):
+    """Pick a remaining chat model, preferring one with no credential.
+
+    A local model server carries no API credential, so it sorts first. CLI
+    workers and cloud backends sort after it. The name breaks ties so the
+    choice is stable.
+    """
+    choices = []
+    for name, backend in config.backends.items():
+        if name == exclude or not backend.enabled or not backend.chat:
+            continue
+        has_credential = bool(
+            backend.api_key_env or backend.credential_ref or backend.account
+            or backend.provider_kind == 'cli_worker')
+        choices.append((has_credential, name))
+    if not choices:
+        return ''
+    choices.sort()
+    return choices[0][1]
 
 
 def _oauth_actions(report):
@@ -3359,12 +3392,28 @@ class SettingsService:
         if ident == 'providers':
             if name not in config.backends:
                 raise ValueError('Unknown provider')
-            if config.roles.get('main') == name:
-                raise ValueError('Choose another chat model before removing this provider')
+            replacement = _local_first_chat_backend(config, name)
+            chat_roles = []
+            other_roles = []
+            for role, backend_name in config.roles.items():
+                if backend_name != name:
+                    continue
+                if role in ('main', 'fast', 'compactor', 'failover'):
+                    chat_roles.append(role)
+                else:
+                    other_roles.append(role)
+            if chat_roles and not replacement:
+                raise ValueError('Add another chat model before removing this provider')
             edits = [{'path': ['backends', name], 'value': None}]
-            if config.roles.get('failover') == name:
-                edits.append({'path': ['roles', 'failover'], 'value': None})
-            return commit(self.manager, edits, False)
+            for role in chat_roles:
+                edits.append({'path': ['roles', role], 'value': replacement})
+            for role in other_roles:
+                edits.append({'path': ['roles', role], 'value': None})
+            result = commit(self.manager, edits, False)
+            if chat_roles and replacement:
+                result['detail'] = ('Removed %s. %s now uses %s.'
+                                    % (name, ', '.join(chat_roles), replacement))
+            return result
         if ident == 'credentials':
             if name not in config.credentials:
                 raise ValueError('Unknown credential')

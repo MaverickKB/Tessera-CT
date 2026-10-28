@@ -384,7 +384,10 @@ def test_provider_and_mcp_add_then_remove(tmp_path):
         assert added[0] == 200 and 'local' in load_config(tmp_path).backends
         assert call(server, 'POST', '/api/settings', {'id': 'providers', 'action': 'remove', 'name': 'local'})[0] == 200
         assert 'local' not in load_config(tmp_path).backends
-        assert call(server, 'POST', '/api/settings', {'id': 'providers', 'action': 'remove', 'name': 'fake'})[0] == 400
+        # The chat model is reassigned to the remaining chat backend, so the
+        # last-model refusal lives in the dedicated removal test.
+        assert call(server, 'POST', '/api/settings', {'id': 'providers', 'action': 'remove', 'name': 'fake'})[0] == 200
+        assert load_config(tmp_path).roles['main'] == 'grok'
         server_added = call(server, 'POST', '/api/settings', {'id': 'mcp_servers', 'action': 'add', 'record': {
             'name': 'tools', 'enabled': True, 'command': 'tool-server', 'args': '--flag\nvalue', 'env': 'TOKEN=voice'}})
         assert server_added[0] == 200 and server_added[1]['restart_required'] is False
@@ -396,6 +399,81 @@ def test_provider_and_mcp_add_then_remove(tmp_path):
         assert both[0] == 400 and 'both' not in (tmp_path / 'config.toml').read_text()
         assert call(server, 'POST', '/api/settings', {'id': 'mcp_servers', 'action': 'remove', 'name': 'tools'})[0] == 200
         assert 'tools' not in load_config(tmp_path).mcp_servers
+    finally:
+        stop(server, thread)
+
+
+def test_removing_a_provider_reassigns_optional_roles_to_a_local_model(tmp_path):
+    text = HOME.replace(
+        '[roles]\nmain = "fake"\nfailover = "grok"',
+        '[roles]\nmain = "fake"\nfast = "grok"\ncompactor = "grok"\nfailover = "grok"',
+    )
+    assert 'fast = "grok"' in text
+    server, thread = serve(tmp_path, text)
+    try:
+        removed = call(server, 'POST', '/api/settings', {
+            'id': 'providers', 'action': 'remove', 'name': 'grok'})
+        assert removed[0] == 200
+        config = load_config(tmp_path)
+        assert 'grok' not in config.backends
+        assert config.roles == {
+            'main': 'fake', 'fast': 'fake', 'compactor': 'fake', 'failover': 'fake'}
+        assert 'now uses fake' in (removed[1] or {}).get('detail', '')
+        refused = call(server, 'POST', '/api/settings', {
+            'id': 'providers', 'action': 'remove', 'name': 'fake'})
+        assert refused[0] == 400
+        error = (refused[1] or {}).get('error', '')
+        assert 'Add another chat model' in error
+        assert 'fake' in load_config(tmp_path).backends
+    finally:
+        stop(server, thread)
+
+
+def test_removing_a_cloud_provider_prefers_a_local_model_for_every_role(tmp_path):
+    text = HOME + '''
+[backends.cloud]
+base_url = "http://127.0.0.1:9/v1"
+model = "cloud-model"
+api_key_env = "EXAMPLE_CLOUD_KEY"
+chat = true
+enabled = true
+'''
+    text = text.replace(
+        '[roles]\nmain = "fake"\nfailover = "grok"',
+        '[roles]\nmain = "cloud"\nfast = "cloud"\ncompactor = "cloud"\nfailover = "cloud"',
+    )
+    assert 'fast = "cloud"' in text
+    server, thread = serve(tmp_path, text)
+    try:
+        removed = call(server, 'POST', '/api/settings', {
+            'id': 'providers', 'action': 'remove', 'name': 'cloud'})
+        assert removed[0] == 200
+        config = load_config(tmp_path)
+        assert 'cloud' not in config.backends
+        assert config.roles == {
+            'main': 'fake', 'fast': 'fake', 'compactor': 'fake', 'failover': 'fake'}
+    finally:
+        stop(server, thread)
+
+
+def test_fast_and_compactor_roles_are_editable_in_settings(tmp_path):
+    text = HOME.replace(
+        '[roles]\nmain = "fake"\nfailover = "grok"',
+        '[roles]\nmain = "fake"\nfast = "grok"\ncompactor = "grok"\nfailover = "grok"',
+    )
+    server, thread = serve(tmp_path, text)
+    try:
+        code, body = call(server, 'GET', '/api/settings')
+        assert code == 200
+        body = body or {}
+        fields = {field['id']: field for section in body['sections']
+                  for field in section['fields'] if field.get('id')}
+        assert fields['roles.fast']['value'] == 'grok'
+        assert fields['roles.compactor']['value'] == 'grok'
+        changed = call(server, 'POST', '/api/settings', {
+            'id': 'roles.fast', 'value': 'fake'})
+        assert changed[0] == 200
+        assert load_config(tmp_path).roles['fast'] == 'fake'
     finally:
         stop(server, thread)
 
@@ -901,6 +979,8 @@ def test_models_keep_chat_prerequisites_before_optional_failover(tmp_path):
     section = next(s for s in project(config, {})['sections'] if s['id'] == 'models')
     assert {f['id']: f.get('tier', 'required') for f in section['fields']} == {
         'roles.main': 'required',
+        'roles.fast': 'optional',
+        'roles.compactor': 'optional',
         'roles.failover': 'optional',
         'worker_policy': 'advanced',
         # Advanced so it stays behind the chat prerequisites.
@@ -912,7 +992,7 @@ def test_models_keep_chat_prerequisites_before_optional_failover(tmp_path):
         'codex.client_version': 'advanced',
     }
     assert [f['id'] for f in section['fields']] == [
-        'roles.main', 'roles.failover',
+        'roles.main', 'roles.fast', 'roles.compactor', 'roles.failover',
         'swarm.pressure_hold_enabled', 'swarm.pressure_soft_threshold',
         'swarm.max_job_tasks', 'swarm.distinct_workers',
         'codex.models_url', 'codex.client_version', 'worker_policy']

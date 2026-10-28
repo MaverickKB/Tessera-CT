@@ -33,7 +33,7 @@ type-checking and rendering the value do not count as reads.
 
 ## Summary at HEAD
 
-111 fields: 110 CONSUMED, 1 NO-READER, 0 UNRESOLVED.
+113 fields: 112 CONSUMED, 1 NO-READER, 0 UNRESOLVED.
 
 The single NO-READER is `service_accounts`, a record-container placeholder
 that serves an empty list with no actions; the page hint already says no
@@ -81,6 +81,8 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `swarm.max_job_tasks` | CONSUMED | tessera/swarm_bounds.py job_task_limit; tessera/jobs.py refuses a job larger than the effective bound. Unset allows 8 in Safe mode and no cap in Unleashed. A saved integer holds in both modes |
 | `swarm.distinct_workers` | CONSUMED | tessera/swarm_bounds.py require_distinct_workers; tessera/jobs.py requires a distinct backend and account when the guard is on. Unset is on in Safe mode and off in Unleashed. A saved true or false holds in both modes. Overlapping scopes stay refused |
 | `roles.main` | CONSUMED | tessera/config.py:1278 backend_for resolves the role to a backend |
+| `roles.fast` | CONSUMED | tessera/loop.py:99 uses the fast role for direct-routed turns |
+| `roles.compactor` | CONSUMED | tessera/loop.py:209 uses the compactor role for background summaries |
 | `roles.failover` | CONSUMED | tessera/loop.py:629 builds the failover backend on a failed turn |
 | `codex.models_url` | CONSUMED | tessera/model_discovery.py codex_request_url; discover_codex_models GETs it with the stored sign-in token |
 | `codex.client_version` | CONSUMED | tessera/model_discovery.py codex_request_url appends client_version to that request |

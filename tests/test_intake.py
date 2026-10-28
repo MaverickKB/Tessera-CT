@@ -58,6 +58,34 @@ def test_triage_records_the_subject_and_compatibility_the_decision_reads(tmp_pat
     assert board.get('intake-1')['status'] == 'intake'
 
 
+def test_triage_records_the_reviewer_as_the_last_writer(tmp_path):
+    """A triage is a board write by a reviewer, so the card must name that reviewer.
+
+    The page and the board tool both pass the acting session through to triage. Before
+    this test, the store dropped it: the card kept the gathering session as
+    `updated_by`, so the board's history credited the wrong thread for the review.
+    """
+    board = board_at(tmp_path)
+    board.create('Gathered PR', 'ops', 0, 0, card_id='intake-1',
+                 intake={'reference': 'owner/repo#12', 'summary': 'body'})
+    assert board.get('intake-1')['updated_by'] == 'ops'
+    card = board.triage_intake('intake-1', subject='fix', compatibility='clean',
+                               summary='null deref fix', actor='reviewer')
+    assert card['updated_by'] == 'reviewer'
+    # The reviewer is on the durable record, not only in the returned copy.
+    stored = board_at(tmp_path).get('intake-1')
+    assert stored is not None and stored['updated_by'] == 'reviewer'
+
+
+def test_triage_without_an_actor_keeps_the_card_writer(tmp_path):
+    """actor=None is the operator, which changes no attribution. Every board writer agrees."""
+    board = board_at(tmp_path)
+    board.create('Gathered PR', 'ops', 0, 0, card_id='intake-1',
+                 intake={'reference': 'owner/repo#12'})
+    card = board.triage_intake('intake-1', subject='fix')
+    assert card['updated_by'] == 'ops'
+
+
 def test_accepting_intake_makes_it_work_and_keeps_the_acceptance(tmp_path):
     board = board_at(tmp_path)
     board.create('Gathered PR', 'ops', 0, 0, card_id='intake-1',

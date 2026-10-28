@@ -453,7 +453,7 @@ def triage_intake_card(store, config, session_slugs, ordinal, revision, subject=
     cards = _cards_for_write(config, session_slugs, revision, card_id)
     card = _card_at(cards, ordinal, card_id)
     store.triage_intake(card['id'], subject=subject, compatibility=compatibility, summary=summary,
-                        expected_version=card['version'])
+                        actor=actor, expected_version=card['version'])
     return board_view(config, session_slugs)
 
 

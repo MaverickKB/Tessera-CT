@@ -798,13 +798,18 @@ class BoardStore:
             card['updated_by'] = by
             return self._finish(card, sequence, None, None)
 
-    def triage_intake(self, card_id, *, subject=None, compatibility=None, summary=None, expected_version=None):
+    def triage_intake(self, card_id, *, subject=None, compatibility=None, summary=None,
+                      actor=None, expected_version=None):
         """Record what the intake reviewer found, on the card, as evidence.
 
         The intake desk reviews the change and notes the compatibility and the subject
         matter (bug, fix, feature addition, feature expansion, and so on). These are not
         prose for its own sake: they are what the acceptance decision reads, so they are
         typed fields on the card rather than a note nobody parses.
+
+        ``actor`` is the reviewer. It is recorded as the card's last writer, the same way
+        every other board mutation records who made it, so a review is attributable long
+        after the session that did it has ended.
         """
         with self._locked():
             cards, sequence = self._load_cards(repair=True)
@@ -826,7 +831,8 @@ class BoardStore:
                 if not isinstance(summary, str) or len(summary.encode()) > 4096:
                     raise BoardError('Invalid intake summary')
                 intake['summary'] = summary.strip()
-            card['updated_by'] = card.get('updated_by', '')
+            if actor is not None:
+                card['updated_by'] = actor
             return self._finish(card, sequence, None, None)
 
     def accept_intake(self, card_id, by, *, note='', expected_version=None):

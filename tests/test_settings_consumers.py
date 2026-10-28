@@ -107,6 +107,8 @@ def variants(spec):
         return 'alpha', 'beta'
     if spec.id == 'roles.failover':
         return '', 'alpha'
+    if spec.id in ('roles.fast', 'roles.compactor'):
+        return '', 'alpha'
     if spec.id == 'computer_use.provider':
         # '' and 'native' both resolve to native on macOS (mcp_servers.py:64).
         return 'native', 'mcp:desk'
@@ -171,6 +173,24 @@ def consume_role_failover(config):
     # tessera/loop.py:629 reads roles['failover'] and builds that backend on a failed turn
     with_chat_backend(config)
     target = config.roles.get('failover')
+    if not target:
+        return ''
+    return config.backends[target].name
+
+
+def consume_role_fast(config):
+    # tessera/loop.py:99 reads roles['fast'] for direct-routed turns
+    with_chat_backend(config)
+    target = config.roles.get('fast')
+    if not target:
+        return ''
+    return config.backends[target].name
+
+
+def consume_role_compactor(config):
+    # tessera/loop.py:209 reads roles['compactor'] for background summaries
+    with_chat_backend(config)
+    target = config.roles.get('compactor')
     if not target:
         return ''
     return config.backends[target].name
@@ -575,6 +595,8 @@ CONSUMERS = {
     'autonomy.floor_name': consume_floor_name,
     'identity.enabled': consume_identity_enabled,
     'roles.main': consume_role_main,
+    'roles.fast': consume_role_fast,
+    'roles.compactor': consume_role_compactor,
     'roles.failover': consume_role_failover,
     'computer_use.provider': consume_computer_provider,
     'computer_use.timeout': consume_computer_timeout,
@@ -659,6 +681,11 @@ def prepare(tmp_path, spec, value):
     if spec.id == 'roles.failover':
         with_chat_backend(config)
         config.roles['failover'] = 'alpha' if value else ''
+        return config
+    if spec.id in ('roles.fast', 'roles.compactor'):
+        with_chat_backend(config, 'alpha')
+        with_chat_backend(config, 'beta')
+        config.roles[spec.id.split('.', 1)[1]] = value or ''
         return config
     if spec.id == 'computer_use.provider':
         config.computer_use.backend = 'auto'
@@ -789,8 +816,8 @@ def test_projection_shape_is_pinned(tmp_path):
     # ui.config_journal_entries, the two Codex catalog settings, and ui.mark
     # are scalars on that bare page.
     assert 'aethermind.enabled' not in ids
-    assert len(list(catalog(config, {}))) == 71
-    assert len(ids) == 80
+    assert len(list(catalog(config, {}))) == 73
+    assert len(ids) == 82
 
 
 def test_yolo_banner_settings_save_reaches_status_and_disk(tmp_path):
