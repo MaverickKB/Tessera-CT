@@ -143,6 +143,11 @@ project = "your-project-id"
 personal_project = "your-personal-project-id"
 author = "your-author-name"
 timeout = 15
+# Whether the engine may create the project store on first use. The bundled
+# engine runs under your Tessera home and its stores are yours, so true means
+# the first turn initializes the store instead of refusing. An external
+# service keeps its own policy; leave false when url/endpoints is set.
+create_project = true
 # Pre-turn recall for memory-looking messages; it blocks the turn while it runs.
 # false leaves recall to the agent's memory tools (the per-turn reminder stays).
 auto_recall = true

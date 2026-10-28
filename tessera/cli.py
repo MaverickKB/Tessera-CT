@@ -16,6 +16,48 @@ from .assets import asset_path
 # Hosts the example config ships that can never answer. Kept as a literal list rather
 # than a heuristic so the message names the exact line a person has to change.
 PLACEHOLDER_HOSTS = ('models.example.com', 'api.example.com')
+# The example config's memory project names, in the same sense as the hosts:
+# a session that keeps one addresses a store that does not exist. start heals
+# the config in place; --check names the gap for whoever wants the diagnosis.
+PLACEHOLDER_PROJECTS = ('your-project-id', 'your-personal-project-id')
+
+
+def _healed_project_value(home):
+    """The default project store start writes when the placeholder is in place."""
+    return str(Path(home).expanduser() / 'projects' / 'default')
+
+
+def _healed_personal_value(home):
+    """The default personal store start writes when the placeholder is in place."""
+    return str(Path(home).expanduser() / 'projects' / 'personal')
+
+
+def _placeholder_memory_projects(config):
+    """The aethermind keys whose values are still the example's placeholders."""
+    memory = config.aethermind
+    keys = []
+    if (getattr(memory, 'project', '') or '').strip() in PLACEHOLDER_PROJECTS:
+        keys.append(('project', _healed_project_value))
+    if (getattr(memory, 'personal_project', '') or '').strip() in PLACEHOLDER_PROJECTS:
+        keys.append(('personal_project', _healed_personal_value))
+    return keys
+
+
+def _placeholder_memory_project(config):
+    """Name the example's memory project when it is still in place.
+
+    An empty project is a legal configuration (no project store); only the
+    example's placeholder names are called out, because a session that keeps
+    one addresses a store that does not exist.
+    """
+    configured = (getattr(config.aethermind, 'project', '') or '').strip()
+    if configured and configured in PLACEHOLDER_PROJECTS:
+        return ('[aethermind] project is still the placeholder '
+                f'{configured!r}. Set it to a real project path '
+                '(for example a directory under your Tessera home) in config.toml or '
+                'Settings before the first turn; the session addresses the store '
+                'that name resolves to.')
+    return None
 
 
 def _unusable_backends(config, *, resolve_hosts=False):
@@ -160,7 +202,8 @@ def _start(config, args):
 
     home = config.home
     target = home / 'config.toml'
-    if not target.exists():
+    first_run = not target.exists()
+    if first_run:
         from .assets import asset_path
         home.mkdir(parents=True, exist_ok=True)
         with target.open('x', encoding='utf-8') as stream:
@@ -170,12 +213,32 @@ def _start(config, args):
         # memory project are defaults. Reload so the first core runs with
         # the settings the new file defines, not empty ones.
         config = load_config(home)
+    # Self-heal the memory projects: a placeholder project names a store that
+    # does not exist, and the session would address nothing. On first run the
+    # fix is part of creation and stays quiet; later runs say it out loud so
+    # the reset is visible and can be looked into.
+    placeholders = _placeholder_memory_projects(config)
+    if placeholders:
+        edits = [{'path': ['aethermind', key], 'value': heal(home)} for key, heal in placeholders]
+        from .config_editor import ConfigEditor
+        ConfigEditor(target).apply(edits, label='start first run' if first_run else 'start self-heal')
+        config = load_config(home)
+        if not first_run:
+            names = ', '.join(key for key, _ in placeholders)
+            healed = ', '.join(str(edit['value']) for edit in edits)
+            print(f'start: [aethermind] {names} were still placeholders; '
+                  f'reset to {healed}. A config backup was written beside config.toml.')
     ensure_local_engine_bundle(config)
     # Seed an empty store so the first session opens with its judgment installed.
-    store = None
-    configured = config.aethermind.project
+    # The seed must land in the store the session addresses, not a sibling of it:
+    # a path project is seeded at that path; a bare registered name is seeded at
+    # the same home-relative path start would heal it to; an empty project
+    # seeds the home, which is where a bundled engine keeps its own store.
+    configured = (config.aethermind.project or '').strip()
     if configured and ('/' in configured or configured.startswith('~')):
         store = Path(configured).expanduser()
+    elif configured:
+        store = home / configured
     else:
         store = home
     shelf = Path(config.skills.shelf).expanduser() if config.skills.shelf else home / 'skills'
@@ -370,6 +433,9 @@ def main(argv=None):
                 memory_gap = _missing_memory_engine(loaded)
                 if memory_gap:
                     gaps.append(memory_gap)
+                placeholder = _placeholder_memory_project(loaded)
+                if placeholder:
+                    gaps.append(placeholder)
                 if not gaps:
                     print('Configuration can answer: every role resolves to a backend with a usable credential.')
                     return 0
@@ -400,6 +466,9 @@ def main(argv=None):
             memory_gap = _missing_memory_engine(load_config(config.home))
             if memory_gap:
                 print(memory_gap, file=sys.stderr)
+            placeholder = _placeholder_memory_project(load_config(config.home))
+            if placeholder:
+                print(placeholder, file=sys.stderr)
             return 0
         if args.command == 'seed':
             from . import seeds as seed_pack
