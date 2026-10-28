@@ -20,7 +20,7 @@ METHODS = ['status', 'thread/start', 'thread/list', 'thread/resume', 'thread/rea
            'memory/recall', 'memory/sync', 'swarm/create', 'swarm/run', 'swarm/show',
            'agent/plan', 'agent/merge', 'agent/spawn', 'agent/run', 'agent/show', 'agent/list', 'agent/send',
            'channel/create', 'channel/list', 'channel/subscribe', 'channel/send',
-           'channel/deliver', 'channel/events', 'board/read', 'voice/start', 'voice/events', 'voice/stop', 'shutdown']
+           'channel/deliver', 'channel/events', 'board/read', 'voice/start', 'voice/events', 'voice/stop', 'voice/local', 'shutdown']
 
 
 def fields(params, allowed=(), required=()):
@@ -362,8 +362,16 @@ class Daemon:
             return {'job': job}
         if method.startswith('voice/'):
             allowed = {'voice/start': ('threadId',), 'voice/events': ('threadId', 'voiceId', 'events'),
-                       'voice/stop': ('threadId', 'voiceId')}[method]
+                       'voice/stop': ('threadId', 'voiceId'),
+                       'voice/local': ('threadId', 'audio', 'rate')}[method]
             fields(params, allowed, allowed)
+            if method == 'voice/local':
+                from .local_voice import LocalVoice, LocalVoiceError
+                try:
+                    return LocalVoice(manager).utterance(params['threadId'], params['audio'], params['rate'])
+                except LocalVoiceError as error:
+                    codes = {'request': -32602, 'encoding': -32602, 'size': -32602, 'rate': -32602}
+                    raise RpcError(codes.get(error.category, -32001), str(error)) from None
             if method == 'voice/start':
                 return manager.voice.start(params['threadId'])
             if method == 'voice/events':

@@ -240,6 +240,37 @@ def test_a_text_to_speech_answer_in_the_wrong_format_is_refused(tmp_path):
         stub.close()
 
 
+def test_invalid_audio_encoding_is_refused(tmp_path):
+    stub = SpeechStub()
+    server, thread = serve(tmp_path, stub)
+    try:
+        code, body = call(server, 'POST', '/api/sessions/one/voice/local',
+                          {'audio': 'not base64!', 'rate': SPEECH_RATE})
+        assert code == 400, body
+        assert 'encoding' in body['error']
+        assert stub.requests == []
+    finally:
+        stop(server, thread)
+        stub.close()
+
+
+def test_a_bad_sample_rate_or_frame_is_refused(tmp_path):
+    stub = SpeechStub()
+    server, thread = serve(tmp_path, stub)
+    try:
+        code, body = call(server, 'POST', '/api/sessions/one/voice/local', utterance_body(rate=96000))
+        assert code == 400, body
+        assert 'rate' in body['error']
+        code, body = call(server, 'POST', '/api/sessions/one/voice/local', utterance_body(rate=4000))
+        assert code == 400, body
+        code, body = call(server, 'POST', '/api/sessions/one/voice/local', utterance_body(pcm=b'\x00\x01\x02'))
+        assert code == 400, body
+        assert stub.requests == []
+    finally:
+        stop(server, thread)
+        stub.close()
+
+
 def test_the_duplex_lease_route_refuses_the_local_pipe_by_name(tmp_path):
     stub = SpeechStub()
     server, thread = serve(tmp_path, stub)

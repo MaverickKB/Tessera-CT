@@ -18,6 +18,8 @@ import urllib.error
 import urllib.request
 import uuid
 
+from .voice import selected_pipe
+
 
 class LocalVoiceError(ValueError):
     """A local speech step that could not finish, with a plain reason."""
@@ -25,6 +27,34 @@ class LocalVoiceError(ValueError):
     def __init__(self, category):
         self.category = category
         super().__init__('Local speech unavailable (' + category + ')')
+
+
+class LocalVoice:
+    """One push-to-talk request, shared by the HTTP route and the desktop IPC.
+
+    The caller supplies base64 PCM16 and its sample rate; everything else comes
+    from the saved [voice.stt] and [voice.tts] settings. The same bounds apply on
+    both transports because they are checked here, once.
+    """
+
+    def __init__(self, manager):
+        self.manager = manager
+
+    def utterance(self, slug, audio_text, rate):
+        settings = self.manager.config.voice
+        if selected_pipe(settings) != 'local':
+            raise LocalVoiceError('pipe')
+        if not isinstance(audio_text, str) or type(rate) is not int:
+            raise LocalVoiceError('request')
+        try:
+            audio = base64.b64decode(audio_text, validate=True)
+        except (ValueError, TypeError):
+            raise LocalVoiceError('encoding') from None
+        if not audio or len(audio) > settings.local_max_audio_bytes:
+            raise LocalVoiceError('size')
+        if rate < 8000 or rate > 48000 or len(audio) % 2:
+            raise LocalVoiceError('rate')
+        return utterance(self.manager, slug, audio, rate, settings.local_reply_timeout)
 
 
 def pcm_to_wav(pcm, rate, channels=1):

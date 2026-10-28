@@ -36,12 +36,13 @@ from .board import BoardError, BoardSizeError, INTAKE_SUBJECTS, _MISSING
 from .floor_definition import FloorDefinitionError
 from .board_status import BoardRevisionError
 from .infrastructure import InventoryRevisionError
-from .voice import VoiceError, configured as voice_configured, selected_pipe as voice_selected_pipe, websocket_origin
+from .voice import VoiceError, configured as voice_configured, websocket_origin
 from .session_speech import SessionSpeech, SpeechError
 
 LOCAL_VOICE_STATUS = {'connection': 502, 'upstream': 502, 'timeout': 504, 'turn_timeout': 504,
                       'invalid_response': 502, 'audio_format': 502, 'transcript': 422,
-                      'reply': 502, 'turn': 409}
+                      'reply': 502, 'turn': 409, 'pipe': 409, 'request': 400,
+                      'encoding': 400, 'size': 413, 'rate': 400}
 LOCAL_VOICE_MESSAGE = {
     'connection': 'The local speech service could not be reached.',
     'upstream': 'The local speech service refused the request.',
@@ -52,6 +53,11 @@ LOCAL_VOICE_MESSAGE = {
     'transcript': 'The speech-to-text service returned no text.',
     'reply': 'The session produced no reply to speak.',
     'turn': 'The session turn failed.',
+    'pipe': 'The local pipe is not selected. Choose Local speech in Settings.',
+    'request': 'Invalid local voice request.',
+    'encoding': 'Invalid audio encoding.',
+    'size': 'Utterance exceeds the configured bound.',
+    'rate': 'Invalid audio rate or frame size.',
 }
 
 
@@ -380,23 +386,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _local_voice(self, manager, slug, body):
         """One push-to-talk utterance: speech in, a session turn, speech out."""
-        from .local_voice import LocalVoiceError, utterance
-        audio_text = body.get('audio')
-        rate = body.get('rate')
-        if not isinstance(audio_text, str) or type(rate) is not int:
-            raise ApiError(400, 'Invalid local voice request')
-        if voice_selected_pipe(manager.config.voice) != 'local':
-            raise ApiError(409, 'The local pipe is not selected. Choose Local speech in Settings.')
+        from .local_voice import LocalVoice, LocalVoiceError
         try:
-            audio = base64.b64decode(audio_text, validate=True)
-        except (ValueError, TypeError):
-            raise ApiError(400, 'Invalid audio encoding') from None
-        if not audio or len(audio) > manager.config.voice.local_max_audio_bytes:
-            raise ApiError(413, 'Utterance exceeds the configured bound')
-        if rate < 8000 or rate > 48000 or len(audio) % 2:
-            raise ApiError(400, 'Invalid audio rate or frame size')
-        try:
-            return utterance(manager, slug, audio, rate, manager.config.voice.local_reply_timeout)
+            return LocalVoice(manager).utterance(slug, body.get('audio'), body.get('rate'))
         except LocalVoiceError as error:
             raise ApiError(LOCAL_VOICE_STATUS.get(error.category, 400),
                            LOCAL_VOICE_MESSAGE.get(error.category, str(error))) from None
