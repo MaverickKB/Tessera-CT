@@ -17,8 +17,14 @@ NAME = 'Tessera'
 
 
 def _start_command(home, python=None):
-    """The launcher's Exec line: this interpreter, `tessera --home <home> start`."""
-    python = python or Path(sys.executable).resolve()
+    """The launcher's Exec line: this interpreter, `tessera --home <home> start`.
+
+    The interpreter is kept as-is, without resolving symlinks: a venv's
+    python is a symlink to the base interpreter, and resolving it drops the
+    environment's site-packages, so the launcher would fail with
+    'No module named tessera'.
+    """
+    python = python or sys.executable
     home = Path(home).expanduser()
     return f'"{python}" -m tessera --home "{home}" start'
 
@@ -111,7 +117,7 @@ def _windows_install(home):
         "$ws = New-Object -ComObject WScript.Shell; "
         f"$s = $ws.CreateShortcut('{shortcut}'); "
         f"$s.TargetPath = '{sys.executable}'; "
-        f"$s.Arguments = '-m tessera start --home \"{home}\"'; "
+        f"$s.Arguments = '-m tessera --home \"{home}\" start'; "
         "$s.Save()"
     )
     subprocess.run(['powershell', '-NoProfile', '-Command', ps], check=True,

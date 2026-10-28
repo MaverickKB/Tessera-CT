@@ -166,6 +166,10 @@ def _start(config, args):
         with target.open('x', encoding='utf-8') as stream:
             stream.write(asset_path('config.example.toml').read_text(encoding='utf-8'))
         print(f'Created {target}.')
+        # The config main() loaded predates the file, so its backends and
+        # memory project are defaults. Reload so the first core runs with
+        # the settings the new file defines, not empty ones.
+        config = load_config(home)
     ensure_local_engine_bundle(config)
     # Seed an empty store so the first session opens with its judgment installed.
     store = None
