@@ -576,6 +576,14 @@ def ensure_bundled_engine(config, clock=time.monotonic, *, force=False):
             return None  # The caller has not asked the bundle to run.
     root = _engine_root(config)
     if root is None:
+        # A receipt-less checkout can still start when its vendored tree
+        # verifies. init and serve materialize the home-local bundle up
+        # front; a session started cold reaches this line instead, so do
+        # the same verified work here rather than report a missing engine.
+        # ensure_local_engine_bundle copies nothing from a tree that does
+        # not match the manifest, so a tampered checkout still fails closed.
+        root = ensure_local_engine_bundle(config)
+    if root is None:
         return None
     entry = root / 'mcp' / 'aethermind_mcp.py'
     receipt = root / 'build-receipt.json'

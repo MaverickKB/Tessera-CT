@@ -116,3 +116,72 @@ def test_an_explicit_bundle_is_not_replaced(tmp_path):
     config = Config(home=tmp_path / 'home', cwd=tmp_path)
     config.aethermind.bundled_path = str(tmp_path / 'explicit')
     assert ensure_local_engine_bundle(config) is None
+
+
+def _fake_engine_home(monkeypatch, tmp_path, source, name):
+    copy = tmp_path / name
+    shutil.copytree(source, copy)
+    from tessera import assets
+    monkeypatch.setattr(assets, 'asset_path',
+                        lambda wanted: copy if wanted == 'aethermind-engine' else tmp_path / 'missing')
+    return Config(home=tmp_path / ('home-' + name), cwd=tmp_path)
+
+
+def _fake_launch(monkeypatch):
+    import io
+    import sys
+
+    class Proc:
+        def __init__(self):
+            self.stdout = io.BytesIO(b'listening on 127.0.0.1:9\n')
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            return None
+
+    monkeypatch.setattr('tessera.bundled_engine.subprocess.Popen', lambda argv, **kwargs: Proc())
+    monkeypatch.setattr('tessera.bundled_engine._provision', lambda root, runtime=None: sys.executable)
+    monkeypatch.setattr('tessera.bundled_engine._wait_for_engine', lambda *args, **kwargs: True)
+    monkeypatch.setattr('tessera.bundled_engine._pick_port', lambda: 9)
+
+
+def test_a_cold_session_materializes_the_bundle_before_launch(tmp_path, monkeypatch):
+    """A checkout session that skipped init still starts the engine.
+
+    init and serve materialize the home-local bundle up front. choose_memory
+    reaches ensure_bundled_engine directly, so the launch itself must not
+    report a missing engine while a verified vendored tree sits in the
+    checkout.
+    """
+    from tessera.bundled_engine import ensure_bundled_engine, stop_bundled_engine
+    config = _fake_engine_home(monkeypatch, tmp_path, vendored_dir(), 'cold')
+    _fake_launch(monkeypatch)
+    try:
+        url = ensure_bundled_engine(config, force=True)
+        assert url is not None and url.startswith('http://127.0.0.1:')
+        bundle = ensure_local_engine_bundle(config)
+        assert bundle is not None
+        assert (bundle / 'build-receipt.json').is_file()
+        assert _engine_root(config) == bundle
+    finally:
+        stop_bundled_engine(config)
+
+
+@pytest.mark.aethermind_unavailable
+def test_a_cold_session_with_a_tampered_tree_fails_closed(tmp_path, monkeypatch):
+    """The launch does not turn a tampered tree into a running engine."""
+    from tessera.bundled_engine import ensure_bundled_engine
+    copy = tmp_path / 'engine'
+    shutil.copytree(vendored_dir(), copy)
+    target = copy / 'lib' / 'aethermind' / 'core.py'
+    target.write_bytes(target.read_bytes() + b'\n')
+    from tessera import assets
+    monkeypatch.setattr(assets, 'asset_path',
+                        lambda wanted: copy if wanted == 'aethermind-engine' else tmp_path / 'missing')
+    config = Config(home=tmp_path / 'home', cwd=tmp_path)
+    _fake_launch(monkeypatch)
+    assert ensure_bundled_engine(config, force=True) is None
+    assert ensure_local_engine_bundle(config) is None
+    assert not (config.home / 'runtime').exists()

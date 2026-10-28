@@ -71,6 +71,19 @@ def stand_in(original_ensure, real_client):
     return ensure, client
 
 
+def offline_materializer(_config):
+    """The stand-in's materializer: no copies, no venv, no network.
+
+    A cold checkout session now materializes its home-local bundle inside
+    ensure_bundled_engine, so a plain test that reaches the real launcher
+    would copy the vendored tree and provision a real engine venv. The
+    stand-in's launcher already answers SENTINEL only when this install
+    would start nothing; the materializer must stay equally quiet, or the
+    suite stops being offline.
+    """
+    return None
+
+
 def _quiet_turn_brief(original):
     """The stand-in has no store. A missing brief must not lecture every turn."""
 
@@ -96,6 +109,7 @@ def install_test_local_memory(monkeypatch):
 
     ensure, client = stand_in(bundled_engine.ensure_bundled_engine, loop.AetherMindClient)
     monkeypatch.setattr(bundled_engine, 'ensure_bundled_engine', ensure)
+    monkeypatch.setattr(bundled_engine, 'ensure_local_engine_bundle', offline_materializer)
     monkeypatch.setattr(loop, 'AetherMindClient', client)
     monkeypatch.setattr(mirror, 'AetherMindClient', client)
     monkeypatch.setattr(Capture, 'turn_brief', _quiet_turn_brief(Capture.turn_brief))
@@ -111,10 +125,12 @@ def test_local_memory():
 
     ensure, client = stand_in(bundled_engine.ensure_bundled_engine, loop.AetherMindClient)
     original_ensure = bundled_engine.ensure_bundled_engine
+    original_materializer = bundled_engine.ensure_local_engine_bundle
     original_loop = loop.AetherMindClient
     original_mirror = mirror.AetherMindClient
     original_brief = Capture.turn_brief
     bundled_engine.ensure_bundled_engine = ensure
+    bundled_engine.ensure_local_engine_bundle = offline_materializer
     loop.AetherMindClient = client
     mirror.AetherMindClient = client
     Capture.turn_brief = _quiet_turn_brief(original_brief)
@@ -122,6 +138,7 @@ def test_local_memory():
         yield
     finally:
         bundled_engine.ensure_bundled_engine = original_ensure
+        bundled_engine.ensure_local_engine_bundle = original_materializer
         loop.AetherMindClient = original_loop
         mirror.AetherMindClient = original_mirror
         Capture.turn_brief = original_brief

@@ -339,9 +339,13 @@ def test_stored_enabled_false_still_runs_the_embedded_engine(tmp_path, monkeypat
 
 
 def test_cli_run_refuses_when_no_aethermind_is_configured(tmp_path):
+    # A bare checkout cold-starts the engine now, so a config that names
+    # an absent bundled_path is the case that still refuses: the explicit
+    # path is not the packaged copy and it has no receipt.
     (tmp_path / 'config.toml').write_text(
         '[backends.test]\nbase_url="http://127.0.0.1:9/v1"\nmodel="test-model"\n'
-        '[roles]\nmain="test"\n[tools]\napproval = "yolo"\n')
+        '[roles]\nmain="test"\n[tools]\napproval = "yolo"\n'
+        '[aethermind]\nbundled_path = "no-such-bundle"\n')
     env = {key: value for key, value in os.environ.items() if key != 'TESSERA_AETHERMIND_ENABLED'}
     env['TESSERA_HOME'] = str(tmp_path)
     env['PYTHONPATH'] = str(ROOT) + os.pathsep + env.get('PYTHONPATH', '')
@@ -350,7 +354,7 @@ def test_cli_run_refuses_when_no_aethermind_is_configured(tmp_path):
         capture_output=True, text=True, timeout=20)
     assert result.returncode == 1, result.stderr
     assert result.stderr.startswith('tessera: AetherMind is not available')
-    assert 'bytes present, not started' in result.stderr
+    assert 'Packaged engine is not in this install' in result.stderr
     _refused(result.stderr)
 
 
