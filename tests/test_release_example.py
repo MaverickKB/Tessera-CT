@@ -38,7 +38,8 @@ def test_init_optional_sections_remain_inert_with_a_provider_key_available(tmp_p
     config = load_config(tmp_path)
     with SessionManager(config) as manager:
         manager.create('release-example')
-        assert manager.status()['voice'] == {'enabled': False, 'configured': False, 'active_count': 0, 'voices': [], 'voice': ''}
+        assert manager.status()['voice'] == {'enabled': False, 'configured': False, 'active_count': 0, 'voices': [], 'voice': '',
+                                             'pipe': '', 'pipes': {'duplex': False, 'local': False}}
         with pytest.raises(ValueError, match='disabled'):
             manager.voice.start('release-example')
         with pytest.raises(ValueError, match='disabled'):

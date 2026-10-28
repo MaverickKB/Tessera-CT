@@ -388,25 +388,25 @@ The example below deliberately uses placeholders. Set `turn_detection`
 explicitly if your provider requires it; the copied template leaves it empty.
 
 ```toml
-[credentials.xai-oauth]
-oauth = "xai"
+[credentials.voice_api]
+env = "YOUR_VOICE_API_KEY"
 
 [voice]
 enabled = true
 pipe = ""
-websocket_url = "wss://api.x.ai/v1/realtime"
-model = "grok-voice-latest"
-api_base_url = "https://api.x.ai/v1"
-client_secret_path = "/realtime/client_secrets"
-client_protocol_prefix = "xai-client-secret."
-credential_ref = "xai-oauth"
+websocket_url = "wss://voice.example.com/realtime"
+model = "<REALTIME_MODEL_ID>"
+api_base_url = "https://voice.example.com"
+client_secret_path = "/<CLIENT_SECRET_MINT_PATH>"
+client_protocol_prefix = "<EPHEMERAL_PROTOCOL_PREFIX>"
+credential_ref = "voice_api"
 max_session_seconds = 60
 secret_ttl_seconds = 60
 timeout = 5
 max_sessions = 1
 audio_format = "audio/pcm"
 audio_sample_rate = 24000
-turn_detection = { type = "server_vad" }
+turn_detection = { type = "<TURN_DETECTION_TYPE>" }
 tools = []
 
 [voice.stt]

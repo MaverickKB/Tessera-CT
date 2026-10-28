@@ -33,7 +33,7 @@ def test_real_http_voice_needs_no_bearer_is_passive_and_scoped(tmp_path,monkeypa
         assert code==200 and result['messages'][0]['text']=='A spoken question'
         assert call(server,'POST','/api/sessions/one/voice/events',body)[1]['messages']==[]
         status=call(server,'GET','/api/status')[1]['voice']
-        assert status=={'enabled':True,'configured':True,'active_count':1,'voices':[],'voice':''}
+        assert status=={'enabled':True,'configured':True,'active_count':1,'voices':[],'voice':'','pipe':'duplex','pipes':{'duplex':True,'local':False}}
         assert 'secret' not in json.dumps(status) and 'voice.example.com' not in json.dumps(status)
         assert call(server,'POST','/api/sessions/one/voice/stop',{'voice_id':start['voice_id']})==(200,{'stopped':True})
         assert call(server,'POST','/api/sessions/one/voice/events',body)[0]==409
