@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 
 from .account_oauth import grant_report
+from .credentials import CredentialError, CredentialResolver
 
 
 # Every provider that speaks a full-duplex realtime protocol Tessera can drive.
@@ -123,6 +124,68 @@ def _model_names(payload):
         if name not in unique:
             unique.append(name)
     return unique
+
+
+def _voice_names(payload):
+    """Voice ids from the shape a duplex provider answers with."""
+    items = payload.get('voices') if isinstance(payload, dict) else payload
+    if not isinstance(items, list):
+        items = []
+    names = []
+    for item in items:
+        if isinstance(item, str) and item.strip():
+            names.append(item.strip().lower())
+            continue
+        if not isinstance(item, dict):
+            continue
+        name = item.get('voice_id') or item.get('id') or item.get('name')
+        if isinstance(name, str) and name.strip():
+            names.append(name.strip().lower())
+    unique = []
+    for name in names:
+        if name not in unique:
+            unique.append(name)
+    return unique
+
+
+def probe_voices(config, connection):
+    """Ask a duplex provider which voices its speech-to-speech API offers.
+
+    The account's own credential is resolved here, so an OAuth sign-in works the
+    same as a provider row. The answer becomes the voice dropdown, never a guess.
+    """
+    if not isinstance(connection, dict):
+        raise SpeechProbeError('That account does not name a duplex provider.')
+    provider = str(connection.get('provider') or '')
+    profile = DUPLEX_PROVIDERS.get(provider)
+    if profile is None:
+        raise SpeechProbeError('That account does not name a duplex provider.')
+    reference = connection.get('reference') or ''
+    try:
+        token = CredentialResolver(config.credentials, oauth_home=str(config.home)).resolve(reference).value
+    except CredentialError as error:
+        raise SpeechProbeError('The account credential is not available (%s).' % error) from None
+    if not token:
+        raise SpeechProbeError('The account credential is not available.')
+    url = profile['api_base_url'].rstrip('/') + '/tts/voices'
+    ask = urllib.request.Request(url, headers={'Accept': 'application/json', 'Authorization': 'Bearer ' + token}, method='GET')
+    try:
+        with urllib.request.urlopen(ask, timeout=config.voice.timeout) as response:
+            raw = response.read(4 * 1024 * 1024)
+    except urllib.error.HTTPError as error:
+        raise SpeechProbeError('The provider answered HTTP %d for its voice list.' % error.code) from None
+    except urllib.error.URLError as error:
+        raise SpeechProbeError('Could not reach the provider (%s).' % error.reason) from None
+    except (TimeoutError, OSError) as error:
+        raise SpeechProbeError('Could not reach the provider (%s).' % error) from None
+    try:
+        payload = json.loads(raw.decode('utf-8'))
+    except (ValueError, UnicodeError):
+        raise SpeechProbeError('The provider answered with something that is not JSON.') from None
+    names = _voice_names(payload)
+    if not names:
+        raise SpeechProbeError('The provider answered but named no voices.')
+    return names
 
 
 def probe_models(base_url, timeout):

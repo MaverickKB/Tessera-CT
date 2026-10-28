@@ -278,7 +278,7 @@ class VoiceSessions:
         self.config = manager.config
         self.settings = self.config.voice
         self.clock = clock
-        self.client = client or VoiceClient(self.settings, credentials=CredentialResolver(self.config.credentials))
+        self.client = client or VoiceClient(self.settings, credentials=CredentialResolver(self.config.credentials, oauth_home=str(self.config.home)))
         self._leases = {}
         self._lock = threading.RLock()
         self._start_lock = threading.RLock()
