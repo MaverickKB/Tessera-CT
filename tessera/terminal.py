@@ -750,7 +750,7 @@ class Terminal:
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    utility = {'init', 'seed', 'inspect', 'inspect-mcp', 'app-server', 'serve', 'desktop', 'run', 'status', 'zoom', 'swarm-create', 'swarm-run', 'swarm-show'}
+    utility = {'init', 'seed', 'inspect', 'inspect-mcp', 'app-server', 'serve', 'desktop', 'run', 'status', 'zoom', 'swarm-create', 'swarm-run', 'swarm-show', 'start', 'install-launcher'}
     position = 0
     while position < len(argv):
         if argv[position] == '--home':
