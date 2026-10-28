@@ -146,6 +146,87 @@ def _inspect(config, args):
                           'write_debt': len(capture.debt())}, indent=2))
 
 
+def _start(config, args):
+    """One command for a working app: create what is missing, then serve and open.
+
+    init and seed are setup steps a person has to know about and run in order.
+    This composes them: a missing config is created, an empty store is seeded,
+    the OS launcher is written when asked, and then the core runs with the UI
+    opened in a browser. The first turn of a fresh install happens in a window,
+    not in a terminal.
+    """
+    from .bundled_engine import ensure_local_engine_bundle
+    from . import seeds as seed_pack
+
+    home = config.home
+    target = home / 'config.toml'
+    if not target.exists():
+        from .assets import asset_path
+        home.mkdir(parents=True, exist_ok=True)
+        with target.open('x', encoding='utf-8') as stream:
+            stream.write(asset_path('config.example.toml').read_text(encoding='utf-8'))
+        print(f'Created {target}.')
+        # The config main() loaded predates the file, so its backends and
+        # memory project are defaults. Reload so the first core runs with
+        # the settings the new file defines, not empty ones.
+        config = load_config(home)
+    ensure_local_engine_bundle(config)
+    # Seed an empty store so the first session opens with its judgment installed.
+    store = None
+    configured = config.aethermind.project
+    if configured and ('/' in configured or configured.startswith('~')):
+        store = Path(configured).expanduser()
+    else:
+        store = home
+    shelf = Path(config.skills.shelf).expanduser() if config.skills.shelf else home / 'skills'
+    try:
+        result = seed_pack.install(store, skills_dir=shelf)
+        if result.get('layers_written') or result.get('skills_staged'):
+            print(seed_pack.describe(result))
+    except RuntimeError as error:
+        # A store that cannot take the seed pack is named, not fatal: the core
+        # still serves, and the harness works without seeds.
+        print(f'tessera: seed pack not written: {error}', file=sys.stderr)
+    if getattr(args, 'install_launcher', False):
+        from .launcher import install as install_launcher
+        written = install_launcher(home)
+        print(f"Launcher written: {written['entry']}")
+    from .server import create_server
+    server = create_server(config)
+    if not getattr(args, 'no_browser', False):
+        # The page must not open before the core answers. Probe readiness from
+        # a thread against the bound address, open once, and let serve_forever
+        # take the foreground either way.
+        import threading
+        import time
+        import urllib.request
+        import webbrowser
+        url = server.url
+
+        def _open_when_ready():
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                try:
+                    urllib.request.urlopen(url.rstrip('/') + '/api/status?shape=connection', timeout=1)
+                    webbrowser.open(url)
+                    return
+                except OSError:
+                    time.sleep(0.2)
+
+        threading.Thread(target=_open_when_ready, daemon=True).start()
+    print(f'Serving Tessera at {server.url}', flush=True)
+    import signal
+    signal.signal(signal.SIGTERM, lambda *args2: server.restart())
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    server.manager.close()
+    from .server import _release_embedded_engine
+    _release_embedded_engine(config)
+    return 0
+
+
 def _named_chat(config, name):
     from .sessions import SessionManager
     with SessionManager(config, approve=_approve) as manager:
@@ -195,6 +276,14 @@ def main(argv=None):
     init_parser = commands.add_parser('init', help='Create a placeholder configuration without overwriting')
     init_parser.add_argument('--check', action='store_true',
                              help='Report whether the current config can answer, without writing or calling out')
+    start_parser = commands.add_parser('start',
+                                       help='Set up what is missing, then run the desktop core and open the UI')
+    start_parser.add_argument('--no-browser', action='store_true',
+                              help='Start the core without opening the browser')
+    start_parser.add_argument('--install-launcher', action='store_true',
+                              help='Also write the OS launcher (app menu, start menu, Applications)')
+    launcher_parser = commands.add_parser('install-launcher',
+                                           help='Write the OS launcher for `tessera start` (app menu, start menu, Applications)')
     seeds = commands.add_parser('seed', help='Write the packaged seed pack into an AetherMind store')
     seeds.add_argument('--store', type=Path,
                        help='AetherMind project root to write into (default: the configured memory project)')
@@ -330,6 +419,15 @@ def main(argv=None):
                 shelf = Path(config.skills.shelf).expanduser() if config.skills.shelf else config.home / 'skills'
             result = seed_pack.install(store, skills_dir=shelf, dry_run=args.dry_run)
             print(seed_pack.describe(result))
+            return 0
+        if args.command == 'start':
+            return _start(config, args)
+        if args.command == 'install-launcher':
+            from .launcher import install as install_launcher
+            written = install_launcher(config.home)
+            print(f"Launcher written: {written['entry']}")
+            if written.get('icon'):
+                print(f"Icon: {written['icon']}")
             return 0
         if args.command in ('serve', 'desktop'):
             if args.host is not None:
