@@ -12,6 +12,12 @@ import threading
 
 from .server import create_server
 
+# The tests replace these two helpers, not the os module. Patching os.fstat
+# globally also changes pytest's capture manager, whose teardown calls fstat
+# on its own output file.
+_fstat = os.fstat
+_close = os.close
+
 
 def _terminate(signum, frame):
     raise KeyboardInterrupt
@@ -52,7 +58,7 @@ def _stdin_pipe_identity():
     A zero inode is not a matchable pipe.
     """
     try:
-        own = os.fstat(0)
+        own = _fstat(0)
     except OSError:
         return None
     if own.st_ino == 0:
@@ -147,7 +153,7 @@ def _darwin_pipe_ends(fd):
 def _closes_leaked_stdin(fd, identity, stdin_ends):
     if identity is not None:
         try:
-            other = os.fstat(fd)
+            other = _fstat(fd)
         except OSError:
             other = None
         if other is not None and (other.st_dev, other.st_ino) == identity:
@@ -178,7 +184,7 @@ def _drop_leaked_stdin_writer():
     for fd in _open_fds():
         if _closes_leaked_stdin(fd, identity, stdin_ends):
             try:
-                os.close(fd)
+                _close(fd)
             except OSError:
                 pass
 
