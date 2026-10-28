@@ -210,6 +210,8 @@ def decide(baseline, candidate, instrument, margin=None):
 
     A tie is the common case and it reverts. Only a margin that clears the
     threshold is a win, because the default must be to leave the session alone.
+    Two identical readings are a tie, and a win needs a positive baseline: zero
+    is not a number a candidate can improve on.
     """
     before = reading(baseline, instrument)
     after = reading(candidate, instrument)
@@ -229,10 +231,18 @@ def decide(baseline, candidate, instrument, margin=None):
         margin = SECONDS_MARGIN if instrument == 'turn_seconds_median' else RATE_MARGIN
     else:
         margin = _check_margin(margin)
-    if after <= before * margin:
+    if after == before:
+        # The same number on both arms is a tie, never a win or a loss. The margin
+        # test below asks whether the candidate is at most a share of the baseline,
+        # which 0 <= 0 satisfies, so a clean arm compared with a clean arm used to
+        # keep the change; and the "rose" branch called an unchanged arm a loss.
+        # Neither sentence is true when nothing moved.
+        return {'outcome': 'tie', 'before': before, 'after': after,
+                'detail': f'{instrument.replace("_", " ")} was {before} before and {after} after'}
+    if before > 0 and after <= before * margin:
         return {'outcome': 'win', 'before': before, 'after': after,
                 'detail': f'{instrument.replace("_", " ")} fell from {before:.3f} to {after:.3f}'}
-    if after >= before:
+    if after > before:
         return {'outcome': 'loss', 'before': before, 'after': after,
                 'detail': f'{instrument.replace("_", " ")} rose from {before:.3f} to {after:.3f}'}
     return {'outcome': 'tie', 'before': before, 'after': after,
