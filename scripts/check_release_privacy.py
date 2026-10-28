@@ -34,7 +34,8 @@ EMAIL_LABEL = 'email address'
 TERM_LABEL = 'private term'
 # Generated trees are not release input. A copy built by build_release.py has
 # none of these, and scanning a working checkout should not read them either.
-SKIP_DIRS = {'.git', '.venv', '__pycache__', 'node_modules', 'target', '.mypy_cache', '.pytest_cache'}
+SKIP_DIRS = {'.git', '.venv', '__pycache__', 'node_modules', 'target', '.mypy_cache', '.pytest_cache',
+             '.ruff_cache', '.hypothesis', 'build', 'dist'}
 
 
 class PrivacyCheckError(Exception):

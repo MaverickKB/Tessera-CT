@@ -42,6 +42,24 @@ def test_a_tampered_copy_names_the_file_and_the_override(tmp_path):
     assert 'hash mismatch: lib/aethermind/core.py' in message
 
 
+def test_local_bytecode_in_the_vendored_tree_is_not_tampering(tmp_path):
+    """Running the tests writes __pycache__ into the vendored tree.
+
+    A wheel copies only the manifest's files, so compiled bytecode and OS
+    metadata are local residue rather than engine bytes. Treating them as
+    unexpected made the normal release flow, "run the tests, then build the
+    wheel", fail on a tree whose sources were untouched.
+    """
+    copy = tmp_path / 'engine'
+    shutil.copytree(vendored_dir(), copy)
+    cache = copy / 'lib' / 'aethermind' / '__pycache__'
+    cache.mkdir(exist_ok=True)
+    (cache / 'core.cpython-314.pyc').write_bytes(b'bytecode')
+    (copy / '.DS_Store').write_bytes(b'finder metadata')
+    # No source file changed, so the tree still verifies.
+    verify_engine_tree(copy, load_manifest(), override=True)
+
+
 def test_a_synthetic_tree_is_not_accepted_in_place_of_the_engine(tmp_path):
     fake = tmp_path / 'synthetic'
     (fake / 'mcp').mkdir(parents=True)
