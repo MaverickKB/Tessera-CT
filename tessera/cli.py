@@ -266,6 +266,7 @@ def _start(config, args):
     config.server.port = config.server.port or 0
     while True:
         server = create_server(config)
+        server.self_supervised = True
         config.server.port = server.server_address[1]
         if not getattr(args, 'no_browser', False):
             # The page must not open before the core answers. Probe readiness from
@@ -299,7 +300,10 @@ def _start(config, args):
             _release_embedded_engine(config)
             return 0
         # A drain-for-restart exits serve_forever; this process is the
-        # supervisor, so serve the new code from the same home.
+        # supervisor, so serve the new code from the same home. The old
+        # listener is closed before rebinding so the same address can be
+        # taken again immediately.
+        server.server_close()
         server.manager.close()
         from .server import _release_embedded_engine
         _release_embedded_engine(config)

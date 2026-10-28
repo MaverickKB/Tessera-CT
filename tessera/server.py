@@ -135,6 +135,10 @@ class TesseraServer(ThreadingHTTPServer):
     # for the page's assets, and through a proxy (tailscale serve) each one is a fresh upstream
     # connection; on macOS overflow is answered with a reset, which the proxy reports as 502.
     request_queue_size = 128
+    # `tessera start` owns its process and respawns after a drain-for-restart;
+    # /api/update/apply says `restarting: true` only when a supervisor or this
+    # loop is on the other side of the drain.
+    self_supervised = False
 
     def __init__(self, config, manager, web_root, family, address):
         self.address_family = family
@@ -730,14 +734,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == '/api/update/apply' and method == 'POST':
             # The reinstall replaces the running code; the restart that follows
-            # may be supervised or, for `tessera start`, the process's own
-            # respawn loop. Either way the answer is sent before draining.
+            # is either the supervisor's or, for `tessera start`, the process's
+            # own respawn loop. Either way the answer is sent before draining.
             from . import updates
             result = updates.apply()
             restarting = bool(result.get('updated')) and (
-                self.server.config.server.supervised or bool(getattr(self.server, '_start_supervised', False)))
+                self.server.config.server.supervised or getattr(self.server, 'self_supervised', False))
             self._json(202, {**result, 'restarting': restarting})
-            if result.get('updated') and not self.server.config.server.supervised:
+            if result.get('updated'):
                 self.server.restart('now')
             return
         if path == '/api/infrastructure/targets' and method == 'GET':
