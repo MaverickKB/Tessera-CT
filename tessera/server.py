@@ -724,6 +724,22 @@ class Handler(BaseHTTPRequestHandler):
             # A supervisor (launchd KeepAlive) starts the core again after a clean exit.
             self.server.restart(when)
             return
+        if path == '/api/update/check' and method == 'GET':
+            from . import updates
+            self._json(200, updates.check())
+            return
+        if path == '/api/update/apply' and method == 'POST':
+            # The reinstall replaces the running code; the restart that follows
+            # may be supervised or, for `tessera start`, the process's own
+            # respawn loop. Either way the answer is sent before draining.
+            from . import updates
+            result = updates.apply()
+            restarting = bool(result.get('updated')) and (
+                self.server.config.server.supervised or bool(getattr(self.server, '_start_supervised', False)))
+            self._json(202, {**result, 'restarting': restarting})
+            if result.get('updated') and not self.server.config.server.supervised:
+                self.server.restart('now')
+            return
         if path == '/api/infrastructure/targets' and method == 'GET':
             self._json(200, manager.infrastructure_targets())
             return

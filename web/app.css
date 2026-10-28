@@ -927,6 +927,10 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
   margin-left: 0;
 }
 .settings-offscreen { display: none; }
+.update-report { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0.4rem 0 0.8rem; }
+.update-report .set-fact { margin: 0; }
+.update-commits { display: flex; flex-direction: column; gap: 0.25rem; max-width: 46rem; }
+.update-commits .set-fact { margin: 0; }
 .settings-nav { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.6rem 0; background: var(--paper); }
 .settings-nav button { font-size: 0.8rem; border-color: transparent; }
 .settings-nav button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
