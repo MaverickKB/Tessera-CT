@@ -39,6 +39,27 @@ from .infrastructure import InventoryRevisionError
 from .voice import VoiceError, configured as voice_configured, websocket_origin
 from .session_speech import SessionSpeech, SpeechError
 
+LOCAL_VOICE_STATUS = {'connection': 502, 'upstream': 502, 'timeout': 504, 'turn_timeout': 504,
+                      'invalid_response': 502, 'audio_format': 502, 'transcript': 422,
+                      'reply': 502, 'turn': 409, 'pipe': 409, 'request': 400,
+                      'encoding': 400, 'size': 413, 'rate': 400}
+LOCAL_VOICE_MESSAGE = {
+    'connection': 'The local speech service could not be reached.',
+    'upstream': 'The local speech service refused the request.',
+    'timeout': 'The local speech service did not answer in time.',
+    'turn_timeout': 'The session turn did not finish in time.',
+    'invalid_response': 'The local speech service answered with something unexpected.',
+    'audio_format': 'The text-to-speech service returned audio in an unsupported format.',
+    'transcript': 'The speech-to-text service returned no text.',
+    'reply': 'The session produced no reply to speak.',
+    'turn': 'The session turn failed.',
+    'pipe': 'The local pipe is not selected. Choose Local speech in Settings.',
+    'request': 'Invalid local voice request.',
+    'encoding': 'Invalid audio encoding.',
+    'size': 'Utterance exceeds the configured bound.',
+    'rate': 'Invalid audio rate or frame size.',
+}
+
 
 class ApiError(Exception):
     def __init__(self, status, message):
@@ -362,6 +383,15 @@ class Handler(BaseHTTPRequestHandler):
         if presented and hmac.compare_digest(presented, expected):
             return
         raise ApiError(401, 'Authentication required')
+
+    def _local_voice(self, manager, slug, body):
+        """One push-to-talk utterance: speech in, a session turn, speech out."""
+        from .local_voice import LocalVoice, LocalVoiceError
+        try:
+            return LocalVoice(manager).utterance(slug, body.get('audio'), body.get('rate'))
+        except LocalVoiceError as error:
+            raise ApiError(LOCAL_VOICE_STATUS.get(error.category, 400),
+                           LOCAL_VOICE_MESSAGE.get(error.category, str(error))) from None
 
     def _body(self, allowed, required=()):
         if self.headers.get('Transfer-Encoding'):
@@ -1163,6 +1193,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(keepalive, bool):
                     raise ApiError(400, 'Invalid request fields')
                 self._json(200, manager.voice.start(slug, body.get('voice'), keepalive=keepalive))
+            elif parts[5] == 'local':
+                body = self._body(('audio', 'rate'), ('audio', 'rate'))
+                self._json(200, self._local_voice(manager, slug, body))
             elif parts[5] == 'events':
                 body = self._body(('voice_id', 'events'), ('voice_id', 'events'))
                 self._json(200, manager.voice.events(slug, body['voice_id'], body['events']))

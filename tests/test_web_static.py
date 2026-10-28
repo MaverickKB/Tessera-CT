@@ -1094,6 +1094,7 @@ const context = {document:doc,window:{addEventListener(){}},EventSource,fetch:fe
   setInterval(){},setTimeout(fn){timeouts.push(fn);return timeouts.length;},clearTimeout(){},console};
 vm.createContext(context);
 vm.runInContext(fs.readFileSync('web/voice.js','utf8'),context);
+vm.runInContext(fs.readFileSync('web/voice-local.js','utf8'),context);
 vm.runInContext(fs.readFileSync('web/format.js','utf8'),context);
 vm.runInContext(fs.readFileSync('web/items.js','utf8'),context);
 vm.runInContext(fs.readFileSync('web/design.js','utf8'),context);

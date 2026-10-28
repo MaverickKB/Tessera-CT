@@ -773,6 +773,13 @@ class SpeechServiceConfig:
     model: str = ''
     models: list = field(default_factory=list)
     timeout: float = 10.0
+    max_response_bytes: int = 4194304
+
+
+@dataclass
+class SpeechOutputConfig(SpeechServiceConfig):
+    """Text-to-speech also takes the voice name to speak with."""
+    voice: str = ''
 
 
 @dataclass
@@ -824,7 +831,11 @@ class VoiceConfig:
     # Local speech: a speech-to-text service and a text-to-speech service. Both
     # are needed for the local pipe; one alone configures nothing.
     stt: SpeechServiceConfig = field(default_factory=SpeechServiceConfig)
-    tts: SpeechServiceConfig = field(default_factory=SpeechServiceConfig)
+    tts: SpeechOutputConfig = field(default_factory=SpeechOutputConfig)
+    # Push-to-talk bounds. One utterance goes in, one reply comes out; a turn
+    # that takes longer than this stops waiting instead of holding the request.
+    local_reply_timeout: float = 120.0
+    local_max_audio_bytes: int = 786432
 
 
 @dataclass
@@ -1771,14 +1782,16 @@ def load_config(home=None):
                 raise ValueError(f'Unknown computer_use.jev options: {sorted(unknown_jev)}')
             section.jev = ComputerUseJevConfig(**nested_jev)
         if nested_speech is not None:
-            allowed_speech = {item.name for item in fields(SpeechServiceConfig)}
+            speech_classes = {'stt': SpeechServiceConfig, 'tts': SpeechOutputConfig}
             for key, table in nested_speech.items():
                 if not isinstance(table, dict):
                     raise ValueError(f'voice.{key} must be a table')
+                speech_class = speech_classes[key]
+                allowed_speech = {item.name for item in fields(speech_class)}
                 unknown_speech = set(table) - allowed_speech
                 if unknown_speech:
                     raise ValueError(f'Unknown voice.{key} options: {sorted(unknown_speech)}')
-                setattr(section, key, SpeechServiceConfig(**table))
+                setattr(section, key, speech_class(**table))
         setattr(config, name, section)
     config.retired_settings = retired
     config.computer_use.helper = expand_config_path(config.computer_use.helper)

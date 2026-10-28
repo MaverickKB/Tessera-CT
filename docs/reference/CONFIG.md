@@ -734,7 +734,12 @@ Names in `tools.disabled` are operator switches. They apply in every approval mo
 | `voice.stt.model` | `""` | `TESSERA_VOICE__STT__MODEL` | Settings row |
 | `voice.stt.models` | `[]` | `TESSERA_VOICE__STT__MODELS` | file-only: no Settings row — set this in config.toml |
 | `voice.stt.timeout` | `10.0` | `TESSERA_VOICE__STT__TIMEOUT` | file-only: no Settings row — set this in config.toml |
+| `voice.stt.max_response_bytes` | `4194304` | `TESSERA_VOICE__STT__MAX_RESPONSE_BYTES` | file-only: no Settings row — set this in config.toml |
 | `voice.tts.base_url` | `""` | `TESSERA_VOICE__TTS__BASE_URL` | Settings row |
 | `voice.tts.model` | `""` | `TESSERA_VOICE__TTS__MODEL` | Settings row |
 | `voice.tts.models` | `[]` | `TESSERA_VOICE__TTS__MODELS` | file-only: no Settings row — set this in config.toml |
 | `voice.tts.timeout` | `10.0` | `TESSERA_VOICE__TTS__TIMEOUT` | file-only: no Settings row — set this in config.toml |
+| `voice.tts.max_response_bytes` | `4194304` | `TESSERA_VOICE__TTS__MAX_RESPONSE_BYTES` | file-only: no Settings row — set this in config.toml |
+| `voice.tts.voice` | `""` | `TESSERA_VOICE__TTS__VOICE` | file-only: no Settings row — set this in config.toml |
+| `voice.local_reply_timeout` | `120.0` | `TESSERA_VOICE_LOCAL_REPLY_TIMEOUT` | file-only: no Settings row — set this in config.toml |
+| `voice.local_max_audio_bytes` | `786432` | `TESSERA_VOICE_LOCAL_MAX_AUDIO_BYTES` | file-only: no Settings row — set this in config.toml |

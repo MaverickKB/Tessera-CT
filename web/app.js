@@ -43,6 +43,7 @@
     voiceTarget: "",
   };
   let voice;
+  let localVoice;
   let configView = null;
   let autonomy = null;
   let shelfView = null;
@@ -2317,6 +2318,7 @@
 
   function stopVoice(detail) {
     if (voice) voice.stop(detail);
+    if (localVoice) localVoice.cancel();
   }
 
   // The session the Voice page talks through: the reader's pick if they made one,
@@ -2335,41 +2337,53 @@
 
   function renderVoiceStatus() {
     const report = state.status.voice;
+    const local = report?.pipe === "local";
+    const localReady = report && report.enabled === true && local && report.pipes?.local === true;
     const available = report && report.enabled === true && report.configured === true;
+    const ready = local ? localReady : available;
+    const active = voice?.running() === true || localVoice?.running() === true;
     const session = voiceSession();
-    if ((!available || !session || session.archived) && voice?.running()) stopVoice("Stopped");
+    if ((!ready || !session || session.archived) && active) stopVoice("Stopped");
     let label = "Not reported";
     let detail = "";
     if (report?.enabled === false) label = "Off";
-    else if (report?.configured === false) { label = "Not configured"; detail = "No voice credential on server"; }
-    else if (available) {
+    else if (local && !localReady) { label = "Not configured"; detail = "Add speech services in Settings"; }
+    else if (!local && report?.configured === false) { label = "Not configured"; detail = "No voice credential on server"; }
+    else if (ready) {
       label = "Ready";
       if (!session) detail = "Pick a session";
       else if (session.archived) detail = "Session archived";
+      else if (local) detail = "Hold to talk";
     }
-    if (state.voiceNotice && (available || state.voiceNotice.label === "Status unavailable")) {
+    if (state.voiceNotice && (ready || state.voiceNotice.label === "Status unavailable")) {
       label = state.voiceNotice.label;
       detail = state.voiceNotice.detail;
     }
     for (const id of ["voice-state", "voice-page-state"]) {
       $(id).textContent = label;
-      $(id).dataset.state = voice?.running() ? "active" : "";
+      $(id).dataset.state = active ? "active" : "";
     }
     for (const id of ["voice-detail", "voice-page-detail"]) $(id).textContent = detail;
-    document.querySelector(".voice-console")?.classList.toggle("voice-live", voice?.running() === true);
+    document.querySelector(".voice-console")?.classList.toggle("voice-live", active);
     document.querySelector(".voice-console").dataset.phase = label.toLowerCase();
     renderVoicePicker();
     applyVoiceMode();
-    if (voice?.running() && !state.voiceDrawing && typeof requestAnimationFrame === "function") {
+    if (active && !state.voiceDrawing && typeof requestAnimationFrame === "function") {
       state.voiceDrawing = true;
       requestAnimationFrame(() => { state.voiceDrawing = false; drawVoice(); });
     }
-    if (!voice?.running()) $("voice-level").value = 0;
+    if (!active) $("voice-level").value = 0;
     $("voice-page-toggle").setAttribute("aria-pressed", voice?.running() ? "true" : "false");
-    if ($("voice-session")) $("voice-session").disabled = voice?.running() === true;
+    if ($("voice-session")) $("voice-session").disabled = active;
     for (const id of ["voice-toggle", "voice-page-toggle"]) {
+      $(id).hidden = local;
       $(id).textContent = voice?.running() ? "Stop" : id === "voice-page-toggle" ? "Talk" : "Voice";
       $(id).disabled = !voice?.running() && (!available || !session || session.archived);
+    }
+    // Duplex-only controls: the local pipe speaks with the configured TTS voice
+    // and is always push-to-talk, so Voice, Mode and Mute would do nothing here.
+    for (const id of ["voice-pick-label", "voice-mode-label", "voice-mute"]) {
+      if ($(id)) $(id).hidden = local;
     }
   }
 
@@ -6364,25 +6378,27 @@
     const wave = $("voice-wave");
     const count = 48;
     if (wave.childElementCount !== count) wave.replaceChildren(...Array.from({length: count}, () => element("span", "")));
-    const points = voice?.waveform(count) || [];
-    const phase = voice?.phase();
+    const active = localVoice?.running() ? localVoice : voice;
+    const points = active?.waveform(count) || [];
+    const phase = active?.phase();
     if (phase && !["off", "connecting"].includes(phase)) {
       document.querySelector(".voice-console").dataset.phase = phase;
-      const labels = {speaking:"Speaking", responding:"Responding", muted:"Microphone muted", waiting:"Hold to talk", listening:"Listening"};
+      const labels = {speaking:"Speaking", responding:"Responding", thinking:"Thinking", muted:"Microphone muted", waiting:"Hold to talk", listening:"Listening"};
       $("voice-page-state").textContent = labels[phase];
     }
-    $("voice-level").value = voice ? voice.level() : 0;
+    $("voice-level").value = active ? active.level() : 0;
     [...wave.children].forEach((bar, index) => {
       const value = Math.min(1, Math.abs(points[index] || 0) * 4);
       bar.style.height = Math.max(4, Math.round(value * 100)) + "%";
     });
-    if (voice?.running()) requestAnimationFrame(drawVoice);
+    if (localVoice?.running() || voice?.running()) requestAnimationFrame(drawVoice);
   }
 
   function applyVoiceMode() {
+    const local = state.status?.voice?.pipe === "local";
     const push = $("voice-mode").value === "push";
     if (voice) voice.setHeld(!push);
-    $("voice-ptt").hidden = !(push && voice?.running());
+    $("voice-ptt").hidden = !(local || (push && voice?.running()));
     $("voice-ptt").setAttribute("aria-pressed", "false");
   }
 
@@ -7335,6 +7351,21 @@
       api(sessionPath(slug, "/interrupt"), "POST", {}).catch(() => {});
     },
   });
+  // The local pipe records one utterance in the page and lets the server do the
+  // speech-to-text, the turn, and the text-to-speech. 24000 Hz mono is what the
+  // worklet resamples to; the server wraps it as a WAV for the STT service.
+  localVoice = new window.TesseraLocalVoice({
+    workletUrl: document.body.dataset.voiceWorklet || "/static/voice-worklet.js",
+    targetRate: 24000,
+    chunkFrames: voiceSetting("voiceChunkFrames", 2048),
+    request: (path, method, body) => api(path, method, body),
+    onState: (label, detail, slug) => {
+      const target = voiceSession();
+      if (slug && slug !== (target ? target.slug : "")) return;
+      state.voiceNotice = {label, detail};
+      renderVoiceStatus();
+    },
+  });
   for (const id of ["voice-toggle", "voice-page-toggle"]) $(id).addEventListener("click", async () => {
     if (voice.running()) { stopVoice(); return; }
     const report = state.status.voice;
@@ -7344,7 +7375,11 @@
     await voice.start(session.slug);
   });
   $("voice-pick").addEventListener("change", chooseVoiceOverride);
-  $("voice-mic").addEventListener("change", () => { voicePrefs.set("mic", $("voice-mic").value); voice.deviceId = $("voice-mic").value; });
+  $("voice-mic").addEventListener("change", () => {
+    voicePrefs.set("mic", $("voice-mic").value);
+    voice.deviceId = $("voice-mic").value;
+    if (localVoice) localVoice.deviceId = $("voice-mic").value;
+  });
   $("voice-mode").value = voicePrefs.get("mode", "hands-free") === "push" ? "push" : "hands-free";
   $("voice-mode").addEventListener("change", () => { voicePrefs.set("mode", $("voice-mode").value); applyVoiceMode(); });
   $("voice-mute").addEventListener("click", () => {
@@ -7355,8 +7390,24 @@
   });
   const hold = (down) => (event) => {
     event.preventDefault();
-    voice.setHeld(down);
     $("voice-ptt").setAttribute("aria-pressed", down ? "true" : "false");
+    // The local pipe is always push-to-talk: hold records, release sends.
+    if (state.status?.voice?.pipe === "local") {
+      const session = voiceSession();
+      if (down) {
+        if (!session || session.archived) return;
+        state.voiceNotice = null;
+        localVoice.start(session.slug);
+        return;
+      }
+      localVoice.stop().then((body) => {
+        if (!body) return;
+        appendTranscript("user", body.transcript, true);
+        appendTranscript("assistant", body.reply, true);
+      });
+      return;
+    }
+    voice.setHeld(down);
   };
   $("voice-ptt").addEventListener("pointerdown", hold(true));
   for (const name of ["pointerup", "pointercancel", "pointerleave"]) $("voice-ptt").addEventListener(name, hold(false));

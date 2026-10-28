@@ -16,6 +16,7 @@
   <script src="/static/shell-errors.js"></script>
   <script src="/static/authkey.js"></script>
   <script src="/static/voice.js" defer></script>
+  <script src="/static/voice-local.js" defer></script>
   <script src="/static/settings.js" defer></script>
   <script src="/static/floor-definition.js" defer></script>
   <script src="/static/shelf.js" defer></script>
@@ -406,9 +407,9 @@
         <div class="voice-signal"><div id="voice-wave" class="voice-wave" aria-hidden="true"></div><meter id="voice-level" class="voice-level" min="0" max="1" value="0" aria-label="Mic level"></meter></div>
         <div class="voice-controls"><button id="voice-page-toggle" class="voice-talk" type="button" disabled>Talk</button><button id="voice-mute" type="button" aria-pressed="false">Mute</button><button id="voice-ptt" class="voice-ptt" type="button" hidden>Hold to talk</button></div>
         <details class="voice-setup"><summary>Voice &amp; microphone</summary><div class="voice-options">
-          <label>Voice <select id="voice-pick"></select></label>
+          <label id="voice-pick-label">Voice <select id="voice-pick"></select></label>
           <label>Microphone <select id="voice-mic"><option value="">Default</option></select></label>
-          <label>Mode <select id="voice-mode"><option value="hands-free">Hands-free</option><option value="push">Push to talk</option></select></label>
+          <label id="voice-mode-label">Mode <select id="voice-mode"><option value="hands-free">Hands-free</option><option value="push">Push to talk</option></select></label>
         </div></details>
       </div>
       <div class="voice-conversation"><header><h2>Conversation</h2><span>Live transcript</span></header><div class="voice-empty"><span class="voice-empty-mark" aria-hidden="true">“</span><p>Start talking with Tessera.</p><span>Your conversation appears here.</span></div><ol id="voice-transcript" class="voice-transcript" aria-label="Transcript" aria-live="polite"></ol></div>

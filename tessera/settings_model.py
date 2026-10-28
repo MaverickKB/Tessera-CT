@@ -15,7 +15,7 @@ from .floor_definition import FloorDefinitionError, peek_world_view, save_defini
 from .systems import SYSTEM_KINDS
 from .settings_ladder import ladder, credential_source, binding_source
 from .speech_services import (DUPLEX_PROVIDERS, SpeechProbeError, connection_for,
-                              duplex_connections, probe_models)
+                              duplex_connections, probe_models, probe_voices)
 from .voice import pipes as voice_pipes, selected_pipe as voice_selected_pipe
 from .agent_selection import backend_catalog
 from .secret_names import flagged_env_value, is_secret_name
@@ -321,7 +321,7 @@ def _voice_status(config, connection):
     if not voice.enabled:
         return 'Voice is off.'
     if chosen == 'local':
-        return 'Configured: local speech. The local pipe is not available in this build.'
+        return 'Configured: local speech. Hold to talk on the Voice page.'
     if chosen == 'duplex':
         if connection is None:
             return 'Not ready: the configured credential is not a duplex account. Choose an account.'
@@ -2843,7 +2843,7 @@ def adopt_config(manager, config):
         client = getattr(voice, 'client', None)
         if client is not None:
             client.settings = config.voice
-            client.credentials = CredentialResolver(config.credentials)
+            client.credentials = CredentialResolver(config.credentials, oauth_home=str(config.home))
     runtimes = getattr(manager, '_runtimes', {})
     metadata = getattr(manager, '_metadata', {})
 
@@ -3206,6 +3206,7 @@ class SettingsService:
                 {'path': ['voice', 'client_secret_path'], 'value': ''},
                 {'path': ['voice', 'client_protocol_prefix'], 'value': ''},
                 {'path': ['voice', 'model'], 'value': ''},
+                {'path': ['voice', 'voices'], 'value': []},
             ]
             result = commit(self.manager, edits, False)
             result['detail'] = 'Duplex voice has no account.'
@@ -3227,8 +3228,24 @@ class SettingsService:
             {'path': ['voice', 'client_protocol_prefix'], 'value': profile['client_protocol_prefix']},
             {'path': ['voice', 'model'], 'value': model},
         ])
+        # Ask the provider which voices it offers. The answer becomes the voice
+        # dropdown. A failed probe clears a stale list instead of leaving names
+        # from another provider in place, and says why.
+        note = ''
+        try:
+            voices = probe_voices(config, chosen)
+        except SpeechProbeError as error:
+            voices = []
+            note = ' ' + str(error)
+        edits.append({'path': ['voice', 'voices'], 'value': voices})
+        if voices:
+            current = str((config.voice.session_options or {}).get('voice') or '').lower()
+            selected = current if current in voices else ('eve' if 'eve' in voices else voices[0])
+            options = dict(config.voice.session_options or {})
+            options['voice'] = selected
+            edits.append({'path': ['voice', 'session_options'], 'value': options})
         result = commit(self.manager, edits, False)
-        result['detail'] = 'Duplex account set to ' + chosen['label'] + '.'
+        result['detail'] = 'Duplex account set to ' + chosen['label'] + '.' + note
         return result
 
     def _speech_endpoint(self, spec, value):

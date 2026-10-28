@@ -12,11 +12,21 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import threading
 
+import pytest
+
+from tessera import settings_model
 from tessera.config import load_config
 from tessera.credentials import MemoryKeychain
 from tessera.server import create_server
 from tessera.voice import pipes as voice_pipes, selected_pipe as voice_selected_pipe
 from test_server import call
+
+
+@pytest.fixture(autouse=True)
+def provider_voices(monkeypatch):
+    """No test talks to a provider. The probe's answer is the dropdown contract."""
+    monkeypatch.setattr(settings_model, 'probe_voices',
+                        lambda config, connection: ['ara', 'eve', 'rex'])
 
 
 HOME = '''
@@ -114,10 +124,16 @@ def test_choosing_the_account_writes_the_provider_profile(tmp_path):
         assert saved.voice.client_protocol_prefix == 'xai-client-secret.'
         assert saved.voice.model == 'grok-voice-latest'
         assert saved.credentials['xai-oauth'].oauth == 'xai'
+        # The provider's voice list becomes the voice dropdown, and the default
+        # voice is a name the provider actually offers.
+        assert saved.voice.voices == ['ara', 'eve', 'rex']
+        assert saved.voice.session_options['voice'] == 'eve'
         # The running core takes the new profile without a restart.
         client = server.manager.voice.client.settings
         assert client.websocket_url == 'wss://api.x.ai/v1/realtime'
         assert client.credential_ref == 'xai-oauth'
+        # An OAuth sign-in resolves only when the resolver knows the home.
+        assert server.manager.voice.client.credentials.oauth_home == str(tmp_path)
     finally:
         stop(server, thread)
 
@@ -138,6 +154,7 @@ def test_clearing_the_account_clears_the_provider_profile(tmp_path):
         assert saved.voice.client_secret_path == ''
         assert saved.voice.client_protocol_prefix == ''
         assert saved.voice.model == ''
+        assert saved.voice.voices == []
     finally:
         stop(server, thread)
 
@@ -166,6 +183,23 @@ def test_the_model_is_a_dropdown_of_models_the_account_offers(tmp_path):
     labels = [field['label'] for field in fields.values()]
     assert 'Socket' not in labels
     assert 'Credential in use' not in labels
+
+
+def test_the_voice_is_a_dropdown_of_voices_the_provider_offers(tmp_path):
+    server, thread = serve(tmp_path)
+    try:
+        code, body = call(server, 'POST', '/api/settings', {
+            'id': 'voice.account', 'value': 'xai-oauth'})
+        assert code == 200, body
+        fields = voice_fields(server)
+    finally:
+        stop(server, thread)
+    voice = fields['voice.voice']
+    assert voice['type'] == 'enum'
+    assert voice['write'] == 'set'
+    assert [option['value'] for option in voice['options']] == ['ara', 'eve', 'rex']
+    assert voice['value'] == 'eve'
+    assert voice['label'] == 'Voice'
 
 
 def test_no_connected_account_points_at_providers(tmp_path):
@@ -247,12 +281,12 @@ def test_both_pipes_default_to_duplex_and_a_choice_holds(tmp_path):
         saved = load_config(tmp_path)
         assert saved.voice.pipe == 'local'
         assert voice_selected_pipe(saved.voice) == 'local'
-        # The local pipe has no runtime yet. A start says so instead of pretending.
+        # The local pipe has its own route. A duplex start says so instead of pretending.
         try:
             server.manager.voice.start('voice', None)
             raise AssertionError('the local pipe must not start silently')
         except ValueError as error:
-            assert 'local voice pipe is not available' in str(error)
+            assert 'push-to-talk' in str(error)
     finally:
         stop(server, thread)
         stt.shutdown()
