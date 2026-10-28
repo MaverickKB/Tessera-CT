@@ -293,6 +293,11 @@ def main(argv=None):
             # Flush before the stderr block: stdout is block-buffered when piped, and a
             # person redirecting both streams should read "Created" first, then the gaps.
             print(f'Created {target}.', flush=True)
+            # A source checkout has the engine bytes but no wheel receipt. A
+            # home-local verified bundle makes the embedded engine start for a
+            # normal install, not only for a release wheel.
+            from .bundled_engine import ensure_local_engine_bundle
+            ensure_local_engine_bundle(load_config(config.home))
             # Writing the file is not the same as having a working install. The example
             # ships a placeholder endpoint and an unset credential, and until now init
             # reported plain success on an install that could not produce a single turn:

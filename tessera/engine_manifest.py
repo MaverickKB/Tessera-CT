@@ -229,11 +229,12 @@ def vendored_status(root=None):
 def engine_packaging(config):
     """How this process relates to the embedded engine.
 
-    'bundled' — a build receipt sits beside the engine files (a wheel install,
-    or an explicit bundled_path that has one).
-    'present' — this checkout's vendored tree matches the manifest. The wheel
-    build is what writes the receipt; a checkout does not start the engine
-    just because the bytes are in the tree.
+    'bundled' — the configured engine can start: a wheel build receipt, an
+    explicit bundled_path with a receipt, or a home-local verified bundle
+    created from a source checkout by ensure_local_engine_bundle.
+    'present' — this checkout's vendored tree matches the manifest, but no
+    home-local bundle has been materialized yet. The wheel build is not the
+    only way to start the engine.
     'missing' — neither of those is true.
     """
     from .bundled_engine import _engine_root
