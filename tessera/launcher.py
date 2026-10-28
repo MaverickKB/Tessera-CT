@@ -100,7 +100,7 @@ def _mac_install(home):
         '<plist version="1.0">\n<dict>\n'
         '  <key>CFBundleName</key><string>Tessera</string>\n'
         '  <key>CFBundleDisplayName</key><string>Tessera</string>\n'
-        '  <key>CFBundleIdentifier</key><string>com.bandoly.tessera</string>\n'
+        '  <key>CFBundleIdentifier</key><string>com.maverickkb.tessera</string>\n'
         '  <key>CFBundleExecutable</key><string>Tessera</string>\n'
         '  <key>CFBundlePackageType</key><string>APPL</string>\n'
         '  <key>CFBundleIconFile</key><string>AppIcon</string>\n'
