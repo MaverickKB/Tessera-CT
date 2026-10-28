@@ -872,7 +872,11 @@ input[type="color"] { width: 5rem; height: 2.6rem; padding: 0.2rem; cursor: poin
 .memory-search-label { display: block; font-size: 0.72rem; margin: 0.7rem 0 0.3rem; }
 #memory-record-search { width: 100%; margin-bottom: 0.7rem; }
 .settings-shell { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 1.25rem; align-items: start; }
-.settings-nav-side { position: sticky; top: 0; flex-direction: column; align-items: stretch; flex-wrap: nowrap; max-height: calc(100vh - 2rem); overflow: auto; }
+.settings-nav-side { position: sticky; top: 0; flex-direction: column; align-items: stretch; max-height: calc(100vh - 2rem); overflow: auto; }
+/* The side nav is one column, always. The shared .settings-nav rule sets
+   flex-wrap: wrap for the horizontal bar; a column container that wraps
+   spills its items into a second column instead of scrolling. */
+nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
 .settings-nav-side button { text-align: left; }
 .settings-nav-sub { padding-left: 0.9rem; }
 .settings-nav-label { font-size: 0.72rem; color: var(--muted); padding: 0.35rem 0.2rem 0.15rem; }
