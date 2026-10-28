@@ -247,12 +247,12 @@ def test_both_pipes_default_to_duplex_and_a_choice_holds(tmp_path):
         saved = load_config(tmp_path)
         assert saved.voice.pipe == 'local'
         assert voice_selected_pipe(saved.voice) == 'local'
-        # The local pipe has no runtime yet. A start says so instead of pretending.
+        # The local pipe has its own route. A duplex start says so instead of pretending.
         try:
             server.manager.voice.start('voice', None)
             raise AssertionError('the local pipe must not start silently')
         except ValueError as error:
-            assert 'local voice pipe is not available' in str(error)
+            assert 'push-to-talk' in str(error)
     finally:
         stop(server, thread)
         stt.shutdown()

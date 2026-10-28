@@ -611,6 +611,7 @@ class _Runtime:
                                                 {'from_slug': item['from_slug'], 'hop': item['hop'], 'turn_id': item['id']})
                 awareness = None if item.get('wake') or item['from_slug'] else self.manager.autonomy.take_awareness(self.slug)
                 self.session.run_turn(item['text'], turn_meta={'request_id': item['id'], 'from_slug': item['from_slug'], 'hop': item['hop'], 'work_id': item.get('work_id'),
+                                                        **({'voice_transcript': True} if item.get('source') == 'voice' else {}),
                                                         **({'wake': item['wake']} if item.get('wake') else {}),
                                                         **({'awareness': awareness} if awareness else {}),
                                                         **({'attachments': item['attachments']} if item.get('attachments') else {}),

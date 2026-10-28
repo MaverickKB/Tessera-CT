@@ -114,6 +114,8 @@ api_key_env = ""
 max_session_seconds = 60
 secret_ttl_seconds = 60
 timeout = 5
+local_reply_timeout = 120
+local_max_audio_bytes = 786432
 max_sessions = 1
 audio_format = "audio/pcm"
 audio_sample_rate = 24000
@@ -130,6 +132,7 @@ models = []
 base_url = ""
 model = ""
 models = []
+voice = ""
 
 [aethermind]
 # The embedded engine is the memory service until `url` or `endpoints` names

@@ -149,6 +149,14 @@ def validate_voice(settings, credentials):
             raise ValueError(label + ' models must be a list of names')
         if type(service.timeout) not in (int, float) or service.timeout <= 0:
             raise ValueError(label + ' timeout must be a positive number')
+        if type(service.max_response_bytes) is not int or service.max_response_bytes <= 0:
+            raise ValueError(label + ' response bound must be a positive integer')
+    if not isinstance(settings.tts.voice, str):
+        raise ValueError('voice.tts voice must be text')
+    if type(settings.local_reply_timeout) not in (int, float) or settings.local_reply_timeout <= 0:
+        raise ValueError('Voice local reply timeout must be a positive number')
+    if type(settings.local_max_audio_bytes) is not int or settings.local_max_audio_bytes <= 0:
+        raise ValueError('Voice local audio bound must be a positive integer')
     if settings.client_protocol_prefix and not re.fullmatch(TOKEN, settings.client_protocol_prefix):
         raise ValueError('Invalid voice subprotocol prefix')
     if not settings.model_query_param or not re.fullmatch(r'[A-Za-z0-9_-]+', settings.model_query_param):
@@ -364,9 +372,11 @@ class VoiceSessions:
             raise ValueError('Voice is not in voice.voices')
         if not isinstance(keepalive, bool):
             raise ValueError('keepalive must be a boolean')
-        self._require(slug)
+        # The local pipe has its own route; say so before the readiness check, which
+        # would otherwise report a missing duplex profile as a configuration error.
         if selected_pipe(self.settings) == 'local':
-            raise ValueError('Local speech is configured, but the local voice pipe is not available in this build.')
+            raise ValueError('The local pipe is push-to-talk, not a duplex lease. Use the local voice route.')
+        self._require(slug)
         with self._start_lock:
             self._require(slug)
             fingerprint = self._fingerprint()

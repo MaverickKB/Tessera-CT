@@ -387,6 +387,17 @@ configured, and duplex is the default.
 The example below deliberately uses placeholders. Set `turn_detection`
 explicitly if your provider requires it; the copied template leaves it empty.
 
+Local speech is push-to-talk on the Voice page: hold Hold to talk, speak, and
+release. The page sends the recording to Tessera, which asks the speech-to-text
+service for a transcript, runs it as a normal session turn, and asks the
+text-to-speech service for the reply, then plays it back. The speech services
+must answer the OpenAI audio API: `POST /audio/transcriptions` with a WAV file
+and `POST /audio/speech` with JSON. A service that returns anything other than
+PCM16 WAV from `/audio/speech` is refused with a clear error rather than played
+as noise. `[voice.tts].voice` is passed through when the service needs a voice
+name; `local_reply_timeout` bounds how long one push-to-talk request waits for
+the turn, and `local_max_audio_bytes` bounds the recording size.
+
 ```toml
 [credentials.voice_api]
 env = "YOUR_VOICE_API_KEY"
@@ -408,6 +419,8 @@ audio_format = "audio/pcm"
 audio_sample_rate = 24000
 turn_detection = { type = "<TURN_DETECTION_TYPE>" }
 tools = []
+local_reply_timeout = 120
+local_max_audio_bytes = 786432
 
 [voice.stt]
 base_url = "http://localhost:8001/v1"
@@ -416,6 +429,7 @@ model = "<SPEECH_TO_TEXT_MODEL>"
 [voice.tts]
 base_url = "http://localhost:8880/v1"
 model = "<TEXT_TO_SPEECH_MODEL>"
+voice = ""
 ```
 
 The protocol prefix must be a valid WebSocket subprotocol token; replace its
