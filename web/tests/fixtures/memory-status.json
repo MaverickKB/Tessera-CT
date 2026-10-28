@@ -1,0 +1,17 @@
+{
+  "unconfigured": {"enabled": true, "configured": false, "reachable": null},
+  "auth-required": {
+    "enabled": true, "configured": true, "reachable": false,
+    "error_category": "authentication"
+  },
+  "unreachable": {"enabled": true, "configured": true, "reachable": false},
+  "tree-present": {
+    "enabled": true, "configured": true, "reachable": true,
+    "tree_status": {"present": true, "view_available": true, "zoom_available": true}
+  },
+  "no-tree": {
+    "enabled": true, "configured": true, "reachable": true,
+    "tree_status": {"present": false, "view_available": false, "zoom_available": false}
+  },
+  "unreported": {}
+}

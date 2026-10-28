@@ -1,0 +1,26 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+test('voice presence follows actual connection, playback, response and microphone state', () => {
+  const context = {window:{}};
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname,'..','voice.js'),'utf8'),context);
+  const voice = new context.window.TesseraVoice({});
+  assert.equal(voice.phase(),'off');
+  voice.current = {ready:false};
+  assert.equal(voice.phase(),'connecting');
+  voice.current = {ready:true,audio:{currentTime:10},playbackAt:12,answering:true};
+  assert.equal(voice.phase(),'speaking');
+  voice.current.playbackAt=0;
+  assert.equal(voice.phase(),'responding');
+  voice.current.answering=false;
+  voice.setMuted(true);
+  assert.equal(voice.phase(),'muted');
+  voice.setMuted(false);
+  voice.setHeld(false);
+  assert.equal(voice.phase(),'waiting');
+  voice.setHeld(true);
+  assert.equal(voice.phase(),'listening');
+});

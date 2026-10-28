@@ -1,0 +1,11 @@
+{
+  "unconfigured-with-debt": {"aethermind": {"configured": false}, "debt_total": 2},
+  "offline-with-debt": {"aethermind": {"enabled": true, "configured": true, "reachable": false}, "debt_total": 3},
+  "auth-with-debt": {"aethermind": {"enabled": true, "configured": true, "reachable": false, "error_category": "authentication"}, "debt_total": 1},
+  "configured-empty": {"aethermind": {"enabled": true, "configured": true, "reachable": null}, "debt_total": 0},
+  "connected-with-debt": {"aethermind": {"enabled": true, "configured": true, "reachable": true}, "debt_total": 2},
+  "no-tree-empty": {"aethermind": {"enabled": true, "configured": true, "reachable": true, "tree_status": {"present": false, "view_available": false, "zoom_available": false}}, "debt_total": 0},
+  "unreported": {"aethermind": {}},
+  "unavailable": {"http_status": 503},
+  "rejected": {"http_status": 403}
+}

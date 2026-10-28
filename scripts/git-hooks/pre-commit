@@ -1,0 +1,133 @@
+#!/bin/sh
+# Three guards, all before the commit exists.
+#
+# 1. Refuse a commit made on a detached HEAD.
+#
+# Why: on 2026-10-21, 29 commits (a94177a..545bc61) were made with HEAD detached
+# from b9c4677. They were reachable only through the reflog; a gc would have taken
+# the whole day's work. The fix is to refuse rather than remember to check.
+#
+# 2. Run the release hardwire scan.
+#
+# Why: scripts/check_no_hardwires.sh was only ever invoked from pytest. That means
+# content the release rejects -- private addresses, user home paths, tokens --
+# landed on main first and was reported minutes later by the suite. On 2026-10-23
+# two commits did exactly that: a4c11f3 embedded live Tailscale addresses in a new
+# test file, and b5fa135 hardcoded a user's project path. Both passed the commit
+# and failed the suite afterwards. A guard that runs after the commit is a report,
+# not a gate.
+#
+# The scan reads the worktree, the index and untracked files -- the same three
+# surfaces tests/test_release_inputs.py checks. Keeping the hook identical to the
+# test is the point: it makes "commit passed" imply "suite passes", instead of the
+# two disagreeing. It costs about 1.7s on this tree.
+#
+# Note the consequence of that choice: because the scan also reads untracked files,
+# a stray private address anywhere in the checkout blocks the commit, not just the
+# lines being staged. That is deliberate -- the suite would fail on it anyway.
+#
+# This file is tracked on purpose. The first version lived in .git/hooks, which is
+# not tracked, so it died on a fresh clone and on any other machine. Install it with
+#   scripts/install-git-hooks.sh
+# which sets core.hooksPath to this directory. Git runs hooks from there, so every
+# hook in this folder is live without copying anything into .git.
+#
+# 3. Enforce the measured settings-law debt baselines.
+# The targeted pair measured 5.53s wall time on this tree. Both new findings
+# and fixed findings left in the baseline fail; trim debt as it is repaired.
+# This runs independently of the private-input hardwire scan escape hatch.
+#
+# 4. Enforce the config contract: the tables load_config accepts, the keys
+# config.example.toml ships, and the top-level names the Settings catalog writes
+# must agree. Why a gate and not a report: the `identity.enabled` toggle shipped
+# serving "Saved" for a key the loader dropped, and nothing caught it until a
+# person noticed the feature stayed off. Three inventories disagreed silently.
+# The cost is ~0.1s beside the pair above; the suite runs all three in one breath.
+#
+# Escape hatches, for a genuinely intentional commit:
+#   To commit while detached, create a branch first:
+#     git switch -c <name>
+#   Or set TESSERA_ALLOW_DETACHED=1 git commit ...
+#   To commit past the hardwire scan:
+#     TESSERA_ALLOW_HARDWIRES=1 git commit ...
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" = "HEAD" ] && [ "${TESSERA_ALLOW_DETACHED:-0}" != "1" ]; then
+    echo "pre-commit: HEAD is detached; this commit would be reachable only via the reflog." >&2
+    echo "pre-commit: run 'git switch -c <name>' first, or set TESSERA_ALLOW_DETACHED=1." >&2
+    exit 1
+fi
+
+if [ "${TESSERA_ALLOW_HARDWIRES:-0}" != "1" ]; then
+    scan="$(git rev-parse --show-toplevel)/scripts/check_no_hardwires.sh"
+    if [ ! -f "$scan" ]; then
+        # Silently passing here would reproduce the fault this guard exists to fix:
+        # a checkout whose own release scan is gone would commit anything.
+        echo "pre-commit: $scan is missing, so the hardwire scan cannot run." >&2
+        echo "pre-commit: restore it, or set TESSERA_ALLOW_HARDWIRES=1 to commit anyway." >&2
+        exit 1
+    fi
+    if ! bash "$scan"; then
+        echo "pre-commit: the hardwire scan refused this commit; nothing was committed." >&2
+        echo "pre-commit: fix the lines above, or set TESSERA_ALLOW_HARDWIRES=1 to commit anyway." >&2
+        exit 1
+    fi
+fi
+
+root=$(git rev-parse --show-toplevel)
+cd "$root" || exit 1
+
+# The interpreter must be found, not assumed. A clone has no .venv, and hardcoding
+# a relative path made this hook fail in exactly the checkout the guard exists to
+# protect: a fresh clone would refuse every commit with "No such file or directory"
+# and report it as a debt change, which is a false accusation. Resolve in order:
+# an explicit override, this checkout's venv, then the interpreter running git.
+python="${TESSERA_PYTHON:-}"
+if [ -z "$python" ]; then
+    for candidate in "$root/.venv/bin/python" "$root/.venv/bin/python3"; do
+        if [ -x "$candidate" ]; then
+            python="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "$python" ]; then
+    python="$(command -v python3 || command -v python || true)"
+fi
+if [ -z "$python" ]; then
+    echo "pre-commit: no python interpreter found, so the settings-law and config-contract checks cannot run." >&2
+    echo "pre-commit: install python3, or set TESSERA_PYTHON to one, or set TESSERA_ALLOW_HARDWIRES=1 to commit anyway." >&2
+    exit 1
+fi
+
+# The debt check needs the tests AND the package they import. A throwaway repo or a
+# partial checkout has neither, and refusing every commit there would be a false
+# accusation: the hook would look like it caught debt when it only failed to find
+# the code. Say the check was skipped rather than claiming it passed or failed.
+missing=""
+for needed in tests/test_settings_consumers.py tests/test_no_hardwired_tunables.py \
+              tests/test_config_contract.py tests/debt_baseline.py \
+              tests/settings_consumers_baseline.txt tests/hardwired_tunables_baseline.txt \
+              tessera/__init__.py; do
+    if [ ! -e "$root/$needed" ]; then
+        missing="$missing $needed"
+    fi
+done
+if [ -n "$missing" ]; then
+    echo "pre-commit: skipped the settings-law and config-contract debt check;" >&2
+    echo "pre-commit: this checkout is missing:$missing" >&2
+    exit 0
+fi
+
+if ! "$python" -c "import pytest" >/dev/null 2>&1; then
+    # A missing pytest is a broken environment, not a debt change. Say which one it is.
+    echo "pre-commit: $python cannot import pytest, so the settings-law and config-contract checks cannot run." >&2
+    echo "pre-commit: install pytest into that interpreter, or set TESSERA_PYTHON to one that has it." >&2
+    exit 1
+fi
+if ! "$python" -m pytest tests/test_settings_consumers.py tests/test_no_hardwired_tunables.py tests/test_config_contract.py -q; then
+    echo "pre-commit: settings-law or config-contract debt changed; review NEW/FIXED findings above." >&2
+    exit 1
+fi
+
+exit 0

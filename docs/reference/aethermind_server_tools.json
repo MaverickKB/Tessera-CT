@@ -1,0 +1,1434 @@
+[
+ {
+  "name": "prepare_inheritance",
+  "description": "Read a native AetherMind inheritance envelope on this filesystem host.\n\n    Retains whole records, currentness, correction debt, omissions and separate\n    authored texture. Budget is native characters; load-bearing records may\n    overflow. With no anchor this explicitly requests full native inheritance;\n    use discover_inheritance first when task scope is unknown. No store is\n    initialized or written. Preparing a packet grants no action authority and\n    does not prove delivery, recognition, application or comprehension.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "anchor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Anchor"
+    },
+    "budget": {
+     "default": 3000,
+     "title": "Budget",
+     "type": "integer"
+    },
+    "surface": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Surface"
+    },
+    "session_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Session Id"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "prepare_inheritanceArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "prepare_inheritanceOutput",
+   "type": "object"
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "discover_inheritance",
+  "description": "Read available AetherMind context/anchor and must-know references.\n\n    This directory contains no layer bodies: full native inheritance has not\n    been delivered. Follow with prepare_inheritance for the required scope.\n    Does not initialize a store, alter history, or grant action authority.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "surface": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Surface"
+    },
+    "session_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Session Id"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "discover_inheritanceArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "discover_inheritanceOutput",
+   "type": "object"
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "verify_inheritance_use",
+  "description": "Validate a use-evidence claim's shape and packet/session binding only.\n\n    Distinguishes delivered, recognized and applied claims. Evidence references\n    are not fetched or verified; a valid claim is not proof of comprehension,\n    permission, or successful action. No receipt is persisted, no debt is\n    cleared and no layer/currentness/authority state is changed.\n    ",
+  "inputSchema": {
+   "properties": {
+    "envelope": {
+     "additionalProperties": true,
+     "title": "Envelope",
+     "type": "object"
+    },
+    "receipt": {
+     "additionalProperties": true,
+     "title": "Receipt",
+     "type": "object"
+    }
+   },
+   "required": [
+    "envelope",
+    "receipt"
+   ],
+   "title": "verify_inheritance_useArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "verify_inheritance_useOutput",
+   "type": "object"
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "write_layer",
+  "description": "Write a layer to the AetherMind project.\n\n    create: if a store does not already exist at project_root, this must\n        be True (or project_root must have been registered first via\n        register_project_key) to initialize a new one. Defaults to False\n        so a mistyped or unintended path fails loudly instead of silently\n        spawning an empty store. Existing stores are always writable\n        regardless of this flag.\n\n    Returns a JSON string with success flag and metadata.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "layer_type": {
+     "title": "Layer Type",
+     "type": "string"
+    },
+    "body": {
+     "title": "Body",
+     "type": "string"
+    },
+    "ctx": {
+     "title": "Ctx",
+     "type": "string"
+    },
+    "conf": {
+     "title": "Conf",
+     "type": "number"
+    },
+    "markers": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Markers",
+     "type": "array"
+    },
+    "author": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Author"
+    },
+    "primitive": {
+     "default": "layer",
+     "title": "Primitive",
+     "type": "string"
+    },
+    "thread_key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Thread Key"
+    },
+    "supersedes": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Supersedes"
+    },
+    "rollback_of": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Rollback Of"
+    },
+    "corrects": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Corrects"
+    },
+    "evidence": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Evidence"
+    },
+    "recurrence_of": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Recurrence Of"
+    },
+    "verification": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Verification"
+    },
+    "artifact": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Artifact"
+    },
+    "artifact_ref": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Artifact Ref"
+    },
+    "anchor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Anchor"
+    },
+    "ref": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Ref"
+    },
+    "kind": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Kind"
+    },
+    "label": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Label"
+    },
+    "host": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Host"
+    },
+    "repo_root": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Repo Root"
+    },
+    "content_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Content Id"
+    },
+    "selector": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Selector"
+    },
+    "span_hint": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Span Hint"
+    },
+    "domain": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Domain"
+    },
+    "symptom": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Symptom"
+    },
+    "next_verification": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Next Verification"
+    },
+    "suspected_mechanism": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Suspected Mechanism"
+    },
+    "scope": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Scope"
+    },
+    "severity": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Severity"
+    },
+    "owner_hint": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Owner Hint"
+    },
+    "repair": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Repair"
+    },
+    "reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Reason"
+    },
+    "replacement": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Replacement"
+    },
+    "restored_to": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Restored To"
+    },
+    "inline": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Inline"
+    },
+    "create": {
+     "default": false,
+     "title": "Create",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "project_root",
+    "layer_type",
+    "body",
+    "ctx",
+    "conf",
+    "markers"
+   ],
+   "title": "write_layerArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "write_layerOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "write_texture",
+  "description": "Write a texture entry to the AetherMind project.\n\n    create: same guard as write_layer's create param \u2014 required to\n        initialize a brand-new store, not required for an existing one.\n\n    Returns a JSON string with success flag and entry details.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "body": {
+     "title": "Body",
+     "type": "string"
+    },
+    "ctx": {
+     "title": "Ctx",
+     "type": "string"
+    },
+    "marker": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Marker"
+    },
+    "author": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Author"
+    },
+    "create": {
+     "default": false,
+     "title": "Create",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "project_root",
+    "body",
+    "ctx"
+   ],
+   "title": "write_textureArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "write_textureOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "read_layers",
+  "description": "Return filtered layers as JSON.\n\n    Parameters mirror the core read_layers API. All filters are composable\n    (AND together):\n    - ctx: substring match against ctx (original behavior).\n    - type / author: exact match.\n    - since_ts: ISO-8601 UTC timestamp; only layers strictly newer than\n      this are returned.\n    - last_n: keep only the most recent N results (after other filters),\n      newest-first. Omit for the original oldest-first store order.\n    - ctx_prefix: path-segment prefix match against ctx (e.g. \"book4/ch2\"\n      matches \"book4/ch2/topic\" but not \"book4/ch2x/topic\").\n    - markers_any: include a layer if it has at least one of these markers.\n\n    Unfiltered reads on stores past ~40 layers are already unusable in\n    agent context windows; use these filters (or the `brief` tool) instead.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "ctx": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Ctx"
+    },
+    "type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Type"
+    },
+    "author": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Author"
+    },
+    "since_ts": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Since Ts"
+    },
+    "last_n": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Last N"
+    },
+    "ctx_prefix": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Ctx Prefix"
+    },
+    "markers_any": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Markers Any"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "read_layersArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "read_layersOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "read_texture",
+  "description": "Return the full texture file content.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "read_textureArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "read_textureOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "status",
+  "description": "Return layer count, last author, last timestamp, and type breakdown.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "statusArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "statusOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "brief",
+  "description": "Return active digests and per-scope deltas at an optional timestamp.\n\n    When ``anchor`` is provided, returns the anchor-scoped deterministic brief\n    (read contract) instead: must-know corrections, unabsorbed debt,\n    budget-thinned kept layers, tombstones, and a determinism key. The same\n    ledger + same budget produce a byte-identical brief.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "as_of": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "As Of"
+    },
+    "anchor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Anchor"
+    },
+    "budget": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Budget"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "briefArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "briefOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "audit",
+  "description": "Scan the ledger hash chain and report integrity (audit).",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "auditArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "auditOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "gate_check",
+  "description": "Check a proposed mutation against must-know corrections (gate).\n\n    Advisory by default; when enforce_gate is true, unabsorbed must-know\n    corrections reject the plan with the layer IDs to account for first.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "anchor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Anchor"
+    },
+    "planned_type": {
+     "default": "layer",
+     "title": "Planned Type",
+     "type": "string"
+    },
+    "planned_ctx": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Planned Ctx"
+    },
+    "enforce_gate": {
+     "default": false,
+     "title": "Enforce Gate",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "gate_checkArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "gate_checkOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "write_event",
+  "description": "Append a cheap routine event to events.aem (split ledger).\n\n    Events never enter currentness or the default brief; they keep the\n    decision ledger dense. Returns {event_id, hash}.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "event_type": {
+     "title": "Event Type",
+     "type": "string"
+    },
+    "body": {
+     "title": "Body",
+     "type": "string"
+    },
+    "ctx": {
+     "title": "Ctx",
+     "type": "string"
+    },
+    "author": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Author"
+    }
+   },
+   "required": [
+    "project_root",
+    "event_type",
+    "body",
+    "ctx"
+   ],
+   "title": "write_eventArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "write_eventOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "read_events",
+  "description": "Read events from events.aem (split ledger); empty store is healthy.",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "read_eventsArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "read_eventsOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "archive",
+  "description": "Archive layers to archive.aem (tombstone + continuation header).\n\n    The ledger is never rewritten in place; the tombstone supersedes the\n    archived layers so they leave live posture while history is preserved.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "layer_ids": {
+     "items": {
+      "type": "string"
+     },
+     "title": "Layer Ids",
+     "type": "array"
+    },
+    "reason": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Reason"
+    }
+   },
+   "required": [
+    "project_root",
+    "layer_ids"
+   ],
+   "title": "archiveArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "archiveOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "currentness",
+  "description": "Return immutable history, active heads, and explicit inactive reasons.",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "as_of": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "As Of"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "currentnessArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "currentnessOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "initialize_store",
+  "description": "Explicitly create store metadata without writing a layer or texture.",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "project_key": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Project Key"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "initialize_storeArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "initialize_storeOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "capabilities",
+  "description": "Return the canonical runtime identity and capability contract.",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null,
+     "title": "Project Root"
+    }
+   },
+   "title": "capabilitiesArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "capabilitiesOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "register_project_key",
+  "description": "Declare a stable project key for the store at project_root (e.g.\n    key=\"out-of-time\" for a book series root). After registration, every\n    AetherMind tool may take `key` in place of project_root.\n\n    This is addressing only: it does NOT merge stores. If `key` is already\n    registered to a different root, this fails unless overwrite=True.\n    Registering is also the explicit \"registration step\" that authorizes\n    creating a new store at project_root if one does not already exist\n    there (equivalent to passing create=True once).\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "key": {
+     "title": "Key",
+     "type": "string"
+    },
+    "overwrite": {
+     "default": false,
+     "title": "Overwrite",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "project_root",
+    "key"
+   ],
+   "title": "register_project_keyArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "register_project_keyOutput",
+   "type": "object"
+  }
+ },
+ {
+  "name": "view",
+  "description": "Render the hybrid brief: whole-store coarse cover + full-res must-knows.\n\n    Fixed-budget read-only view over the project's layers and its derived\n    summary tree (tree.aem). budget_chars=3600 is about 900 estimated tokens.\n    Raises if the tree has not been built yet.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "budget_chars": {
+     "default": 3600,
+     "title": "Budget Chars",
+     "type": "integer"
+    },
+    "recent_window": {
+     "default": 64,
+     "title": "Recent Window",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "project_root"
+   ],
+   "title": "viewArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "viewOutput",
+   "type": "object"
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ },
+ {
+  "name": "zoom",
+  "description": "Zoom into one summary-tree node: its line plus its children's lines.\n\n    Level 0 nodes map one-to-one onto layers (chronological index). Each\n    higher level halves the count; the root is (max_level, 0). Returns the\n    node text, its record range, and its two children's texts so an agent\n    can walk from the root to a raw record.\n    ",
+  "inputSchema": {
+   "properties": {
+    "project_root": {
+     "title": "Project Root",
+     "type": "string"
+    },
+    "level": {
+     "title": "Level",
+     "type": "integer"
+    },
+    "index": {
+     "title": "Index",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "project_root",
+    "level",
+    "index"
+   ],
+   "title": "zoomArguments",
+   "type": "object"
+  },
+  "outputSchema": {
+   "properties": {
+    "result": {
+     "title": "Result",
+     "type": "string"
+    }
+   },
+   "required": [
+    "result"
+   ],
+   "title": "zoomOutput",
+   "type": "object"
+  },
+  "annotations": {
+   "readOnlyHint": true,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": false
+  }
+ }
+]

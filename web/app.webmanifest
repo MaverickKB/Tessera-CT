@@ -1,0 +1,13 @@
+{
+  "name": "Tessera",
+  "short_name": "Tessera",
+  "description": "Tessera: a standalone harness for conversations, context and tools.",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "icons": [
+    {"src": "brand/icon-128.png", "sizes": "128x128", "type": "image/png", "purpose": "any"},
+    {"src": "brand/icon-256.png", "sizes": "256x256", "type": "image/png", "purpose": "any"},
+    {"src": "brand/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
+  ]
+}

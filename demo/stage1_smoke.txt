@@ -1,0 +1,14 @@
+Stage 1 integration smoke
+Backend: local HTTP fixture powered by scripted FakeBackend
+Server: real python -m tessera serve subprocess; ephemeral loopback ports
+Config: demo/fake_config.toml
+PASS desktop loopback access: JSON and SSE need no bearer token
+PASS UI delivery: HTML, JavaScript, theme and layout CSS served
+PASS asynchronous turn and SSE: read_file outcome, route, capture and completion observed
+PASS Last-Event-ID resumes strictly after the acknowledged event
+PASS cross-session messaging: target received the source work message and replied
+PASS structured view snapshot and original-message zoom
+PASS restart: title, history, queue/capture identity preserved and next turn completes
+PASS status: per-session inheritance and offline write-debt surfaced
+Model calls: 6
+PASS all assertions; no live model or memory endpoint used

@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="application-name" content="Tessera">
+  <title>Tessera</title>
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/brand/icon-16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/brand/icon-32.png">
+  <link rel="apple-touch-icon" sizes="256x256" href="/static/brand/icon-256.png">
+  <link rel="manifest" href="/static/app.webmanifest">
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/design.css">
+  <script src="/static/shell-errors.js"></script>
+  <script src="/static/authkey.js"></script>
+  <script src="/static/voice.js" defer></script>
+  <script src="/static/settings.js" defer></script>
+  <script src="/static/floor-definition.js" defer></script>
+  <script src="/static/shelf.js" defer></script>
+  <script src="/static/desktop.js" defer></script>
+  <script src="/static/panels.js" defer></script>
+  <script src="/static/autonomy.js" defer></script>
+  <script src="/static/format.js" defer></script>
+  <script src="/static/items.js" defer></script>
+  <script src="/static/design.js" defer></script>
+  <script src="/static/project-canvas.js" defer></script>
+  <script src="/static/work-intake.js" defer></script>
+  <script src="/static/unleashed-label.js" defer></script>
+  <script src="/static/gremlin-trail.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body class="no-session" data-refresh-seconds="15" data-navigation-collapse-below="1100" data-sessions-collapse-below="900" data-drawer-below="760" data-board-artifact-labels="6" data-proof-max-bytes="262144" data-proof-max-workers="32" data-voice-worklet="/static/voice-worklet.js" data-voice-chunk-frames="2048" data-voice-buffer-bytes="262144" data-voice-pending-events="32" data-voice-connect-seconds="20" data-voice-playback-seconds="15">
+  <a id="skip-link" class="skip-link" href="#page-chat">Skip to content</a>
+  <header class="topbar">
+    <details id="brand-story" class="brand">
+      <summary id="brand-story-toggle" aria-label="Tessera-CT"><span class="brand-lockup"><span id="design-asset-slot" class="brand-wordmark" role="img" aria-label="Tessera-CT"></span></span></summary>
+      <div class="brand-story"><h2>Tessera</h2><p>A harness for conversations, context, and tools.</p></div>
+    </details>
+    <div id="brand-trail" class="brand-trail" data-motion="tree" data-goblins="0" aria-hidden="true">
+      <svg class="trail-tree" aria-hidden="true" viewBox="0 0 600 48" fill="none" preserveAspectRatio="xMidYMid meet">
+        <path class="trail-bed" d="M26 38 C105 38 115 26 190 26 S280 24 330 24 S425 24 465 14"/>
+        <path class="trail-bed trail-branch" d="M190 26 C220 26 218 9 260 9 M330 24 C365 24 365 42 409 42 M465 14 C510 14 510 33 563 33"/>
+        <path class="trail-current" pathLength="100" d="M26 38 C105 38 115 26 190 26 S280 24 330 24 S425 24 465 14"/>
+        <ellipse class="trail-stone" cx="16" cy="38" rx="4" ry="3"/>
+        <ellipse class="trail-stone" cx="26" cy="36" rx="5" ry="4"/>
+        <ellipse class="trail-stone" cx="36" cy="40" rx="4" ry="3"/>
+        <circle class="trail-stone" cx="190" cy="26" r="3"/>
+        <circle class="trail-stone" cx="330" cy="24" r="3"/>
+        <circle class="trail-glow" cx="465" cy="14" r="4"/>
+        <circle class="trail-tip" cx="260" cy="9" r="2"/>
+        <circle class="trail-tip" cx="409" cy="42" r="2"/>
+        <circle class="trail-tip" cx="563" cy="33" r="2"/>
+      </svg>
+      <svg class="trail-goblins" aria-hidden="true" viewBox="0 0 600 48" preserveAspectRatio="xMidYMid meet">
+        <path class="goblin-bed" d="M12 42 H588"/>
+        <g class="goblin goblin-1" transform="translate(48 0)">
+          <g class="pose pose-nap">
+            <ellipse cx="36" cy="32" rx="18" ry="7" class="crew-body"/>
+            <circle cx="16" cy="30" r="8" class="crew-body"/>
+            <polygon points="12,24 4,12 18,22" class="crew-ear"/>
+            <polygon points="20,24 30,10 24,24" class="crew-ear"/>
+            <polygon points="14,23 9,16 17,22" class="crew-inner"/>
+            <path d="M12 30 h5 M19 30 h5" class="crew-line"/>
+            <path d="M42 12 h8 l-8 6 h8" class="crew-line"/>
+          </g>
+          <g class="pose pose-haul">
+            <polygon points="12,16 4,4 16,14" class="crew-ear"/>
+            <polygon points="20,15 32,2 24,16" class="crew-ear"/>
+            <circle cx="18" cy="18" r="8" class="crew-body"/>
+            <ellipse cx="18" cy="31" rx="8" ry="7" class="crew-body"/>
+            <circle cx="15" cy="17" r="1.2" class="crew-eye"/>
+            <circle cx="21" cy="17" r="1.2" class="crew-eye"/>
+            <path d="M14 21 Q18 24 22 21" class="crew-line"/>
+            <path d="M12 36 L6 44 M24 36 L30 44" class="crew-line"/>
+            <rect x="28" y="22" width="12" height="10" rx="2" class="crew-crate"/>
+            <path d="M24 27 H30" class="crew-line"/>
+          </g>
+          <g class="pose pose-tumble">
+            <ellipse cx="26" cy="30" rx="14" ry="8" transform="rotate(-28 26 30)" class="crew-body"/>
+            <circle cx="40" cy="24" r="7" class="crew-body"/>
+            <polygon points="36,18 30,8 42,16" class="crew-ear"/>
+            <path d="M37 22 l4 4 M41 22 l-4 4" class="crew-line"/>
+            <path d="M16 38 L10 44 M20 40 L14 46" class="crew-line"/>
+            <path d="M8 16 l7 3 M6 22 l8 1" class="crew-line"/>
+            <circle cx="48" cy="12" r="3" class="crew-smoke smoke"/>
+            <circle cx="54" cy="8" r="2" class="crew-smoke smoke smoke-late"/>
+          </g>
+        </g>
+        <g class="goblin goblin-2" transform="translate(268 0)">
+          <g class="pose pose-nap">
+            <ellipse cx="36" cy="32" rx="18" ry="7" class="crew-body"/>
+            <circle cx="16" cy="30" r="8" class="crew-body"/>
+            <polygon points="12,24 4,12 18,22" class="crew-ear"/>
+            <polygon points="20,24 30,10 24,24" class="crew-ear"/>
+            <polygon points="14,23 9,16 17,22" class="crew-inner"/>
+            <path d="M12 30 h5 M19 30 h5" class="crew-line"/>
+            <path d="M42 12 h8 l-8 6 h8" class="crew-line"/>
+          </g>
+          <g class="pose pose-haul">
+            <polygon points="12,16 4,4 16,14" class="crew-ear"/>
+            <polygon points="20,15 32,2 24,16" class="crew-ear"/>
+            <circle cx="18" cy="18" r="8" class="crew-body"/>
+            <ellipse cx="18" cy="31" rx="8" ry="7" class="crew-body"/>
+            <circle cx="15" cy="17" r="1.2" class="crew-eye"/>
+            <circle cx="21" cy="17" r="1.2" class="crew-eye"/>
+            <path d="M14 21 Q18 24 22 21" class="crew-line"/>
+            <path d="M12 36 L6 44 M24 36 L30 44" class="crew-line"/>
+            <rect x="28" y="22" width="12" height="10" rx="2" class="crew-crate"/>
+            <path d="M24 27 H30" class="crew-line"/>
+          </g>
+          <g class="pose pose-tumble">
+            <ellipse cx="26" cy="30" rx="14" ry="8" transform="rotate(-28 26 30)" class="crew-body"/>
+            <circle cx="40" cy="24" r="7" class="crew-body"/>
+            <polygon points="36,18 30,8 42,16" class="crew-ear"/>
+            <path d="M37 22 l4 4 M41 22 l-4 4" class="crew-line"/>
+            <path d="M16 38 L10 44 M20 40 L14 46" class="crew-line"/>
+            <circle cx="48" cy="12" r="3" class="crew-smoke smoke"/>
+          </g>
+        </g>
+        <g class="goblin goblin-3" transform="translate(488 0)">
+          <g class="pose pose-nap">
+            <ellipse cx="36" cy="32" rx="18" ry="7" class="crew-body"/>
+            <circle cx="16" cy="30" r="8" class="crew-body"/>
+            <polygon points="12,24 4,12 18,22" class="crew-ear"/>
+            <polygon points="20,24 30,10 24,24" class="crew-ear"/>
+            <path d="M12 30 h5 M19 30 h5" class="crew-line"/>
+          </g>
+          <g class="pose pose-haul">
+            <polygon points="12,16 4,4 16,14" class="crew-ear"/>
+            <polygon points="20,15 32,2 24,16" class="crew-ear"/>
+            <circle cx="18" cy="18" r="8" class="crew-body"/>
+            <ellipse cx="18" cy="31" rx="8" ry="7" class="crew-body"/>
+            <circle cx="15" cy="17" r="1.2" class="crew-eye"/>
+            <circle cx="21" cy="17" r="1.2" class="crew-eye"/>
+            <path d="M14 21 Q18 24 22 21" class="crew-line"/>
+            <path d="M12 36 L6 44 M24 36 L30 44" class="crew-line"/>
+            <rect x="28" y="22" width="12" height="10" rx="2" class="crew-crate"/>
+            <path d="M24 27 H30" class="crew-line"/>
+          </g>
+          <g class="pose pose-tumble">
+            <ellipse cx="26" cy="30" rx="14" ry="8" transform="rotate(-28 26 30)" class="crew-body"/>
+            <circle cx="40" cy="24" r="7" class="crew-body"/>
+            <path d="M37 22 l4 4 M41 22 l-4 4" class="crew-line"/>
+            <circle cx="48" cy="12" r="3" class="crew-smoke smoke"/>
+          </g>
+        </g>
+      </svg>
+      <span id="trail-caption" class="trail-caption">Tessera.</span>
+    </div>
+    <div class="topbar-controls">
+      <button id="quick-work-open" class="quick-work-open" type="button" aria-haspopup="dialog" aria-controls="quick-work-dialog" aria-keyshortcuts="Meta+Shift+K Control+Shift+K" title="Report work from anywhere (⌘/Ctrl Shift K)">+ Add work</button>
+      <button id="navigation-toggle" class="navigation-toggle" type="button" aria-expanded="false" aria-controls="app-navigation">Menu</button>
+      <div id="approval-mode" class="approval-mode" role="radiogroup" aria-label="Approval mode" aria-describedby="yolo-banner" hidden><button id="approval-safe" type="button" role="radio" aria-checked="false">Safe</button><button id="approval-yolo" type="button" role="radio" aria-checked="false">Unleashed</button></div>
+      <button id="desk-toggle" type="button" aria-haspopup="dialog" aria-controls="desk-dialog">Desk</button>
+      <button id="timers-toggle" type="button" aria-haspopup="dialog" aria-controls="timers-dialog">Timers</button>
+      <label class="visually-hidden" for="theme-choice">Appearance</label>
+      <select id="theme-choice"><option value="system">System theme</option><option value="light">Light</option><option value="dark">Dark</option></select>
+    </div>
+  </header>
+  <div id="yolo-banner" class="yolo-banner" role="status" hidden>Unleashed mode is on: every tool, including shell and file writes, runs without approval.</div>
+  <div id="error-banner" class="error-banner" role="alert" hidden><span id="error-text"></span><button id="retry-button" type="button">Retry</button></div>
+  <div class="app-shell">
+    <nav id="app-navigation" class="app-navigation" aria-label="Main navigation">
+      <div class="navigation-links">
+        <a id="nav-chat" href="#view=chat" aria-current="page"><span class="menu-glyph glyph-chat" aria-hidden="true"></span><span>Chat sessions</span></a>
+        <a id="nav-wip" href="#view=wip"><span class="menu-glyph glyph-wip" aria-hidden="true"></span><span>WIP board</span></a>
+        <a id="nav-infrastructure" href="#view=infrastructure"><span class="menu-glyph glyph-infrastructure" aria-hidden="true"></span><span>Infrastructure board</span></a>
+        <a id="nav-voice" href="#view=voice"><span class="menu-glyph glyph-voice" aria-hidden="true"></span><span>Voice</span></a>
+        <a id="nav-integrations" href="#view=integrations"><span class="menu-glyph glyph-integrations" aria-hidden="true"></span><span>Integrations</span></a>
+        <a id="nav-settings" href="#view=settings"><span class="menu-glyph glyph-settings" aria-hidden="true"></span><span>Settings</span></a>
+        <a id="nav-shelf" href="#view=shelf"><span class="menu-glyph glyph-settings" aria-hidden="true"></span><span>Skills and tools</span></a>
+      </div>
+      <button id="navigation-collapse" class="panel-toggle navigation-collapse" type="button" aria-controls="app-navigation" aria-expanded="true" aria-label="Collapse menu" aria-keyshortcuts="Meta+B Control+B"><span class="panel-chevron" aria-hidden="true"></span><span id="navigation-collapse-label" class="panel-toggle-label" aria-hidden="true">Collapse menu</span></button>
+    </nav>
+    <div class="app-content">
+      <svg id="page-seam" class="page-seam" aria-hidden="true" viewBox="0 0 1000 600" preserveAspectRatio="none" fill="none">
+        <path class="seam-stone" pathLength="100" d="M0 90 C150 90 180 145 350 145 S580 215 710 215 S880 150 1000 150"/>
+        <path class="seam-branch" pathLength="100" d="M350 145 C430 145 440 55 570 55 S760 80 850 45"/>
+        <path class="seam-branch" pathLength="100" d="M710 215 C790 215 770 335 940 335"/>
+        <path class="seam-glow" pathLength="100" d="M0 90 C150 90 180 145 350 145 S580 215 710 215 S880 150 1000 150"/>
+        <circle cx="350" cy="145" r="3"/><circle cx="710" cy="215" r="3"/><circle class="seam-node" cx="570" cy="55" r="4"/>
+      </svg>
+  <div id="page-chat" class="workspace" tabindex="-1">
+    <aside id="sessions-panel" class="sessions-panel" aria-label="Sessions">
+      <div class="sidebar-heading"><h1>Sessions</h1><button id="new-session" class="primary" type="button">New session</button><button id="sessions-collapse" class="panel-toggle sessions-collapse" type="button" aria-controls="sessions-panel" aria-expanded="true" aria-label="Hide sessions" aria-keyshortcuts="Meta+Shift+B Control+Shift+B"><span class="panel-chevron" aria-hidden="true"></span></button><button id="close-sessions" class="drawer-close" type="button">Close</button></div>
+      <label class="visually-hidden" for="session-search">Search sessions</label>
+      <input id="session-search" type="search" placeholder="Search sessions" autocomplete="off">
+      <div class="session-tools"><label class="archive-filter"><input id="show-archived" type="checkbox"> Include archived</label><button id="select-sessions" type="button" title="Select sessions to archive or delete" aria-label="Select sessions to archive or delete">Select</button></div>
+      <div id="session-select-bar" class="session-select-bar" hidden><span id="select-count">0 selected</span><button id="select-archive" type="button">Archive</button><button id="select-delete" class="danger" type="button">Delete</button><button id="select-cancel" type="button">Done</button></div>
+      <ul id="session-list" class="session-list"></ul>
+      <p id="session-list-empty" class="muted">Loading sessions...</p>
+      <p id="session-list-unreadable" class="muted" hidden></p>
+      </aside>
+    <main class="conversation" aria-label="Conversation">
+      <button id="reading-session-switch" type="button" aria-controls="sessions-panel">Sessions</button>
+      <button id="reading-focus" class="reading-focus" type="button" aria-pressed="false" title="Hide the top bars and read the conversation (⌘/Ctrl Shift R)">Read</button>
+      <header class="conversation-heading">
+        <button id="sessions-expand" class="panel-toggle sessions-expand" type="button" aria-controls="sessions-panel" aria-expanded="true" aria-label="Show sessions" aria-keyshortcuts="Meta+Shift+B Control+Shift+B"><span class="panel-chevron" aria-hidden="true"></span><span class="panel-toggle-label" aria-hidden="true">Sessions</span></button>
+        <button id="sessions-toggle" class="mobile-control" type="button" aria-expanded="false" aria-controls="sessions-panel">Sessions</button>
+        <div class="session-heading"><div class="session-title-row"><h2 id="session-title">No session</h2><span id="session-badge" class="session-badge" hidden></span></div><p id="session-detail"></p></div>
+        <div class="session-actions"><select id="feedback-filter" aria-label="Show messages"><option value="all">All</option><option id="filter-flag" value="flag">Flagged</option><option id="filter-good" value="good">Good</option></select><button id="show-resolved" type="button" aria-pressed="false" hidden>Resolved</button><select id="session-model" aria-label="Model" disabled></select><select id="session-reasoning" aria-label="Reasoning"><option value="off">Off</option><option value="low" selected>Low</option><option value="medium">Medium</option><option value="high">High</option></select><details id="thinking-budget-control" class="thinking-budget-control">
+          <summary id="thinking-budget-summary">Thinking budget: engine default</summary>
+          <div class="thinking-budget-popover">
+            <label><input id="thinking-budget-enabled" type="checkbox"> Set thinking budget</label>
+            <label for="thinking-budget">Thinking tokens per response</label>
+            <input id="thinking-budget" type="range" min="256" max="32768" step="256" value="4096" disabled aria-describedby="thinking-budget-help">
+            <output id="thinking-budget-value" for="thinking-budget">4,096 tokens</output>
+            <p id="thinking-budget-help">Ends thinking, then lets the answer continue. Applies to the next model response on supporting engines. Autonomous work keeps going.</p>
+          </div>
+        </details><div id="session-secondary" class="session-secondary"><button id="rename-session" type="button" disabled>Rename</button><button id="archive-session" type="button" disabled>Archive</button><button id="inspector-toggle" class="inspector-control" type="button" aria-expanded="false" aria-controls="inspector">Inspect</button></div><button id="session-more" class="session-more" type="button" aria-expanded="false" aria-controls="session-secondary" aria-haspopup="menu">More</button></div>
+      </header>
+      <details id="session-activity" class="session-activity">
+        <summary><span class="activity-beacon" aria-hidden="true"></span><span id="activity-phase" role="status">Choose a session</span><span id="activity-counts"></span></summary>
+        <div class="activity-expanded"><p id="activity-detail"></p><ul id="activity-events" aria-label="Recent activity"></ul></div>
+      </details>
+      <div id="conversation-scroll" class="conversation-scroll" tabindex="0" aria-label="Conversation history">
+        <p id="board-evidence" class="quiet-note board-evidence" role="status" hidden></p>
+        <section id="empty-state" class="empty-state"><button id="empty-create" type="button">Start a session</button></section>
+        <button id="load-earlier" class="load-earlier" type="button" hidden>Earlier messages</button>
+        <div id="messages" class="messages" role="log" aria-label="Messages" aria-live="polite" aria-relevant="additions"></div>
+      </div>
+      <section id="queue-list" class="queue-list" aria-label="Waiting prompts" hidden></section>
+      <div class="composer-area">
+        <button id="jump-latest" class="jump-latest" type="button" hidden>Latest</button>
+        <div class="conversation-state"><span id="connection-state" class="data" role="status">Connecting...</span><span id="route-state" class="data"></span></div>
+        <form id="composer">
+          <label class="visually-hidden" for="message-input">Message</label>
+          <div id="reply-chip" class="reply-chip" hidden><span id="reply-text"></span><button id="reply-cancel" type="button" aria-label="Cancel reply">×</button></div>
+          <div id="attachment-tray" class="attachment-tray" hidden></div>
+          <textarea id="message-input" rows="2" placeholder="Message"></textarea>
+          <div class="composer-footer"><span id="composer-hint">Enter to send. Shift+Enter for a new line. While a turn runs, ⌘-Enter queues it.</span><div class="composer-actions"><section class="voice-controls" aria-label="Session voice controls"><button id="voice-toggle" type="button" disabled>Start voice</button><span id="voice-state" class="data">Not reported</span><p id="voice-detail" class="quiet-note" role="status">…</p></section><input id="attachment-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,.md,.txt,.json,.pdf,application/pdf,application/json" multiple hidden><button id="attach-file" type="button">Attach</button><button id="queue-next" type="button" hidden>Queue</button><button id="stop-turn" type="button" hidden>Stop</button><button id="send-message" class="primary" type="submit" disabled>Send</button></div></div>
+        </form>
+        <p id="send-state" class="send-state" role="status"></p>
+      </div>
+    </main>
+    <aside id="inspector" class="inspector" aria-label="Session details">
+      <div class="inspector-heading"><h2>Session lens</h2><button id="refresh-details" type="button">Refresh</button><button id="close-inspector" class="drawer-close" type="button">Close</button></div>
+      <div class="tabs" role="tablist" aria-label="Session details">
+        <button id="view-tab" role="tab" aria-selected="true" aria-controls="view-panel" tabindex="0">Context</button>
+        <button id="memory-tab" role="tab" aria-selected="false" aria-controls="memory-panel" tabindex="-1">AetherMind</button>
+        <button id="status-tab" role="tab" aria-selected="false" aria-controls="status-panel" tabindex="-1">Status</button>
+      </div>
+      <section id="view-panel" role="tabpanel" aria-labelledby="view-tab" tabindex="0"><p id="view-budget" class="context-readout">No session selected.</p><p id="context-explanation" class="inspector-note"></p><div id="view-lines"></div></section>
+      <section id="memory-panel" role="tabpanel" aria-labelledby="memory-tab" tabindex="0" hidden>
+        <details class="memory-connection"><summary>Connection observations</summary><section class="memory-tree" aria-labelledby="memory-tree-title">
+          <header class="preview-heading"><h3 id="memory-tree-title">Reported availability</h3><span id="memory-tree-state" class="status-badge">Waiting</span></header>
+          <p id="memory-tree-summary" class="panel-description" role="status">…</p>
+          <dl id="memory-tree-metadata" class="integration-metadata" aria-label="Reported memory tree availability"></dl>
+          </section></details>
+        <section class="memory-browse" aria-labelledby="memory-browse-title">
+          <h3 id="memory-browse-title">Read AetherMind</h3>
+          <p class="inspector-note">Read the current store separately from the inheritance loaded into this session.</p>
+          <div class="memory-browse-actions"><button id="browse-session-memory" type="button">Session memory</button><button id="browse-personal-memory" type="button">Personal continuity</button></div>
+          <p id="memory-read-state" role="status">Choose a memory scope to read it.</p>
+          <label class="memory-search-label" for="memory-record-search">Find in this read</label><input id="memory-record-search" type="search" placeholder="Search memory records" disabled>
+          <div id="memory-live-content"></div>
+        </section>
+        <details class="memory-inheritance"><summary>Loaded into this session</summary><pre id="inheritance-digest" class="digest">Select a session to inspect its memory.</pre></details><header class="preview-heading"><h3>Capture queue</h3><span id="memory-capture-state" class="status-badge">Not reported</span></header><p id="write-debt" role="status">No session selected.</p>
+      </section>
+      <section id="status-panel" role="tabpanel" aria-labelledby="status-tab" tabindex="0" hidden><h3>Connection</h3><dl id="status-list" class="status-list"></dl></section>
+    </aside>
+  </div>
+  <main id="page-wip" class="app-page ds-page" tabindex="-1" hidden>
+    <header class="ds-head"><div><h1 class="ds-title">Work in progress</h1><p id="board-summary" class="ds-summary" role="status">…</p></div><button id="refresh-tasks" type="button">Refresh</button></header>
+
+    <div id="wip-overview" class="wip-overview" aria-label="Work overview"></div>
+    <details id="board-projects-block" class="ds-block" aria-labelledby="board-projects-title">
+      <summary class="ds-section-head"><span id="board-projects-title" class="ds-kicker">Subjects &amp; projects</span><span id="board-projects-count" class="ds-count"></span></summary>
+      <form id="project-create-form" class="project-create-form">
+        <label for="project-create-title">Start a shared space (Tessera can manage these too)</label>
+        <input id="project-create-title" name="title" placeholder="What are we building or exploring?" required>
+        <label class="visually-hidden" for="project-create-description">Project intent</label>
+        <textarea id="project-create-description" name="description" rows="2" placeholder="The intent, question or outcome we are working toward."></textarea>
+        <label for="project-create-kind">Kind</label><select id="project-create-kind"><option value="subject">Subject / healing effort</option><option value="planning">Planning project</option></select><button type="submit">Create space</button><p id="project-create-status" role="status"></p>
+      </form>
+      <div id="board-projects" class="project-grid"></div>
+    </details>
+    <section id="project-arena" class="project-arena" aria-label="Collaborative project workspace" hidden>
+      <header class="arena-heading"><button id="arena-back" type="button">← All work</button><h2 id="arena-title"></h2><button id="arena-full-chat" type="button">Full chat ↗</button></header>
+      <div class="arena-bar"><div class="arena-tabs" role="group" aria-label="Project view"><button id="arena-canvas-tab" type="button" aria-pressed="true">Canvas</button><button id="arena-plan-tab" type="button" aria-pressed="false">Plan &amp; notes</button><button id="arena-tasks-tab" type="button" aria-pressed="false">Tasks</button></div><label>Conversation <select id="arena-session"></select></label></div>
+      <p id="arena-selection" class="arena-selection">Conversation can create and edit the canvas</p>
+      <div class="arena-split"><div class="arena-main"><div id="project-canvas-root"></div><div id="arena-plan" hidden></div><div id="arena-tasks" hidden></div></div><aside id="arena-chat" aria-label="Project conversation"></aside></div>
+      <div id="arena-lens" class="arena-lens"></div>
+    </section>
+    <section id="project-page-block" class="ds-block" aria-labelledby="project-page-title" hidden>
+      <div id="project-page" class="project-page"></div>
+    </section>
+
+    <div id="wip-global-work" class="ds-split">
+      <section id="wip-work-section" class="ds-stack" aria-labelledby="board-title">
+        <div class="ds-section-head"><h2 id="board-title" class="ds-kicker">Work</h2><span id="board-state" class="status-badge">Waiting</span></div>
+        <div id="board-filters" class="board-filters" role="group" aria-label="Filter cards by project" hidden></div>
+        <div class="wip-tools"><input id="board-search" type="search" aria-label="Search work" placeholder="Find a task, note, owner or project"><select id="board-focus" aria-label="Filter work"><option value="all">All open work</option><option value="attention">Needs attention</option><option value="running">In flight</option><option value="available">Available to claim</option><option value="waiting">Waiting</option></select></div>
+        <div class="board-view-toggle" role="group" aria-label="Which cards to show">
+          <button id="board-show-open" class="board-filter" type="button" aria-pressed="true">Open work</button>
+          <button id="board-show-done" class="board-filter" type="button" aria-pressed="false">Show all work</button>
+        </div>
+        <ul id="board-cards" class="ds-columns" aria-labelledby="board-title"></ul>
+      </section>
+      <aside class="ds-side" aria-label="Activity"><div id="wip-activity"></div></aside>
+    </div>
+    <section id="board-note-block" class="ds-block" aria-labelledby="board-add-title">
+      <div class="ds-section-head"><h2 id="board-add-title" class="ds-kicker">Add work</h2><button id="work-popout" type="button" title="Open Add Work in a popout">Pop out ↗</button></div>
+      <form id="board-note-form" class="board-note-form">
+        <label class="visually-hidden" for="board-note-what">What needs doing</label>
+        <input id="board-note-what" name="title" maxlength="200" placeholder="What needs doing?" required autocomplete="off">
+        <label class="visually-hidden" for="board-note-body">Why, or what you noticed</label>
+        <textarea id="board-note-body" name="note" rows="2" placeholder="Context, expected outcome, or what you noticed."></textarea>
+        <div class="work-explain-tools"><button id="work-attach" type="button">Screenshot / file</button><button id="work-page-context" type="button">Include page context</button><span>Paste or drop evidence here</span></div>
+        <input id="work-file-input" type="file" accept="image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,application/pdf,application/json,.log,.md" multiple hidden>
+        <div id="work-evidence-tray" class="work-evidence-tray" aria-label="Evidence to attach" hidden></div>
+        <details id="work-explain" class="work-explain"><summary>Help explain the problem</summary><label for="work-actual">What happened?</label><textarea id="work-actual" rows="2" placeholder="The symptom, error, or behavior you saw."></textarea><label for="work-expected">What should happen?</label><textarea id="work-expected" rows="2" placeholder="What a good result looks like."></textarea><label for="work-steps">How can we reproduce it?</label><textarea id="work-steps" rows="2" placeholder="The steps or conditions that trigger it."></textarea></details>
+        <label id="work-context-label" for="work-context" hidden>Page context</label><textarea id="work-context" rows="3" hidden></textarea>
+        <div class="board-note-actions">
+          <label class="visually-hidden" for="board-note-project">Subject or project (optional)</label>
+          <select id="board-note-project"><option value="">Let Tessera file it</option></select>
+          <button id="board-note-submit" class="primary" type="submit">Add task</button>
+        </div>
+        <p class="work-filing-hint">Describe it and leave the filing to Tessera. Choose a subject or project only when you want to.</p>
+        <p id="board-note-status" class="voice-detail" role="status"></p>
+      </form>
+    </section>
+
+
+    <details class="wip-context"><summary>Runtime jobs &amp; tasks</summary>
+    <section class="ds-block" aria-labelledby="jobs-title">
+      <header class="preview-heading"><div><h2 id="jobs-title">Jobs</h2></div><span id="jobs-state" class="status-badge">Waiting</span></header>
+      <p id="jobs-summary" role="status">…</p>
+      <dl id="jobs-overview" class="host-metrics jobs-overview" aria-label="Job states in the reported snapshot" hidden></dl>
+      <ul id="jobs-records" class="board-grid" aria-labelledby="jobs-title"></ul>
+    </section>
+    <section class="ds-block" aria-labelledby="tasks-title">
+      <header class="preview-heading"><div><h2 id="tasks-title">Tasks</h2></div><span id="tasks-state" class="status-badge">Waiting</span></header>
+      <p id="tasks-summary" role="status">…</p>
+      <div id="tasks-filters" class="task-filters" role="group" aria-label="Filter reported tasks by status" hidden></div>
+      <p id="tasks-filter-result" role="status" hidden></p>
+      <ul id="tasks-records" class="provider-list" aria-labelledby="tasks-title"></ul>
+    </section>
+    </details>
+    <details class="wip-context"><summary>Lessons, parked questions &amp; house context</summary>
+    <section id="board-pressure-block" class="ds-block" aria-labelledby="board-pressure-title">
+      <div class="ds-section-head"><h2 id="board-pressure-title" class="ds-kicker">Pressure now</h2><span id="board-pressure-state" class="status-badge">Waiting</span></div>
+      <div id="board-pressure" class="pressure-panel" role="status"></div>
+      <div id="board-pressure-items" class="pressure-items" aria-label="Open lessons, questions and intentions"></div>
+    </section>
+
+    </details>
+  </main>
+  <main id="page-infrastructure" class="app-page ds-page" tabindex="-1" hidden>
+    <header class="ds-head"><div><h1 class="ds-title">Infrastructure</h1><p id="infrastructure-summary" class="ds-summary" role="status">…</p></div><button id="refresh-infrastructure" type="button">Refresh</button></header>
+    <div id="infrastructure-kpis" class="ds-kpis"></div>
+    <section aria-labelledby="quality-title">
+      <div class="ds-section-head"><h2 id="quality-title" class="ds-kicker">Session quality</h2><span id="quality-state" class="status-badge">Not read</span></div>
+      <p id="quality-purpose" class="ds-meta">What this is: a structural reading of how sessions behaved: did the tools work, did a judge actually answer, did a reply claim more than its evidence shows. It does not score whether the work was worth doing.</p>
+      <p id="quality-summary" class="ds-meta"></p>
+      <div id="quality-kpis" class="ds-kpis"></div>
+      <h3 class="ds-kicker quality-subhead">What needs attention</h3>
+      <ul id="quality-findings" class="quality-list" aria-labelledby="quality-title"></ul>
+      <h3 class="ds-kicker quality-subhead">Per session</h3>
+      <ul id="quality-sessions" class="ds-host-grid" aria-labelledby="quality-title"></ul>
+      <details id="quality-limits-fold" class="quality-limits">
+        <summary><span class="ds-kicker">What this reading cannot tell you</span><span id="quality-limits-count" class="status-badge"></span></summary>
+        <ul id="quality-limits" class="quality-limit-list"></ul>
+      </details>
+      <button id="refresh-quality" type="button">Read sessions</button>
+    </section>
+    <section class="spark-observatory" aria-labelledby="sparks-title">
+      <header class="spark-heading"><div><h2 id="sparks-title">Sparks</h2><p id="sparks-status" role="status">Reading SparkDash…</p></div><div class="settings-actions"><select id="sparks-range" aria-label="Token history range"><option value="1h">Last hour</option><option value="6h">6 hours</option><option value="24h" selected>24 hours</option><option value="7d">7 days</option><option value="30d">30 days</option></select><a id="sparks-source" hidden target="_blank" rel="noopener">Open SparkDash ↗</a></div></header>
+      <div id="sparks-telemetry" class="spark-grid"></div>
+      <div id="sparks-history"></div>
+    </section>
+    <div class="ds-split">
+      <div class="ds-stack">
+        <section aria-labelledby="infrastructure-title">
+          <div class="ds-section-head"><h2 id="infrastructure-title" class="ds-kicker">Hosts</h2><span id="infrastructure-state" class="status-badge">Waiting</span></div>
+          <ul id="infrastructure-hosts" class="ds-host-grid" aria-labelledby="infrastructure-title"></ul>
+        </section>
+        <section aria-labelledby="engine-pressure-title">
+          <div class="ds-section-head"><h2 id="engine-pressure-title" class="ds-kicker">Engine pressure</h2></div>
+          <ul id="engine-pressure-list" class="ds-host-grid" aria-labelledby="engine-pressure-title"></ul>
+        </section>
+        <section aria-labelledby="models-title">
+          <h2 id="models-title" class="ds-kicker">Models</h2>
+          <ul id="infra-models" class="ds-host-grid"></ul>
+        </section>
+        <section aria-labelledby="targets-title">
+          <div class="ds-section-head"><h2 id="targets-title" class="ds-kicker">Endpoints</h2><span id="targets-state" class="status-badge">Waiting</span></div>
+          <ul id="targets-list" class="ds-host-grid" aria-labelledby="targets-title"></ul>
+          <div id="infra-grafana"></div>
+        </section>
+      </div>
+      <aside class="ds-side" aria-label="Activity"><div id="infra-activity"></div></aside>
+    </div>
+  </main>
+  <main id="page-voice" class="app-page" tabindex="-1" hidden>
+    <header class="page-heading page-heading-with-action"><h1>Voice</h1><div class="settings-actions"><select id="voice-session" aria-label="Session"></select><button id="voice-new-session" type="button">New session</button></div></header>
+    <section class="voice-console" aria-label="Voice">
+      <div class="voice-presence">
+        <div class="voice-entity" aria-hidden="true">
+          <svg viewBox="0 0 300 300" fill="none" aria-hidden="true"><circle class="voice-orbit" cx="150" cy="150" r="124"/><circle class="voice-orbit" cx="150" cy="150" r="100"/><path class="voice-tree" d="M150 226V90M150 176L112 151V119M150 148L187 119V91M150 115L130 97V79M150 192L180 175V158M150 226L125 243M150 226L175 243"/><circle class="voice-glow" cx="150" cy="83" r="7"/><circle class="voice-bud" cx="112" cy="115" r="3"/><circle class="voice-bud" cx="187" cy="87" r="3"/></svg>
+        </div>
+        <span id="voice-page-state" class="status-badge">Off</span>
+        <p id="voice-page-detail" class="voice-detail" role="status"></p>
+        <div class="voice-signal"><div id="voice-wave" class="voice-wave" aria-hidden="true"></div><meter id="voice-level" class="voice-level" min="0" max="1" value="0" aria-label="Mic level"></meter></div>
+        <div class="voice-controls"><button id="voice-page-toggle" class="voice-talk" type="button" disabled>Talk</button><button id="voice-mute" type="button" aria-pressed="false">Mute</button><button id="voice-ptt" class="voice-ptt" type="button" hidden>Hold to talk</button></div>
+        <details class="voice-setup"><summary>Voice &amp; microphone</summary><div class="voice-options">
+          <label>Voice <select id="voice-pick"></select></label>
+          <label>Microphone <select id="voice-mic"><option value="">Default</option></select></label>
+          <label>Mode <select id="voice-mode"><option value="hands-free">Hands-free</option><option value="push">Push to talk</option></select></label>
+        </div></details>
+      </div>
+      <div class="voice-conversation"><header><h2>Conversation</h2><span>Live transcript</span></header><div class="voice-empty"><span class="voice-empty-mark" aria-hidden="true">“</span><p>Start talking with Tessera.</p><span>Your conversation appears here.</span></div><ol id="voice-transcript" class="voice-transcript" aria-label="Transcript" aria-live="polite"></ol></div>
+    </section>
+  </main>
+  <main id="page-integrations" class="app-page" tabindex="-1" hidden>
+    <header class="page-heading page-heading-with-action"><div><h1>Integrations</h1><p id="integrations-overview" class="integrations-overview">Reading configured connections…</p></div><div class="settings-actions"><button id="integrations-check-all" type="button">Test all</button><button id="refresh-integrations" type="button">Refresh</button></div></header>
+    <div class="integration-toolbar">
+      <label class="visually-hidden" for="integration-search">Find a connection or capability</label><input id="integration-search" type="search" placeholder="Find a connection or capability">
+      <label class="visually-hidden" for="integration-filter">Connection status</label><select id="integration-filter"><option value="all">All connections</option><option value="attention">Needs attention</option><option value="enabled">Enabled</option></select>
+    </div>
+    <p id="integrations-state" class="voice-detail" role="status"></p>
+    <p id="integration-empty" class="inspector-note" hidden>No matching connections. Clear your search or change the filter.</p>
+    <ul id="integrations-list" class="integration-rows" aria-label="Integrations"></ul>
+  </main>
+  <main id="page-settings" class="app-page" tabindex="-1" hidden>
+    <header class="page-heading page-heading-with-action"><div><h1>Settings</h1><p class="data settings-core"><span id="settings-connection">…</span> · <span id="settings-session-count">…</span></p><p id="settings-platform" class="data"></p></div><div class="settings-actions"><span id="server-controls" class="settings-actions" hidden><button id="server-start" type="button" disabled>Start server</button><button id="server-stop" type="button" disabled>Stop server</button><span id="server-status" class="data" role="status"></span></span><button id="interface-update" type="button" hidden>Update interface</button><button id="core-restart" type="button">Restart core</button><button id="settings-refresh" type="button">Refresh</button></div></header>
+    <p id="config-status" class="voice-detail" role="status"></p>
+    <div id="settings-root"></div>
+  </main>
+  <main id="page-shelf" class="app-page" tabindex="-1" hidden>
+    <header class="page-heading page-heading-with-action"><div><h1>Skills and tools</h1><p class="data">What is loaded, where it came from, and the switches that turn each one off. Those switches apply in every mode, including Unleashed.</p></div><div class="settings-actions"><button id="shelf-refresh" type="button">Refresh</button></div></header>
+    <p id="shelf-status" class="voice-detail" role="status"></p>
+    <div id="shelf-root"></div>
+  </main>
+    </div>
+  </div>
+  <button id="drawer-backdrop" class="drawer-backdrop" aria-label="Close side panels" hidden></button>
+  <dialog id="timers-dialog" class="timers-dialog" aria-label="Timers">
+    <div class="desk-heading"><strong class="timers-title">Timers</strong><button id="timers-close" type="button">Close</button></div>
+    <ul id="timers-list" class="timers-list"></ul>
+    <p id="timers-status" class="muted" role="status"></p>
+  </dialog>
+  <dialog id="desk-dialog" class="desk-dialog" aria-label="Desk">
+    <div class="desk-heading"><div id="desk-tabs" class="desk-tabs"></div><button id="desk-refresh" type="button">Refresh</button><button id="desk-close" type="button">Close</button></div>
+    <div id="desk-view"></div>
+    <p id="desk-status" class="muted" role="status"></p>
+  </dialog>
+  <div id="session-menu" class="session-menu" role="menu" hidden><form id="menu-workspace-form" class="menu-workspace"><label class="visually-hidden" for="menu-workspace">Workspace</label><input id="menu-workspace" placeholder="Default workspace" autocomplete="off"></form><button id="menu-rename" role="menuitem" type="button">Rename</button><button id="menu-archive" role="menuitem" type="button">Archive</button><button id="menu-select" role="menuitem" type="button">Select</button><button id="menu-delete" class="danger" role="menuitem" type="button">Delete</button></div>
+  <dialog id="quick-work-dialog" class="quick-work-dialog" aria-labelledby="quick-work-title"><header><div><h2 id="quick-work-title">Leave a stone</h2><p>Capture the work without leaving your place.</p></div><button id="quick-work-close" type="button" aria-label="Close Add Work">Close</button></header><div id="quick-work-slot"></div><p class="quick-work-shortcut">⌘ / Ctrl + Shift + K · Escape to close · drafts stay here</p></dialog>
+  <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-text"><p id="confirm-text"></p><div class="dialog-actions"><button id="confirm-cancel" type="button">Cancel</button><button id="confirm-ok" class="primary" type="button">OK</button></div></dialog>
+  <dialog id="session-dialog" aria-labelledby="dialog-title">
+    <form id="session-form"><h2 id="dialog-title">New session</h2><label for="session-name">Session title</label><input id="session-name" maxlength="160" required autocomplete="off"><div id="backend-field"><label for="session-backend">Backend</label><select id="session-backend"><option value="">Use default</option></select></div><label for="session-workspace">Workspace</label><input id="session-workspace" placeholder="Default workspace" autocomplete="off"><p id="session-form-error" class="form-error" role="alert"></p><div class="dialog-actions"><button id="cancel-session" type="button">Cancel</button><button id="save-session" class="primary" type="submit">Create session</button></div></form>
+  </dialog>
+</body>
+</html>

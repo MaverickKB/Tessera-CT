@@ -1,0 +1,5 @@
+// Copy this file to Signing.local.xcconfig and set your own values.
+// Signing.local.xcconfig is gitignored. An empty team does not sign a device build.
+
+DEVELOPMENT_TEAM =
+PRODUCT_BUNDLE_IDENTIFIER_PREFIX = com.example

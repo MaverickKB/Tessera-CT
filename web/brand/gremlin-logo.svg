@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" class="gremlin-logo" viewBox="0 0 168 96" role="img" aria-label="Cartoon gremlin on a yellow sticker" focusable="false">
+  <rect x="3" y="3" width="162" height="90" rx="24" fill="#ffe566" stroke="#1b140c" stroke-width="4"/>
+  <ellipse cx="118" cy="22" rx="22" ry="8" fill="#fff6b0" opacity="0.7"/>
+  <path d="M46 78 C28 76 24 62 34 58" fill="none" stroke="#1b140c" stroke-width="3" stroke-linecap="round"/>
+  <path d="M46 78 C28 76 24 62 34 58" fill="none" stroke="#3f9b46" stroke-width="1.4" stroke-linecap="round"/>
+  <polygon points="58,40 40,14 66,32" fill="#3f9b46" stroke="#1b140c" stroke-width="2" stroke-linejoin="round"/>
+  <polygon points="86,38 108,10 92,36" fill="#3f9b46" stroke="#1b140c" stroke-width="2" stroke-linejoin="round"/>
+  <polygon points="58,36 48,20 64,32" fill="#f3a3b8"/>
+  <polygon points="84,36 100,18 90,36" fill="#f3a3b8"/>
+  <ellipse cx="74" cy="58" rx="22" ry="16" fill="#57b85a" stroke="#1b140c" stroke-width="2.2"/>
+  <ellipse cx="74" cy="64" rx="12" ry="8" fill="#9adf78"/>
+  <circle cx="74" cy="44" r="20" fill="#57b85a" stroke="#1b140c" stroke-width="2.2"/>
+  <ellipse cx="66" cy="44" rx="2.6" ry="3.4" fill="#1b140c"/>
+  <ellipse cx="82" cy="44" rx="2.6" ry="3.4" fill="#1b140c"/>
+  <circle cx="67" cy="43" r="0.9" fill="#fffaf0"/>
+  <circle cx="83" cy="43" r="0.9" fill="#fffaf0"/>
+  <ellipse cx="60" cy="50" rx="3" ry="1.6" fill="#f3a3b8"/>
+  <path d="M64 52 Q74 60 84 52" fill="none" stroke="#1b140c" stroke-width="2" stroke-linecap="round"/>
+  <polygon points="72,53 73.4,57 74.8,53" fill="#fffaf0"/>
+  <path d="M90 58 C104 46 116 38 124 30 C118 40 108 48 96 58 Z" fill="#57b85a" stroke="#1b140c" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="126" cy="28" r="6.5" fill="#57b85a" stroke="#1b140c" stroke-width="2"/>
+  <rect x="36" y="66" width="16" height="12" rx="2.5" fill="#e7a15a" stroke="#1b140c" stroke-width="2"/>
+  <path d="M40 66 Q44 58 48 66" fill="none" stroke="#1b140c" stroke-width="1.8" stroke-linecap="round"/>
+</svg>

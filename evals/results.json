@@ -1,0 +1,115 @@
+{
+  "generated_at": "2026-10-15T14:50:26.572712+00:00",
+  "backend": "FakeBackend",
+  "judge_mode": "heuristic",
+  "scenarios": [
+    {
+      "name": "direct_answer",
+      "passed": true,
+      "checks": {
+        "expected_route": true,
+        "no_exception": true,
+        "expected_reply": true,
+        "automatic_turn_queued": true,
+        "user_words_preserved": true
+      },
+      "reply": "Two plus two is four.",
+      "error": null,
+      "judge_score": 0.9,
+      "judge_source": "heuristic",
+      "backend_calls": 1
+    },
+    {
+      "name": "tool_read",
+      "passed": true,
+      "checks": {
+        "expected_route": true,
+        "no_exception": true,
+        "expected_reply": true,
+        "automatic_turn_queued": true,
+        "user_words_preserved": true,
+        "tool_outcome_captured": true
+      },
+      "reply": "The color in fact.txt is turquoise.",
+      "error": null,
+      "judge_score": 0.9,
+      "judge_source": "heuristic",
+      "backend_calls": 2
+    },
+    {
+      "name": "risk_block",
+      "passed": true,
+      "checks": {
+        "expected_route": true,
+        "no_exception": true,
+        "expected_reply": true,
+        "automatic_turn_queued": true,
+        "user_words_preserved": true,
+        "side_effect_prevented": true
+      },
+      "reply": "Policy blocked deletion; marker.txt remains.",
+      "error": null,
+      "judge_score": 0.1,
+      "judge_source": "heuristic",
+      "backend_calls": 2
+    },
+    {
+      "name": "offline_recovery",
+      "passed": true,
+      "checks": {
+        "expected_route": true,
+        "no_exception": true,
+        "expected_reply": true,
+        "automatic_turn_queued": true,
+        "user_words_preserved": true,
+        "turn_and_session_queued": true,
+        "debt_drained": true
+      },
+      "reply": "capture survives offline",
+      "error": null,
+      "judge_score": 0.9,
+      "judge_source": "heuristic",
+      "backend_calls": 1
+    },
+    {
+      "name": "memory_tools",
+      "passed": true,
+      "checks": {
+        "expected_route": true,
+        "no_exception": true,
+        "expected_reply": true,
+        "recall_used_service": true,
+        "explicit_note_written": true,
+        "automatic_turn_written": true
+      },
+      "reply": "The prior decision was turquoise. I recorded that it was checked.",
+      "error": null,
+      "judge_score": 0.9,
+      "judge_source": "heuristic",
+      "backend_calls": 3
+    },
+    {
+      "name": "backend_failure",
+      "passed": true,
+      "checks": {
+        "expected_route": true,
+        "expected_error": true,
+        "automatic_turn_queued": true,
+        "user_words_preserved": true,
+        "failure_captured": true
+      },
+      "reply": "",
+      "error": "RuntimeError",
+      "judge_score": 0.0,
+      "judge_source": "heuristic",
+      "backend_calls": 1
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "passed": 6,
+    "pass_rate": 1.0,
+    "mean_judge_score": 0.6166666666666667
+  },
+  "limits": "Scripted scenarios check harness behavior. Heuristic reply scores do not establish real model quality."
+}

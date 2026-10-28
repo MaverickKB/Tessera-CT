@@ -1,0 +1,998 @@
+{
+  "source": "tessera/settings_model.py (catalog + record-row specs)",
+  "proof": "catalog scalars are flip-tested in tests/test_settings_consumers.py; record rows are classified by named reader site",
+  "counts": {
+    "CONSUMED": 105,
+    "NO-READER": 1
+  },
+  "fields": [
+    {
+      "id": "agent_name",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/prompts.py:3 (SYSTEM_PROMPT_TEMPLATE), rendered by tessera/loop.py:207"
+        }
+      ]
+    },
+    {
+      "id": "operator_name",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config.py:844 operator_label; tessera/sessions.py:1224 reads operator_label_sentence"
+        }
+      ]
+    },
+    {
+      "id": "autonomy.floor_name",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config.py:863 floor_label; read by tessera/autonomy.py:1529 and tessera/sessions.py:1071"
+        }
+      ]
+    },
+    {
+      "id": "identity.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:766 ensure_operator runs only when enabled; tessera/board.py:280 and :715 resolve owners through the registry"
+        }
+      ]
+    },
+    {
+      "id": "swarm.pressure_hold_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/scheduler.py pressure_allows holds a listed local engine when the switch is on, in Safe mode and in Unleashed"
+        }
+      ]
+    },
+    {
+      "id": "swarm.pressure_soft_threshold",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/scheduler.py:138 holds a backend when occupied >= slots_total * threshold"
+        }
+      ]
+    },
+    {
+      "id": "swarm.max_job_tasks",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/swarm_bounds.py job_task_limit; tessera/jobs.py refuses a job larger than the effective bound. Unset allows 8 in Safe mode and no cap in Unleashed. A saved integer holds in both modes"
+        }
+      ]
+    },
+    {
+      "id": "swarm.distinct_workers",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/swarm_bounds.py require_distinct_workers; tessera/jobs.py requires a distinct backend and account when the guard is on. Unset is on in Safe mode and off in Unleashed. A saved true or false holds in both modes. Overlapping scopes stay refused"
+        }
+      ]
+    },
+    {
+      "id": "roles.main",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config.py:1278 backend_for resolves the role to a backend"
+        }
+      ]
+    },
+    {
+      "id": "roles.failover",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/loop.py:629 builds the failover backend on a failed turn"
+        }
+      ]
+    },
+    {
+      "id": "codex.models_url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/model_discovery.py codex_request_url; discover_codex_models GETs it with the stored sign-in token"
+        }
+      ]
+    },
+    {
+      "id": "codex.client_version",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/model_discovery.py codex_request_url appends client_version to that request"
+        }
+      ]
+    },
+    {
+      "id": "computer_use.provider",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:64 computer_backend; on macOS an empty provider also returns native — partial, baseline debt",
+          "note": "macOS only: the Default option is a duplicate of Native. The baseline line is platform=darwin"
+        }
+      ],
+      "note": "macOS only: the Default option is a duplicate of Native. The baseline line is platform=darwin"
+    },
+    {
+      "id": "computer_use.timeout",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/native_cua.py:39 NativeHelper.timeout"
+        }
+      ]
+    },
+    {
+      "id": "computer_use.jev.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/native_cua.py:286 registers Jev screen tools only when enabled"
+        }
+      ]
+    },
+    {
+      "id": "computer_use.jev.credential_ref",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cua_jev.py:31 key_available short-circuits on a credential_ref"
+        }
+      ]
+    },
+    {
+      "id": "computer_use.jev.base_url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cua_jev.py:215 block copied onto the router at tessera/loop.py:165"
+        }
+      ]
+    },
+    {
+      "id": "computer_use.jev.model",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cua_jev.py:215 block copied onto the router at tessera/loop.py:165"
+        }
+      ]
+    },
+    {
+      "id": "computer_use.jev.timeout",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cua_jev.py:215 block copied onto the router at tessera/loop.py:165"
+        }
+      ]
+    },
+    {
+      "id": "computer_use.jev.min_confidence",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cua_jev.py:215 confidence compared against min_confidence"
+        }
+      ]
+    },
+    {
+      "id": "aethermind.source",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/bundled_engine.py _wants_external: embedded stays on the packaged engine; external is used only after it validates"
+        }
+      ]
+    },
+    {
+      "id": "aethermind.url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/bundled_engine.py probe_external validates this URL; loop.py uses it only after that probe succeeds"
+        }
+      ],
+      "rendering": "inert while aethermind.endpoints is non-empty; the page marks it \"Not used\" and refuses the save"
+    },
+    {
+      "id": "aethermind.endpoints",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/bundled_engine.py probe_external validates this list; loop.py uses it only after that probe succeeds"
+        }
+      ]
+    },
+    {
+      "id": "aethermind.project",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/loop.py:161 passes the project to Capture"
+        }
+      ]
+    },
+    {
+      "id": "aethermind.bundled_path",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/bundled_engine.py:30 _engine_root resolves the packaged vs configured engine"
+        }
+      ]
+    },
+    {
+      "id": "aethermind.engine_log_max_bytes",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/bundled_engine.py _log_limit keeps the engine log to this many bytes; engine_log_text returns that cap"
+        }
+      ]
+    },
+    {
+      "id": "autonomy.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/autonomy.py:564 starts the floor thread only when enabled"
+        }
+      ]
+    },
+    {
+      "id": "autonomy.infinity_slug",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/autonomy.py:557 floor_slug keys the floor session and cockpit lane"
+        }
+      ]
+    },
+    {
+      "id": "autonomy.world_view",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/floor_definition.py:775 effective_world_view reads config.autonomy.world_view until a definition file is saved",
+          "note": "Read until a floor-definition file exists. A saved file owns the text."
+        }
+      ],
+      "note": "Read until a floor-definition file exists. A saved file owns the text."
+    },
+    {
+      "id": "autonomy.min_wake_gap_seconds",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/autonomy.py:980 _cap_reason refuses a wake inside the gap"
+        }
+      ]
+    },
+    {
+      "id": "autonomy.self_prompt_gap_seconds",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/autonomy.py:1506 and :1563 gate self-prompt refreshes on the gap"
+        }
+      ]
+    },
+    {
+      "id": "autonomy.oversight_policy",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/oversight.py:446 selects report content; tessera/sessions.py:1604 echoes it"
+        }
+      ]
+    },
+    {
+      "id": "autonomy.trial_poll_seconds",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:1571 throttle on trial checks"
+        }
+      ]
+    },
+    {
+      "id": "jev.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config reads the whole jev block"
+        }
+      ]
+    },
+    {
+      "id": "jev.action_gate_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config; gates mutating tools in the session loop"
+        }
+      ]
+    },
+    {
+      "id": "jev.url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.model",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.api_key_env",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.credential_ref",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.timeout",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.gate_threshold",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config; bar for session/merge/completion gates"
+        }
+      ]
+    },
+    {
+      "id": "jev.goal_threshold",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.risk_threshold",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config; session-tool risk enforcement"
+        }
+      ]
+    },
+    {
+      "id": "jev.loop_window",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.batch_items",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config"
+        }
+      ]
+    },
+    {
+      "id": "jev.human_gate",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev.py:89 JudgeKit.from_config; tessera/board_tools.py:91 ask_human_gate consults it"
+        }
+      ]
+    },
+    {
+      "id": "jev.session_gates_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/loop.py:928 and :1000 gate session tools on it (jev.py:91 pops it from the from_config dict, so the loop reads config directly)"
+        }
+      ]
+    },
+    {
+      "id": "voice.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py:187, :244, :280 all branch on settings.enabled"
+        }
+      ]
+    },
+    {
+      "id": "voice.credential_ref",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py:78 configured() requires it (with socket and model) to consider voice ready"
+        }
+      ]
+    },
+    {
+      "id": "voice.voice",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py:388 copies session_options into the lease; the voice name selects the spoken voice on next start"
+        }
+      ]
+    },
+    {
+      "id": "voice.model",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py:78 configured()"
+        }
+      ]
+    },
+    {
+      "id": "voice.websocket_url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py:78 configured()"
+        }
+      ]
+    },
+    {
+      "id": "voice.max_session_seconds",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py:375 added to the session deadline"
+        }
+      ]
+    },
+    {
+      "id": "voice.dedicated_title",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:973 seeds the dedicated voice session title; :1025 reconciles it on restart",
+          "note": "write-once at session creation; a later edit does not move an existing session — recorded debt in tests/test_settings_consumers.py"
+        }
+      ],
+      "note": "write-once at session creation; a later edit does not move an existing session — recorded debt in tests/test_settings_consumers.py"
+    },
+    {
+      "id": "voice.dedicated_reasoning",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:980, :1026 seeds/reconciles the dedicated session reasoning",
+          "note": "same write-once caveat as voice.dedicated_title"
+        }
+      ],
+      "note": "same write-once caveat as voice.dedicated_title"
+    },
+    {
+      "id": "voice.dedicated_thinking_budget",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:981, :1026 seeds/reconciles the thinking budget; tessera/voice.py:130 validates it",
+          "note": "same write-once caveat as voice.dedicated_title"
+        }
+      ],
+      "note": "same write-once caveat as voice.dedicated_title"
+    },
+    {
+      "id": "ui.theme",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:1870 status ui block; web/app.js applies it"
+        }
+      ]
+    },
+    {
+      "id": "ui.mark",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:2066 status ui block publishes mark; web/app.js applyMark paints the header and icons. Values: cairn, gremlin."
+        }
+      ]
+    },
+    {
+      "id": "ui.skin",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:1870 status ui block; web/app.js applies it"
+        }
+      ]
+    },
+    {
+      "id": "ui.accent_color",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:1870 status ui block; web/app.js:6780 applyAccent applies it"
+        }
+      ]
+    },
+    {
+      "id": "ui.show_thoughts",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:1871 status ui block; web/app.js applies it"
+        }
+      ]
+    },
+    {
+      "id": "ui.yolo_banner",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:1803 status ui block; web/app.js shows the banner from it"
+        }
+      ]
+    },
+    {
+      "id": "ui.easter_egg_f_it",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:2063 status ui block; web/unleashed-label.js:76 paints the approval button from it; web/app.js:6961 paintApprovalLabel applies it"
+        }
+      ]
+    },
+    {
+      "id": "ui.send_shortcut",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/sessions.py:1872 status ui block; web/app.js:6782 applyShortcut applies it"
+        }
+      ]
+    },
+    {
+      "id": "ui.config_journal_entries",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config_editor.py change_report keeps and shows this many config changes; tessera/settings_model.py SettingsService.view publishes shown and total"
+        }
+      ]
+    },
+    {
+      "id": "permissions.mode",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/settings_model.py:405 reads the approval dict; tessera/sessions.py:1848 set_yolo writes it",
+          "note": "no config path: the spec writes approval state, not a config field"
+        }
+      ],
+      "note": "no config path: the spec writes approval state, not a config field"
+    },
+    {
+      "id": "accounts.*.credential_ref",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config.py:1292 becomes the backend credential reference; tessera/settings_ladder.py credential_source reads it"
+        }
+      ]
+    },
+    {
+      "id": "accounts.*.provider_kind",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config.py:1227 and :1291 route the backend through the account kind; tessera/agents.py:54,:98 branch per kind"
+        }
+      ]
+    },
+    {
+      "id": "credentials.*.env",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/credentials.py:98,:100 resolves the value from that environment variable"
+        }
+      ]
+    },
+    {
+      "id": "credentials.*.keychain_account",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/credentials.py:114,:118 the keychain lookup account argument"
+        }
+      ]
+    },
+    {
+      "id": "credentials.*.keychain_service",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/credentials.py:110,_keychain runs security/secret-tool with the service"
+        }
+      ]
+    },
+    {
+      "id": "credentials.*.secret",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/settings_model.py:1668 _store_secret writes it to the keychain; credentials.py:143 put is the write path",
+          "note": "the page writes the keychain; the value is read back through keychain_service/keychain_account"
+        }
+      ],
+      "note": "the page writes the keychain; the value is read back through keychain_service/keychain_account"
+    },
+    {
+      "id": "hosts.*.address",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:75,:111,:288 probe target for local and ssh kinds"
+        }
+      ]
+    },
+    {
+      "id": "hosts.*.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:275 a disabled host is not watched; :366 reported in the row"
+        }
+      ]
+    },
+    {
+      "id": "hosts.*.kind",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:83,:108 the kind selects the probe path (prometheus/local/ssh/agent)"
+        }
+      ]
+    },
+    {
+      "id": "hosts.*.label",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:368,:369 the board shows this label"
+        }
+      ]
+    },
+    {
+      "id": "hosts.*.probe_command",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:70,:111,:283,:288 the argv run for kind=local/ssh"
+        }
+      ]
+    },
+    {
+      "id": "hosts.*.prometheus_instance",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:233 substituted into the PromQL query template"
+        }
+      ]
+    },
+    {
+      "id": "hosts.*.ssh_alias",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:75,:111,:288 ssh target alias for kind=ssh"
+        }
+      ]
+    },
+    {
+      "id": "hosts.*.timeout",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/infrastructure.py:68,:289,:303 probe and request deadline"
+        }
+      ]
+    },
+    {
+      "id": "identities.display_name",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/identities.py:233 rename; settings_model.py:601 renders it"
+        }
+      ],
+      "rendering": "served only when identity.enabled is on"
+    },
+    {
+      "id": "identities.name",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/board.py:280,:715 resolve an owner handle; tessera/identities.py:233 rename"
+        }
+      ],
+      "rendering": "served only when identity.enabled is on; off leaves the payload unchanged"
+    },
+    {
+      "id": "mcp_servers.*.args",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:32 passed into the stdio server launch"
+        }
+      ]
+    },
+    {
+      "id": "mcp_servers.*.command",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:32 StdioMcpClient(command, ...) launches it"
+        }
+      ]
+    },
+    {
+      "id": "mcp_servers.*.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:58,:346 session_plugin_servers offers the server only when enabled; register_mcp_server_tools registers only enabled servers"
+        }
+      ]
+    },
+    {
+      "id": "mcp_servers.*.env",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:32 env= reaches StdioMcpClient",
+          "note": "HTTP servers drop env (mcp_servers.py:31 builds McpClient without it) — baseline debt; the hint on the field says so"
+        }
+      ],
+      "note": "HTTP servers drop env (mcp_servers.py:31 builds McpClient without it) — baseline debt; the hint on the field says so"
+    },
+    {
+      "id": "mcp_servers.*.session_tools",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:58 session_plugin_servers offers the server's tools only when session_tools is on"
+        }
+      ]
+    },
+    {
+      "id": "mcp_servers.*.token_env",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:31 open_server passes token_env to McpClient; the token value is read from that variable at call time"
+        }
+      ]
+    },
+    {
+      "id": "mcp_servers.*.url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/mcp_servers.py:30,:31 McpClient(url, ...) for an HTTP server"
+        }
+      ]
+    },
+    {
+      "id": "oauth_accounts.sign-in",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/account_oauth.py grant flow; refresh action in _oauth_actions (settings_model.py:491)",
+          "note": "record container, not a scalar field; the page only triggers sign-in"
+        }
+      ],
+      "rendering": "always served; actions depend on the live grant state",
+      "note": "record container, not a scalar field; the page only triggers sign-in"
+    },
+    {
+      "id": "providers.*.allow_api_key_fallback",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/grok_worker.py:30 refuses the API-key fallback unless explicitly true; tessera/settings_ladder.py credential_source names it when on"
+        }
+      ],
+      "rendering": "served only on grok cli_worker rows"
+    },
+    {
+      "id": "providers.*.args",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cli_worker.py:110 argument list passed to the CLI; empty uses the vendor default argv"
+        }
+      ],
+      "rendering": "served only on cli_worker provider rows"
+    },
+    {
+      "id": "providers.*.base_url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/backend.py:91 stores it; :200,:244 every request URL is built from it"
+        }
+      ],
+      "rendering": "set when the endpoint is added; the model row does not edit it"
+    },
+    {
+      "id": "providers.*.chat",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config.py:45 offered_for_chat excludes chat=false backends from every chat role"
+        }
+      ]
+    },
+    {
+      "id": "providers.*.command",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cli_worker.py:105 requires it; :107 shutil.which resolves it; :268 Popen runs it"
+        }
+      ],
+      "rendering": "served only on cli_worker provider rows"
+    },
+    {
+      "id": "providers.*.credential",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/backend.py:228 _credentials.resolve(credential_ref) on each call; tessera/settings_ladder.py credential_source names that reference"
+        }
+      ],
+      "rendering": "the model inherits its provider connection; the row has no credential dropdown"
+    },
+    {
+      "id": "providers.*.cwd",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cli_worker.py:105 requires it; :268 Popen cwd argument"
+        }
+      ],
+      "rendering": "served only on cli_worker provider rows"
+    },
+    {
+      "id": "providers.*.enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/config.py:1278 backend_for refuses a disabled backend (\"Backend X is disabled\"); settings_model.py:186 drops it from chat options"
+        }
+      ]
+    },
+    {
+      "id": "providers.*.fallback_credential",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/grok_worker.py:31,:35 resolves the named credential for the fallback"
+        }
+      ],
+      "rendering": "edited in config.toml; the model row has no credential dropdown"
+    },
+    {
+      "id": "providers.*.fallback_env",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/grok_worker.py:31,:40 injects the fallback credential into that env var for the CLI process"
+        }
+      ],
+      "rendering": "served only on grok cli_worker rows"
+    },
+    {
+      "id": "providers.*.max_concurrent_requests",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/endpoint_limit.py:43 request_limit; tessera/backend.py:189 chat holds one slot and bind_endpoint re-reads a hand-set limit; tessera/jobs.py:264 each swarm worker waits on that slot"
+        }
+      ]
+    },
+    {
+      "id": "providers.*.model",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/backend.py:92; sent on every chat request; cli_worker.py:163 conflicts checked against it"
+        }
+      ],
+      "rendering": "not served on cli_worker rows (the CLI uses its own login)"
+    },
+    {
+      "id": "providers.*.throttle_requests_per_minute",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/endpoint_throttle.py:24 throttle_limits; tessera/backend.py:189 and tessera/jobs.py pace that endpoint in requests per minute. A hand-set number is enforced in Unleashed; there is no system default"
+        }
+      ]
+    },
+    {
+      "id": "providers.*.throttle_tokens_per_minute",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/endpoint_throttle.py:24 throttle_limits; tessera/backend.py:189 charges reported usage. A hand-set number is enforced in Unleashed; there is no system default"
+        }
+      ]
+    },
+    {
+      "id": "providers.*.vendor",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/cli_worker.py:105 requires a vendor; :200,:211,:223,:229,:333,:360 branch per vendor"
+        }
+      ],
+      "rendering": "served only on cli_worker provider rows"
+    },
+    {
+      "id": "service_accounts",
+      "status": "NO-READER",
+      "readers": [
+        {
+          "site": null,
+          "note": "no reader: the container serves an empty list with actions=[] and nothing consumes it yet; the hint says so on the page"
+        }
+      ],
+      "note": "no reader: the container serves an empty list with actions=[] and nothing consumes it yet; the hint says so on the page"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "reported": {
+    "debt_total": 2,
+    "job_status": {"enabled": true, "configured": true, "jobs": [
+      {"ordinal": 1, "status": "running", "worker_count": 2, "completed_count": 0, "failed_count": 0, "merge_status": "pending", "gate_status": "allowed"}
+    ]},
+    "voice": {"enabled": true, "configured": true, "active_count": 1, "transcript_count": 2}
+  },
+  "cases": [
+    {
+      "name": "empty",
+      "status": {
+        "debt_total": 0,
+        "job_status": {"enabled": true, "configured": true, "jobs": []},
+        "voice": {"enabled": true, "configured": true, "active_count": 0, "transcript_count": 0}
+      },
+      "expected": {"capture": "Empty", "swarm": "Empty", "voice": "Configured"}
+    },
+    {"name": "unavailable", "http_status": 503, "expected": {"capture": "Status unavailable", "swarm": "Status unavailable", "voice": "Status unavailable"}},
+    {"name": "server-error", "http_status": 500, "expected": {"capture": "Status unavailable", "swarm": "Status unavailable", "voice": "Status unavailable"}},
+    {"name": "rejected-origin", "http_status": 403, "expected": {"capture": "Status unavailable", "swarm": "Status unavailable", "voice": "Status unavailable"}}
+  ]
+}

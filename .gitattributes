@@ -1,0 +1,6 @@
+# The vendored engine is a byte-for-byte copy of one upstream commit.
+# Mark it non-text so checkout never rewrites line endings, and vendored so
+# language stats do not treat it as Tessera source.
+tessera/_assets/aethermind-engine/** linguist-vendored -text
+tessera/_assets/aethermind-engine/* linguist-vendored -text
+tessera/_assets/aethermind-engine/.* linguist-vendored -text

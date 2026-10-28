@@ -1,0 +1,9 @@
+Copyright 2026 Kenneth Bandoly
+
+Tessera is licensed under the Apache License, Version 2.0.
+The license text is in LICENSE.
+
+The vendored AetherMind engine under tessera/_assets/aethermind-engine
+keeps the license file stored beside that tree. Those bytes are not
+covered by the Apache License above and are not modified in this
+repository. Read that license file before redistributing the engine.

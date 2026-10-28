@@ -1,0 +1,24 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; background: #faf9f5; color: #201f1c; }
+body { margin: 0; }
+main { max-width: 1100px; margin: auto; padding: 40px 24px; }
+header, section { padding: 24px 0; border-bottom: 1px solid #c4b8a8; }
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); margin: 8px 0; font-weight: 600; }
+h1 span, .eyebrow { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; }
+h1 span { display: inline-block; vertical-align: middle; padding: 6px 10px; border: 1px solid #c4b8a8; border-radius: 6px; }
+h2 { font-weight: 600; }
+p { line-height: 1.6; max-width: 75ch; }
+a { color: #8a3f2c; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 20px; }
+figure { margin: 0; padding: 20px; text-align: center; }
+figcaption { margin-top: 14px; font-size: .85rem; line-height: 1.5; }
+.mark { width: 160px; height: 160px; max-width: 100%; }
+.sizes { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.sizes figure { min-width: 54px; }
+.themes figure { border: 1px solid #c4b8a8; border-radius: 10px; }
+.paper { background: #faf9f5; color: #201f1c; }
+.ink { background: #201f1c; color: #faf9f5; }
+.wordmark { display: block; width: 100%; max-width: 420px; height: auto; margin: auto; }
+.glyphs { display: flex; flex-wrap: wrap; }
+.glyphs figure { flex: 1 0 100px; }
+.glyphs img { width: 32px; height: 32px; }
+@media (max-width: 480px) { main { padding: 20px 12px; } figure { padding: 14px; } }

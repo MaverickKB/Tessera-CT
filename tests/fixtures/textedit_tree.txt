@@ -1,0 +1,8 @@
+0 AXWindow AXStandardWindow TextEdit - 100,80,700,500 AXRaise
+1 AXButton AXCloseButton - - 108,88,14,14 AXPress
+2 AXButton AXMinimizeButton - - 128,88,14,14 AXPress
+3 AXTextArea - - Hello 141,96,656,384 AXShowMenu
+4 AXMenuItem - Close - 0,0,120,22 AXPress
+5 AXMenuItem - Cut - 0,0,120,22 AXPress
+6 AXMenuItem - Copy - 0,0,120,22 AXPress
+7 AXStaticText - Status Saved 100,560,80,16 -

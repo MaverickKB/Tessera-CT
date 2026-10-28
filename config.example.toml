@@ -1,0 +1,483 @@
+# Copy with `python -m tessera init`, then replace endpoint/model placeholders.
+# Setup: docs/SETUP.md. Never put credential values in TOML.
+agent_name = "Tessera"
+user_instructions = ""
+operator_name = ""
+workspace = ""
+cwd = ""
+identity_file = ""
+identity_max_bytes = 65536
+# cwd defaults to the directory where Tessera starts.
+# A turn is not stopped by an iteration count. Do not add one back.
+
+# A backend with no credential is local. A credential_ref, an api_key_env, or a
+# vendor CLI is not. A sign-in grant does not fall back to an API key variable.
+# max_concurrent_requests is this model's cap. A number you set by hand is enforced
+# in Safe mode and in Unleashed mode. Omit it and Safe mode allows 1 on a model
+# with no credential (this protects the machine) and no cap on a model that names
+# a credential. Unleashed mode drops that default and does not add a number. A swarm does not.
+# throttle_requests_per_minute and throttle_tokens_per_minute are optional.
+# Omit them and the endpoint is unlimited in Safe mode and in Unleashed mode.
+# There is no system default. A number you set by hand is enforced in both modes.
+# The pace is this endpoint only. It does not cap the swarm.
+# Settings names the credential each backend uses: a vendor CLI, a sign-in grant,
+# an API key variable, or none.
+[backends.primary]
+base_url = "https://models.example.com/v1"
+model = "your-main-model"
+api_key_env = "MODEL_API_KEY"
+timeout = 60
+retries = 2
+
+[backends.small]
+base_url = "https://models.example.com/v1"
+model = "your-small-model"
+# chat = false marks a utility/structured-output backend: it stays usable by roles
+# and workers but is never offered as a chat brain in the session picker.
+api_key_env = "MODEL_API_KEY"
+timeout = 30
+retries = 2
+
+# Grok chat uses Tessera's own xAI sign-in. Tools are API tool calls.
+# The official CLI is not the chat brain. Another program's auth file is not
+# the grant. An API key is not a fallback. Sign in on the settings page.
+# [credentials.xai-oauth]
+# oauth = "xai"
+# [backends.grok]
+# base_url = "https://api.x.ai/v1"
+# model = "grok-4.7"
+# credential_ref = "xai-oauth"
+
+[roles]
+main = "primary"
+fast = "small"
+compactor = "small"
+
+# Optional named references. Empty selectors perform no credential lookup.
+# Set env to a variable NAME, or both OS-store selectors to item identifiers.
+# These references are unused until selected by a backend/account or voice.
+[credentials.gateway]
+env = ""
+keychain_service = ""
+keychain_account = ""
+
+[credentials.voice_api]
+env = ""
+keychain_service = ""
+keychain_account = ""
+
+[swarm]
+enabled = false
+# How many requests one model runs at once is backends.<name>.max_concurrent_requests.
+# Empty: Safe mode allows 1 at a time on a model with no credential
+# and no cap on a cloud provider. Unleashed mode does not add a cap. A number you
+# set applies in both modes.
+# max_job_tasks, when omitted, allows 8 workers in one job in Safe mode.
+# Unleashed mode does not add that cap. A number written here holds in both modes.
+# distinct_workers, when omitted, requires each worker's own backend and account
+# in Safe mode, so the job's evidence is independent. It is not a rule that a
+# judge must differ from a worker. Unleashed mode allows a shared backend.
+# true or false written here holds in both modes. Overlapping scopes stay refused.
+# job_workers, max_concurrent, backend_limits, default_backend_limit,
+# initial_concurrency and the AIMD settings are retired. A file that still sets
+# them loads and records a note. They are not caps.
+max_attempts = 3
+lease_seconds = 600
+
+[board]
+enabled = false
+
+# Gathering artifacts from outside (pull requests) into intake cards. An intake card is
+# not work: nobody can claim it and it wakes no worker until it is triaged and accepted.
+# The collector reads ONE named repository and needs the GitHub CLI (gh) installed.
+[intake]
+limit = 20
+timeout_seconds = 60.0
+
+# Where ChatGPT or Codex sign-in lists models. Change these in Settings, under Models, Advanced.
+[codex]
+models_url = "https://chatgpt.com/backend-api/codex/models"
+client_version = "99.0.0"
+
+[voice]
+enabled = false
+websocket_url = ""
+model = ""
+api_base_url = ""
+client_secret_path = ""
+client_protocol_prefix = ""
+credential_ref = ""
+api_key_env = ""
+max_session_seconds = 60
+secret_ttl_seconds = 60
+timeout = 5
+max_sessions = 1
+audio_format = "audio/pcm"
+audio_sample_rate = 24000
+turn_detection = {}
+session_options = {}
+tools = []
+
+[aethermind]
+# The embedded engine is the memory service until `url` or `endpoints` names
+# an external AetherMind that is reachable and accepts its auth. If that
+# service fails, the packaged engine keeps running and the failure is reported.
+# There is no off state. A stored `enabled` key from an older file is ignored.
+url = ""
+# url = "https://memory.example.com/mcp"
+token_env = "AETHERMIND_TOKEN"
+project = "your-project-id"
+personal_project = "your-personal-project-id"
+author = "your-author-name"
+timeout = 15
+# Pre-turn recall for memory-looking messages; it blocks the turn while it runs.
+# false leaves recall to the agent's memory tools (the per-turn reminder stays).
+auto_recall = true
+# Leave bundled_path empty to use the engine shipped inside this install
+# (tessera/_assets/aethermind-engine, checked against the packaging manifest).
+# Set it only to name a copy elsewhere. Relative paths sit beside the Tessera
+# home. An external URL is used only after it is reachable and accepts its auth;
+# otherwise the packaged engine keeps running.
+# bundled_path = ""
+
+[jev]
+enabled = false
+url = ""
+model = ""
+# Set your compatible decision API endpoint and model before enabling.
+api_key_env = "TYPESAFE_API_KEY"
+timeout = 8
+risk_threshold = 0.7
+cache_size = 256
+gated_tools = ["shell", "write_file", "edit_file"]
+
+[compactor]
+workers = 4
+retries = 2
+context_bytes = 16000
+judge_enabled = false
+judge_threshold = 0.8
+
+[view]
+node_bytes = 512
+high_bytes = 128000
+low_bytes = 64000
+
+[tools]
+# ask: explicit approval callback; noninteractive use denies risky operations.
+# never: allow without approval; deny_risky: reject shell/file writes;
+# yolo: auto-approve every tool. The web UI labels this Unleashed (config value "yolo").
+approval = "ask"
+# The web UI switch flips between the policy above and yolo at runtime; the
+# choice persists in approval_state_file (relative to home). false hides it.
+yolo_switch = true
+approval_state_file = "state/approval.json"
+clip_chars = 30000
+timeout = 30
+
+[hooks]
+shell = []
+# shell = [{event = "pre_tool", command = "your-policy-hook", timeout = 10}]
+
+[agents]
+# A positive max_concurrent is an operator ceiling over every spawn lane, in both modes.
+# Zero leaves a local lane to that model's max_concurrent_requests.
+# agents.local_serving_slots is retired: a file that still sets it is noted at load and ignored.
+max_concurrent = 0
+max_depth = 2
+
+[server]
+# gzip/deflate JSON and static responses at least this many bytes when the client accepts it; 0 = off.
+compress_min_bytes = 1024
+host = "127.0.0.1"
+# Zero asks the OS for an available port; desktop reports the assigned URL.
+# Only loopback addresses are accepted.
+port = 0
+max_hops = 4
+# Opt-in: bare host names a local tailnet-only HTTPS proxy presents (for example
+# the MagicDNS name used with `tailscale serve`). Never use a public funnel.
+# The core still binds loopback only. Env: TESSERA_SERVER_ALLOWED_HOSTS='["name"]'.
+allowed_hosts = []
+# Shared key for requests arriving through an allowed_hosts proxy (card 177).
+# Empty (default) means no auth at all, which is the historical desktop posture.
+# A loopback-only core needs no key: any process running as your OS user can read
+# this file and would just use it. A key matters when a phone or another app
+# reaches the core through a proxy -- that is the path worth locking.
+# Clients may present it three ways, because no single form covers all of them:
+#   Authorization: Bearer <key>   the iOS app already sends this
+#   X-Tessera-Key: <key>          plain header for the web UI and scripts
+#   ?key=<key> on the URL         EventSource cannot set headers, so the live
+#                                 transcript stream needs this; the web UI stores
+#                                 it from /?key=<key> and strips it from the URL
+auth_token = ""
+# 'loopback': require the key only through a proxy (default). Direct loopback
+#   requests stay open, so the local page, the desktop window and the restart
+#   scripts cannot be locked out by a wrong or missing key.
+# 'always': require the key on every /api/ request, for a shared machine. Every
+#   local client then needs it; scripts read TESSERA_KEY.
+auth_mode = "loopback"
+# An idle restart (`restart-core.sh --when idle`) waits for a running turn to
+# finish instead of interrupting it. It stops waiting when a turn has produced
+# nothing for this many seconds, because a silent turn is wedged while a slow
+# one is still working. This bounds silence, not turn length: raising it makes
+# a hung model call hold the reload open longer, not a productive turn.
+restart_stall_seconds = 1800
+
+# Optional operator identity text (for example a SOUL or CORTEX file). Relative
+# paths resolve under the home. Empty means none; nothing is baked in.
+# A neutral template lives in examples/companion/. Copy it into the home and
+# edit the copies. This template is not loaded on its own.
+# identity_file = ""  # or an ordered list: ["SOUL.md", "CORTEX.md"]
+
+# Companions are remote MCP servers Tessera dials. Off by default; inert until
+# enabled and fully set. *_env keys name environment variables, never values.
+[companions.atlas]
+enabled = false
+endpoints = []
+token_env = ""
+timeout = 8
+probe_timeout = 2
+probe_interval = 30
+allow_index_refresh = false
+brief_tool = ""
+contracts_tool = ""
+read_tool = ""
+refresh_tool = ""
+read_uri_prefixes = []
+max_brief_bytes = 4000
+max_briefs_per_session = 3
+
+[companions.ember]
+enabled = false
+helmet_endpoints = []
+companion_endpoints = []
+token_env = ""
+timeout = 8
+probe_timeout = 2
+probe_interval = 30
+surface = ""
+profile = ""
+host_label = ""
+instance_id = ""
+decision_tool = ""
+allow_transition = false
+transition_authority_env = ""
+
+# Detached inspector: a Unix socket bound by the resident daemon. No TCP/HTTP.
+[inspector]
+enabled = false
+socket_path = "run/inspector.sock"
+source_root = ""
+max_frame_bytes = 8388608
+allow_groups = []
+operator_approval_env = ""
+max_note_bytes = 8192
+max_pending_requests = 8
+
+# Remote machines the agent may operate over SSH (remote_shell, remote_read_file,
+# remote_write_file). Commands use the system ssh client in batch mode; shell and
+# writes are risky tools, so tools.approval (ask / deny_risky / yolo) applies.
+# [remotes.workstation-vm]
+# description = "Agent's own Linux VM"
+# host = "vm.example.internal"
+# port = 22
+# user = "agent"
+# identity_file = "~/.ssh/id_ed25519"
+# known_hosts_file = "ssh/known_hosts"   # relative paths resolve under home
+# strict_host_key_checking = "yes"       # or "accept-new"
+# ssh_command = ["ssh"]
+# connect_timeout = 10
+# timeout = 60
+# desk = true    # desk_look / desk_act / desk_status on its GNOME session (docs/AUTONOMY.md)
+# desk_screenshot_command and desk_input_command override the GNOME defaults.
+
+# Event-driven wakes: timers, background tasks, presence, approvals (docs/AUTONOMY.md).
+# Caps gate delivery; held events are never dropped.
+# [autonomy]
+# enabled = true
+# min_wake_gap_seconds = 60
+# max_wakes_per_hour = 12
+# max_wakes_per_day = 120
+# A wake turn is not stopped by an iteration count. Do not add one back.
+# presence_away_seconds = 300
+# engaged_message_seconds = 300
+# engaged_typing_seconds = 120
+# engaged_focus_seconds = 900
+# presence_stale_seconds = 300
+# engaged_wake_kinds = ["approval"]
+# self_prompt_enabled = true
+# self_prompt_gap_seconds = 900
+# lesson_file = "learning/lessons.json"
+# lesson_pass_score = 0.5
+# max_open_lessons = 12
+# lesson_fail_limit = 2
+# approval_expire_seconds = 3600
+
+# Native macOS computer use. On macOS, backend auto with an empty provider is native.
+# Build on the Mac: bash scripts/build-cua-helper.sh "$HOME/.tessera-live/cua/TesseraCUA.app"
+# helper and timeout have defaults (cua/TesseraCUA.app under the Tessera home, 30 seconds).
+# The loader expands a leading ~ and $VAR / ${VAR} in helper when the variable is set.
+# [computer_use]
+# provider = "native"
+# backend = "auto"
+# helper = "cua/TesseraCUA.app"
+# timeout = 30
+# File-only (no Settings row): maximum text characters in computer-use results.
+# Also capped at max(64, tools.clip_chars - 80) by the consumers; minimum 64.
+# text_chars = 12000
+
+# Optional Jev element picker for the native helper. Off unless enabled.
+# base_url and model have no built-in host or model. Set both here, or with
+# TESSERA_COMPUTER_USE__JEV__BASE_URL and TESSERA_COMPUTER_USE__JEV__MODEL,
+# before turning enabled on. Enabling without them is a configuration error.
+# credential_ref names a [credentials] table (keychain or env). api_key_env is
+# used when that variable is set, and when credential_ref is empty.
+# find_element and check are read-only.
+# [credentials.typesafe]
+# keychain_service = "TYPESAFE_API_KEY"
+# keychain_account = "TypeSafe API"
+# [computer_use.jev]
+# enabled = false
+# credential_ref = "typesafe"
+# base_url = ""
+# model = ""
+# api_key_env = "TYPESAFE_API_KEY"
+# timeout = 8
+# min_confidence = 0.5
+# max_state_chars = 24000
+# long_context = false
+
+# An MCP computer-use server is still available with provider = "mcp:<name>".
+# On Linux, backend auto keeps the local desktop tools even if that provider is set.
+
+# TesseraMacLook.app is the legacy mac_look helper, only when mac_enabled is set
+# and computer use is the older mac backend. It is a different bundle from TesseraCUA.app.
+# A real signing identity keeps macOS permission grants across rebuilds.
+# [cua]
+# mac_enabled = false
+# codesign_identity = "Apple Development: Your Name (TEAMID)"
+# max_image_px = 1600
+
+# Infrastructure hosts can read an existing Prometheus (for example the one behind
+# Grafana) instead of running anything locally. "{instance}" in each query is replaced
+# by prometheus_instance; unknown negative exporter sentinels are omitted.
+# [infrastructure]
+# enabled = true
+# prometheus_url = "http://prometheus.example:9090"
+# collect_interval = 60          # seconds; 0 collects only on request
+# [hosts.server-a]
+# kind = "prometheus"
+# enabled = true
+# label = "Server A"
+# prometheus_instance = "server-a:9100"
+# prometheus_up_query = 'up{instance="{instance}"}'
+# [hosts.server-a.prometheus_queries]
+# cpu_load1 = 'node_load1{instance="{instance}"}'
+# memory_total_bytes = 'node_memory_MemTotal_bytes{instance="{instance}"}'
+# [hosts.server-a.prometheus_gpu_queries]
+# utilization_percent = 'DCGM_FI_DEV_GPU_UTIL{instance="{instance}"}'
+
+[prompt]
+# Memory section of the system prompt ({project}, {personal} are filled from [aethermind]); "" turns it off.
+# memory_guidance = "Memory: AetherMind is your long-term memory. ..."
+# One line added to the first turn's state while memory tools exist; "" turns it off.
+# turn_reminder = "Memory check: if this touches past context, call memory_recall before answering; if something durable happened, write a memory_note."
+# delegation_intro = "Delegation: hand off independent or long work instead of doing everything inline."
+# [prompt.delegation_guidance]  # tool name -> line, shown only when the tool is registered
+
+[skills]
+# Agent Skills shelf (agentskills.io format: <name>/SKILL.md with name and description frontmatter).
+# The catalog never enters the system prompt or tool schemas; a byte-capped note lists it at session start.
+enabled = true
+shelf = ""                       # empty means <home>/skills
+trusted_projects = []            # project roots whose .tessera/skills and .agents/skills override by name
+project_dirs = [".tessera/skills", ".agents/skills"]
+note_bytes = 4096
+note_description_chars = 160
+search_limit = 20
+
+[ui]
+# Full-width warning while Unleashed is on. The button shows the mode either way.
+yolo_banner = true
+# Off: that button reads Unleashed. On: it reads F-it, shows the cartoon, and
+# the gremlin icon and logo can appear. The stored approval mode stays yolo.
+easter_egg_f_it = false
+# Opening a session loads this many newest messages; "Earlier messages" loads more.
+history_page = 60
+# Tool/result bodies longer than this arrive clipped; expanding one fetches it whole.
+item_body_chars = 4000
+# One-line summary length on a collapsed tool item.
+item_summary_chars = 120
+# Touch hold (ms) that opens a session row's action menu on phone.
+long_press_ms = 500
+# How often (ms) an open page re-reads the Safe/Unleashed mode so the pill and Settings follow a switch; 0 = off.
+approval_poll_ms = 1000
+# system follows the OS. light and dark are explicit.
+theme = "system"
+# cairn: the default art with the Tessera-CT wordmark. gremlin: the F-it cartoon,
+# shown only while easter_egg_f_it is on. Both values are in Settings.
+mark = "cairn"
+show_thoughts = true
+# enter sends on Enter. modifier sends on Ctrl or Command + Enter.
+send_shortcut = "enter"
+
+
+# Complete optional surface. Empty named tables add no entries; integrations stay off.
+# Full keys, declared defaults and environment overrides: docs/reference/CONFIG.md.
+[accounts]
+
+[hosts]
+
+[systems]
+
+# Purpose-bearing registry: what each system is FOR, and the thresholds the floor
+# should use for it. An id that matches a host name is about that host. Only a
+# `watch = true` record contributes thresholds; the rest is documentation.
+# [systems.mac]
+# kind = "host"
+# label = "Mac"
+# role = "Development and operator surface."
+# watch = true
+# signals = { disk_free_percent_below = 25, managed = false }
+#
+# kind="endpoint" is the one kind this loop itself polls: with watch = true the
+# floor fetches the address on its own interval and wakes a session only when the
+# answer changes. It is a reachability check, not a health model -- a 200 and a 500
+# both count as "answered". signals.poll_seconds defaults to 60.
+# [systems.turn-api]
+# kind = "endpoint"
+# label = "Turn API"
+# role = "The endpoint a chat turn is sent to."
+# address = "http://127.0.0.1:8740/api/health"
+# watch = true
+# signals = { poll_seconds = 60 }
+
+
+[remotes]
+
+[mcp_servers]
+
+[autonomy]
+enabled = false
+
+[channels]
+enabled = false
+
+[computer_use]
+provider = ""
+
+[cua]
+mac_enabled = false
+
+[daemon]
+
+[grafana]
+enabled = false
+
+[identity]
+enabled = false
+
+[infrastructure]
+enabled = false
+
+[status]

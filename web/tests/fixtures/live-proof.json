@@ -1,0 +1,43 @@
+{
+  "swarm": {
+    "marker": "LIVE-SWARM-ACCEPT",
+    "fresh_run": true,
+    "job_status": "succeeded",
+    "hashes_verified": true,
+    "ordered_merge_verified": true,
+    "merge_checks": {
+      "all_artifacts_present": true,
+      "all_workers_succeeded": true,
+      "artifact_hashes_valid": true,
+      "merge_body_within_bound": true
+    },
+    "gate_source": "heuristic",
+    "workers": [
+      {
+        "ordinal": 1,
+        "provider_kind": "openai_chat",
+        "status": "succeeded",
+        "attempt": 1,
+        "reported_tokens": 57.0,
+        "task_cap": 4096
+      },
+      {
+        "ordinal": 2,
+        "provider_kind": "cli_worker",
+        "status": "succeeded",
+        "attempt": 1,
+        "reported_tokens": 13936.0,
+        "task_cap": 16384
+      }
+    ]
+  },
+  "voice": {
+    "status": "blocked",
+    "enabled": false,
+    "configured": false,
+    "active_count": 0,
+    "secret_minted": false,
+    "realtime_exchange": false,
+    "transcript_bridge_live_proven": false
+  }
+}

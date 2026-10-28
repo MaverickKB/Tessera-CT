@@ -1,0 +1,157 @@
+:root {
+  --warm-glow: #edaf97;
+  --ok: #2f8f5b;
+  color-scheme: light;
+  --font-body: Georgia, "Times New Roman", serif;
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-data: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --topbar-height: 52px;
+  --navigation-width: 168px;
+  --sessions-width: 220px;
+  --inspector-width: 340px;
+  --navigation-collapsed-width: 68px;
+  --panel-duration: 180ms;
+  --page-width: 1040px;
+  --brand-wordmark: url("brand/wordmark-tessera-light.svg");
+  --brand-width: 220px;
+  --crew-body: #57b85a;
+  --crew-ear: #3f9b46;
+  --crew-inner: #f3a3b8;
+  --crew-ink: #1b140c;
+  --crew-crate: #e7a15a;
+  --crew-smoke: #6b6258;
+  --glyph-chat: url("brand/glyphs/chat.svg");
+  --glyph-wip: url("brand/glyphs/wip-board.svg");
+  --glyph-infrastructure: url("brand/glyphs/infra-board.svg");
+  --glyph-voice: url("brand/glyphs/voice.svg");
+  --glyph-integrations: url("brand/glyphs/integrations.svg");
+  --glyph-settings: url("brand/glyphs/settings.svg");
+  --paper: #faf9f5;
+  --surface: #ffffff;
+  --quiet-surface: #f2efe8;
+  --ink: #1d1c19;
+  --text: #3f3d38;
+  --muted: #67645e;
+  --old-text: #726d64;
+  --border: #d8d3c9;
+  --branch: #aaa995;
+  --control-border: #8e877b;
+  --accent: #8a3f2c;
+  --accent-hover: #703021;
+  --accent-soft: #f5e8df;
+  --on-accent: #ffffff;
+  --accent-ink: #151b19;
+  --accent-paper: #ffffff;
+  --focus: #a84e35;
+  --work-surface: #edf0e8;
+  --work-border: #657052;
+  --error: #8e2d25;
+  --error-surface: #fff0ed;
+  --yolo: #b3232a;
+  --yolo-strong: #6e1216;
+  --yolo-text: #ffffff;
+  --shade: rgb(29 28 25 / 32%);
+  --shadow: 0 12px 40px rgb(29 28 25 / 12%);
+  --clear: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .mark-preview:not([data-mark="gremlin"])::before { background-image: url("brand/wordmark-tessera-dark.svg"); }
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --brand-wordmark: url("brand/wordmark-tessera-dark.svg");
+    --paper: #201f1c;
+    --surface: #282722;
+    --quiet-surface: #302e28;
+    --ink: #f1ece3;
+    --text: #ded8cc;
+    --muted: #b5aea1;
+    --old-text: #aaa294;
+    --border: #4a463e;
+    --branch: #777c63;
+    --control-border: #80776a;
+    --accent: #edaf97;
+    --accent-hover: #f7c9b7;
+    --accent-soft: #453129;
+    --on-accent: #241a15;
+    --focus: #efb69e;
+    --work-surface: #30352a;
+    --work-border: #a5b18f;
+    --error: #ffb7aa;
+    --error-surface: #452a25;
+    --shade: rgb(0 0 0 / 54%);
+    --shadow: 0 12px 40px rgb(0 0 0 / 26%);
+  }
+}
+:root[data-theme="dark"] .mark-preview:not([data-mark="gremlin"])::before { background-image: url("brand/wordmark-tessera-dark.svg"); }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-wordmark: url("brand/wordmark-tessera-dark.svg");
+  --paper: #201f1c;
+  --surface: #282722;
+  --quiet-surface: #302e28;
+  --ink: #f1ece3;
+  --text: #ded8cc;
+  --muted: #b5aea1;
+  --old-text: #aaa294;
+  --border: #4a463e;
+  --branch: #777c63;
+  --control-border: #80776a;
+  --accent: #edaf97;
+  --accent-hover: #f7c9b7;
+  --accent-soft: #453129;
+  --on-accent: #241a15;
+  --focus: #efb69e;
+  --work-surface: #30352a;
+  --work-border: #a5b18f;
+  --error: #ffb7aa;
+  --error-surface: #452a25;
+  --shade: rgb(0 0 0 / 54%);
+  --shadow: 0 12px 40px rgb(0 0 0 / 26%);
+}
+
+:root[data-skin="basalt"] {
+  --skin-paper: light-dark(#eef0e9, #151b19);
+  --skin-surface: light-dark(#fafbf6, #202825);
+  --skin-quiet: light-dark(#e3e8de, #29332e);
+  --skin-ink: light-dark(#203129, #ece9df);
+  --skin-muted: light-dark(#58665b, #a8b5a8);
+  --skin-accent: light-dark(#88562e, #dba373);
+  --skin-mineral: light-dark(#4f7052, #a5bf9a);
+}
+:root[data-skin="tide"] {
+  --skin-paper: light-dark(#edf2f2, #131c24);
+  --skin-surface: light-dark(#fbfdfc, #1b2a35);
+  --skin-quiet: light-dark(#dfeaea, #243946);
+  --skin-ink: light-dark(#193441, #e2edf0);
+  --skin-muted: light-dark(#526e78, #9fbac4);
+  --skin-accent: light-dark(#286b72, #86c6c5);
+  --skin-mineral: light-dark(#6b6244, #d2b98a);
+}
+:root[data-skin]:not([data-skin="strata"]) {
+  --paper: var(--skin-paper);
+  --surface: var(--skin-surface);
+  --quiet-surface: var(--skin-quiet);
+  --ink: var(--skin-ink);
+  --text: color-mix(in srgb, var(--skin-ink) 87%, var(--skin-paper));
+  --muted: var(--skin-muted);
+  --old-text: var(--skin-muted);
+  --border: color-mix(in srgb, var(--skin-ink) 17%, var(--skin-paper));
+  --branch: color-mix(in srgb, var(--skin-mineral) 50%, var(--skin-paper));
+  --control-border: color-mix(in srgb, var(--skin-muted) 65%, var(--skin-paper));
+  --accent: var(--skin-accent);
+  --accent-hover: color-mix(in srgb, var(--skin-accent) 80%, var(--skin-ink));
+  --accent-soft: color-mix(in srgb, var(--skin-accent) 14%, var(--skin-surface));
+  --on-accent: light-dark(#ffffff, #15221f);
+  --focus: var(--skin-accent);
+  --work-surface: color-mix(in srgb, var(--skin-mineral) 10%, var(--skin-surface));
+  --work-border: var(--skin-mineral);
+  --ok: var(--skin-mineral);
+}
+
+:root[data-mark="gremlin"] {
+  --brand-wordmark: url("brand/gremlin-logo.svg");
+  --brand-width: 108px;
+}
+.skin-preview[data-skin="strata"] { --preview-base: #22211c; --preview-surface: #302f28; --preview-accent: #edaf97; }
+.skin-preview[data-skin="basalt"] { --preview-base: #151b19; --preview-surface: #29332e; --preview-accent: #dba373; }
+.skin-preview[data-skin="tide"] { --preview-base: #131c24; --preview-surface: #243946; --preview-accent: #86c6c5; }

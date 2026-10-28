@@ -1,0 +1,44 @@
+# Outstanding debt; remove an entry when its finding is fixed.
+tessera/action_judge.py:DENY_PROBABILITY # module literal has no Config contract
+tessera/action_judge.py:SOFT_FLOOR # module literal has no Config contract
+tessera/aethermind.py:AetherMindClient.__init__.dedupe_limit # default used without a Config-supplied argument
+tessera/aethermind.py:AetherMindClient.__init__.history_limit # default used without a Config-supplied argument
+tessera/attachments.py:MAX_BYTES # module literal has no Config contract
+tessera/attachments.py:MAX_PER_TURN # module literal has no Config contract
+tessera/attachments.py:NAME_LIMIT # module literal has no Config contract
+tessera/autonomy.py:_note_excerpt.limit # default used without a Config-supplied argument
+tessera/board.py:COMPACT_AT # module literal has no Config contract
+tessera/board.py:MAX_STEPS # module literal has no Config contract
+tessera/capture.py:Capture.__init__.inheritance_budget # default used without a Config-supplied argument
+tessera/capture.py:Capture.__init__.personal_budget # default used without a Config-supplied argument
+tessera/capture.py:Capture.__init__.recall_limit # some callers still omit the Config-supplied argument
+tessera/credentials.py:CredentialReference.keychain_timeout # module literal has no Config contract
+tessera/cua_jev.py:_CHOICE_LIMIT # module literal has no Config contract
+tessera/engine_pressure.py:MAX_BYTES # module literal has no Config contract
+tessera/endpoint_limit.py:LOCAL_MODEL_CONCURRENCY # Safe mode only: one request at a time on a local model that omits max_concurrent_requests. YOLO drops it. A number set by hand replaces it.
+tessera/host_metrics.py:_darwin_available_memory.timeout # default used without a Config-supplied argument
+tessera/identities.py:DISPLAY_LIMIT # module literal has no Config contract
+tessera/identities.py:HANDLE_LIMIT # module literal has no Config contract
+tessera/inspector_client.py:InspectorClient.__init__.timeout # default used without a Config-supplied argument
+tessera/integrations.py:_get.limit # default used without a Config-supplied argument
+tessera/jev.py:JudgeKit.__init__.approval # default used without a Config-supplied argument
+tessera/jev.py:JudgeKit.__init__.gate_threshold # some callers still omit the Config-supplied argument
+tessera/jev.py:JudgeKit.__init__.goal_threshold # some callers still omit the Config-supplied argument
+tessera/jev.py:JudgeKit.__init__.risk_threshold # some callers still omit the Config-supplied argument
+tessera/jev.py:JudgeKit.__init__.timeout # some callers still omit the Config-supplied argument
+tessera/learning.py:TURN_PLACEHOLDER_CHECK # module literal has no Config contract
+tessera/mcp_client.py:McpClient.__init__.max_response_bytes # default used without a Config-supplied argument
+tessera/mcp_stdio.py:StdioMcpClient.__init__.max_response_bytes # default used without a Config-supplied argument
+tessera/model_discovery.py:DISCOVERY_TIMEOUT # module literal has no Config contract
+tessera/oversight.py:TAIL_BYTES # module literal has no Config contract
+tessera/server.py:TesseraServer.request_queue_size # module literal has no Config contract
+tessera/session_speech.py:SessionSpeech.sample_rate # module literal has no Config contract
+tessera/sessions.py:EventJournal.after.timeout # some callers still omit the Config-supplied argument
+tessera/skills.py:DESCRIPTION_LIMIT # module literal has no Config contract
+tessera/skills.py:NAME_LIMIT # module literal has no Config contract
+tessera/swarm_bounds.py:SAFE_JOB_TASK_LIMIT # Safe mode only: eight workers in one job when max_job_tasks is omitted. Unleashed drops it. A number set by hand replaces it.
+tessera/tools.py:ToolRegistry.__init__.approval # some callers still omit the Config-supplied argument
+tessera/trial.py:MIN_TOOL_CALLS # module literal has no Config contract
+tessera/trial.py:RATE_MARGIN # module literal has no Config contract
+tessera/trial.py:SECONDS_MARGIN # module literal has no Config contract
+tessera/voice.py:TRANSCRIBE_MODEL # module literal has no Config contract

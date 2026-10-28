@@ -1,0 +1,107 @@
+name: cross-platform
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  posix:
+    name: pytest and smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[test]"
+      - name: Ripgrep for the source-export hardwire scan
+        shell: bash
+        run: |
+          set -eu
+          if command -v rg >/dev/null 2>&1; then
+            rg --version
+            exit 0
+          fi
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y ripgrep
+          elif command -v brew >/dev/null 2>&1; then
+            brew install ripgrep
+          else
+            echo "rg is required for the source-export hardwire scan" >&2
+            exit 1
+          fi
+      - name: dev-mode.sh under dash and bash
+        shell: bash
+        run: |
+          set -eu
+          prove() {
+            shell="$1"
+            "$shell" -n scripts/dev-mode.sh
+            set +e
+            output=$(TESSERA_PORT=9 TESSERA_RESTART_TIMEOUT=1 TESSERA_KEY=synthetic-dev-mode-key \
+              "$shell" scripts/dev-mode.sh infinity --rejoin 2>&1)
+            status=$?
+            set -e
+            printf '%s\n' "$output"
+            if [ "$status" -ne 1 ]; then
+              echo "$shell: closed-port rejoin exited $status, want 1" >&2
+              exit 1
+            fi
+            printf '%s\n' "$output" | grep -q "did not expose"
+            if printf '%s\n' "$output" | grep -q "Syntax error"; then
+              echo "$shell: syntax error" >&2
+              exit 1
+            fi
+          }
+          prove bash
+          if [ "$(uname -s)" = "Linux" ]; then
+            command -v dash >/dev/null
+            prove dash
+          elif command -v dash >/dev/null 2>&1; then
+            prove dash
+          fi
+      - name: Pytest
+        run: python -m pytest -q
+      - name: Smoke
+        run: python scripts/smoke.py
+
+  windows:
+    name: import, portable tests, and smoke (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install -e ".[test]"
+      - name: Import
+        run: python -c "import tessera; from tessera.cli import main; from tessera.platform_support import host_report; report = host_report(); assert report['platform'] == 'windows', report; print('import ok', report['platform'])"
+      - name: Portable tests
+        run: python -m pytest -q tests/test_platform_support.py tests/test_credentials.py tests/test_codex_grant.py tests/test_durability.py tests/test_locking.py tests/test_build_stamp.py tests/test_daemon_cli_portability.py tests/test_probe_process.py tests/test_procutil.py tests/test_smoke_config.py
+      # Native Windows is not a required memory result. ubuntu-latest and
+      # macos-latest above still require an acknowledged embedded write.
+      # This step passes only when smoke names the labeled lock refusal.
+      - name: Smoke
+        shell: bash
+        run: |
+          set -eu
+          reason='embedded AetherMind needs file locking that native Windows lacks; run Tessera under WSL, or configure an external AetherMind'
+          set +e
+          output=$(python scripts/smoke.py 2>&1)
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" | grep -F 'smoke: health ok (windows)'
+          printf '%s\n' "$output" | grep -F "$reason"
+          if [ "$status" -eq 0 ]; then
+            echo "native Windows smoke exited 0; the labeled lock refusal is the expected result" >&2
+            exit 1
+          fi

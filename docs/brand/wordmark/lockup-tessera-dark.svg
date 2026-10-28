@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 120" width="620" height="120">
+  <g fill="none" stroke="#f1ece3" stroke-width="5.5" stroke-linecap="round">
+    <path d="M36 40 L36 58 M36 58 L18 78 M36 58 L54 78"/>
+  </g>
+  <ellipse cx="36" cy="28" rx="11" ry="8.5" fill="#f1ece3"/>
+  <ellipse cx="18" cy="86" rx="9" ry="7" fill="#f1ece3"/>
+  <ellipse cx="54" cy="86" rx="9" ry="7" fill="#edaf97"/>
+  <text x="86" y="78" font-family="Inter, IBM Plex Sans, system-ui, sans-serif" font-size="58" font-weight="450" letter-spacing="-0.5" fill="#f1ece3">Tessera-CT</text>
+</svg>

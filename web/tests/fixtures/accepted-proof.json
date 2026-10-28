@@ -1,0 +1,65 @@
+{
+  "swarm": {
+    "marker": "LIVE-SWARM-ACCEPT",
+    "fresh_run": true,
+    "job_status": "succeeded",
+    "hashes_verified": true,
+    "ordered_merge_verified": true,
+    "merge_checks": {
+      "all_artifacts_present": true,
+      "all_workers_succeeded": true,
+      "artifact_hashes_valid": true,
+      "merge_body_within_bound": true
+    },
+    "gate_source": "heuristic",
+    "workers": [
+      {
+        "ordinal": 1,
+        "provider_kind": "openai_chat",
+        "status": "succeeded",
+        "attempt": 1,
+        "reported_tokens": 57.0,
+        "task_cap": 4096
+      },
+      {
+        "ordinal": 2,
+        "provider_kind": "cli_worker",
+        "status": "succeeded",
+        "attempt": 1,
+        "reported_tokens": 13936.0,
+        "task_cap": 16384
+      }
+    ]
+  },
+  "voice": {
+    "marker": "LIVE-VOICE-ACCEPT",
+    "status": "accepted",
+    "enabled": true,
+    "configured": true,
+    "secret_minted": true,
+    "mint_http_status": 200,
+    "long_lived_api_key_in_client": false,
+    "plaintext_secret_persisted": false,
+    "lease_started": true,
+    "realtime_exchange": true,
+    "ephemeral_websocket_authenticated": true,
+    "session_update_accepted": true,
+    "response_status": "completed",
+    "input_mode": "typed_text",
+    "microphone_asr_proven": false,
+    "speaker_playback_proven": false,
+    "generated_audio_chunks": 5,
+    "generated_audio_bytes": 76320,
+    "transcript_bridge_live_proven": true,
+    "bridge_user_messages": 1,
+    "bridge_agent_messages": 1,
+    "transcript_provenance": "client_reported",
+    "assistant_transcript_origin": "provider_websocket_observed_by_client",
+    "duplicate_bridge_messages": 0,
+    "saved_view_messages": 2,
+    "stopped": true,
+    "active_count": 0,
+    "client_process_exited": true,
+    "max_session_seconds": 45
+  }
+}

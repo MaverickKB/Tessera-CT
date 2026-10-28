@@ -1,0 +1,3 @@
+# Outstanding debt; remove an entry when its finding is fixed.
+computer_use.provider # platform=darwin Default and native resolve to the same backend on macOS
+mcp_servers.*.env # HTTP open_server drops env refs; stdio delivers them

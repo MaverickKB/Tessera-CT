@@ -1,0 +1,8 @@
+include LICENSE README.md build_support.py config.example.toml
+include web/*.html web/*.css web/*.js web/*.webmanifest
+recursive-include web/brand *.png *.svg
+include docs/packaging/aethermind-engine-manifest.json
+include docs/packaging/aethermind-mcp-requirements.lock
+graft seeds
+graft tessera/_assets/aethermind-engine
+include tessera/_assets/aethermind-engine/.gitignore

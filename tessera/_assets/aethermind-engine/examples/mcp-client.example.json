@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "aethermind": {
+      "command": "python",
+      "args": ["mcp/aethermind_mcp.py"],
+      "env": {
+        "MCP_HOST": "127.0.0.1"
+      }
+    }
+  }
+}

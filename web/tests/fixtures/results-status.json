@@ -1,0 +1,30 @@
+{
+  "swarm": {
+    "off": {"job_status": {"enabled": false, "configured": false}},
+    "empty": {"job_status": {"enabled": true, "configured": true, "jobs": []}},
+    "offline": {"http_status": 503},
+    "rejected": {"http_status": 403},
+    "multi-provider": {"job_status": {"enabled": true, "configured": true, "jobs": [
+      {"ordinal": 1, "status": "running", "worker_count": 2, "completed_count": 1, "failed_count": 0, "artifact_count": 1, "provider_count": 2, "merge_status": "pending", "gate_status": "allowed", "workers": [
+        {"ordinal": 1, "provider_ordinal": 1, "account_ordinal": 1, "status": "succeeded", "attempt": 1, "gate_status": "allowed"},
+        {"ordinal": 2, "provider_ordinal": 2, "account_ordinal": 2, "status": "running", "attempt": 1, "gate_status": "allowed"}
+      ]},
+      {"ordinal": 2, "status": "succeeded", "worker_count": 2, "completed_count": 2, "failed_count": 0, "artifact_count": 2, "provider_count": 2, "merge_status": "succeeded", "gate_status": "allowed", "workers": [
+        {"ordinal": 1, "provider_ordinal": 1, "status": "succeeded", "attempt": 1},
+        {"ordinal": 2, "provider_ordinal": 2, "status": "succeeded", "attempt": 1}
+      ]}
+    ]}}
+  },
+  "voice": {
+    "off": {"voice": {"enabled": false, "configured": false, "active_count": 0}},
+    "configured": {"voice": {"enabled": true, "configured": true, "active_count": 0}},
+    "active": {"voice": {"enabled": true, "configured": true, "active_count": 1, "transcript_count": 2}},
+    "error": {"voice": {"enabled": true, "configured": true, "active_count": 0, "error_category": "upstream"}},
+    "offline": {"http_status": 503},
+    "rejected": {"http_status": 403}
+  },
+  "transcripts": [
+    {"i": 0, "kind": "user", "text": "Fixture voice question.", "date": "", "meta": {"voice_transcript": true, "provenance": "client_reported"}},
+    {"i": 1, "kind": "agent", "text": "Fixture recorded voice answer.", "date": "", "meta": {"voice_transcript": true, "provenance": "client_reported"}}
+  ]
+}
