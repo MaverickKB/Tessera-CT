@@ -33,8 +33,9 @@ def load_patterns(path: Path) -> list[str]:
         if not line or line.startswith('#'):
             continue
         patterns.append(line.strip().lstrip('./'))
-    if not patterns:
-        raise SystemExit('build_release: exclude manifest has no paths: ' + str(path))
+    # An empty list is a real state, not a mistake: a public copy can carry the
+    # whole tree. The path itself is still checked by the caller, so a typo in
+    # the manifest's location fails loudly; only "exclude nothing" is allowed.
     return patterns
 
 

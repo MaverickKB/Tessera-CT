@@ -1,4 +1,7 @@
 # Paths omitted from a public release copy. One path or glob per line.
-docs/packaging/aethermind-engine-manifest-20261023.json
+# Nothing is excluded today: the public copy carries the full tree, including
+# the older engine pin and the scripts that use it. Add a path here only when a
+# file genuinely cannot be published, and then also update any public doc that
+# names it, because the export reference check fails on a dangling reference.
 # Personal companion files are not in this tree. The public template is
 # examples/companion/ and is not excluded.

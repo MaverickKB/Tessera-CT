@@ -1,0 +1,79 @@
+{
+  "algorithm": "sha256",
+  "authority": "Pinned 2026-10-23 from the AetherMind engine tree that serves this Tessera install. That tree is the authority for the distributable Tessera bundle: pin it by hash; do not introduce a git repository for it.",
+  "created_at": "2026-10-23T11:48:56Z",
+  "files": {
+    "lib/README.md": "eff7ca0dcfb7b481578d412007826bf3eee9dba286792bf1bb28913ffbbea249",
+    "lib/aethermind/__init__.py": "5750ce1c9497b9a6772066ab5e4004cb5123775ceb989df119fbc3caa22c6dad",
+    "lib/aethermind/cli.py": "352ccb1d159a13706fb76fad815df5e9cfc26fcaa0c67322870fcacaa087a75b",
+    "lib/aethermind/core.py": "4a71462e61cafec9eab5ee78993a30f7bb387b93ef7f83186380e81b65922999",
+    "lib/aethermind/inheritance.py": "084772243b984a74957aca4a2cd46f96fc7791bf88278c4c573bd0bf58265953",
+    "lib/aethermind/tomllib.py": "42cb6cf7046075f9e13f0ecc9fe85f375729a314921297feeb624f61e14d9236",
+    "lib/aethermind/tree.py": "36f0c152befcd37c7eca46f64fc92400a1aff54b96d99269c849ca1761df12e6",
+    "lib/aethermind/view.py": "af882bcb228ce6a87fafa5331604572fad5fcc8f8e963019b42d853c24a3ce36",
+    "lib/requirements.txt": "503704fd68a1611553817b95dd6c0b55fca4edc83329c0df4fabb5a7c168fb25",
+    "lib/setup.py": "dd8107abab0a83c4746bef461333161bd8b681200499b3d45760579e60b55d25",
+    "lib/tests/test_adapter_contracts.py": "16b76badaf74474867f7a70bcdb6a2f40b644e3bdd6e46301ef3dcd8613935fc",
+    "lib/tests/test_cli.py": "b7af87362f963749cced45a613791c9612ee8440a9d565c92848e2acad60200c",
+    "lib/tests/test_core_append_contract.py": "7a6fcedbb35a4e38b84bbfdadfeb11b1253e9453783fb2206451f48852cb9a61",
+    "lib/tests/test_core_author.py": "4176d60fae3b0ff2c9529623056ce24860dfb6372feb25697832afab173e87e0",
+    "lib/tests/test_currentness.py": "e489f31b81a5eb2c63c2633e07aec7b761bb1ec7cbd5a60ef183fa055a8ef222",
+    "lib/tests/test_inheritance.py": "3e86cf5c53d8c7cac00553a51983d14f467b25b617fd4aa9f6ebe674ca79547e",
+    "lib/tests/test_inheritance_mcp.py": "c7bcae143e5d18d2dfd25995b820555c2008a056f945ab4217565b2e6250698c",
+    "lib/tests/test_read_contract.py": "88727f44ebab483ddff45f01c3abb0f8597d2f195d0c461b9f3e7628b533f303",
+    "lib/tests/test_split_ledger_archive.py": "a6cad6aa9d9b9d78444c906b7296cb572b6a5030c6b97a6cc9cac4d7dfc186fd",
+    "lib/tests/test_read_filters_and_guard.py": "3b35b70e681461c0a4072fdc08412034e41a7376a23c689b0d5556083024495d",
+    "lib/tests/test_readback_drift.py": "9c96cb64635f126708c447064602a1cd310d94ba4171de2ffd48e5a4311626d5",
+    "lib/tests/test_smoke.py": "697a74293cb97a4df97336677e1d57b7c717b07ae82042e65e693c0b751efc1a",
+    "lib/tests/test_storage_integrity_hardening.py": "8a8f168886b28ed7017145a0c63e41eacc5accd9ba90a436450f588a28af7194",
+    "mcp/README.md": "e35b2095a4bc2828948143cf6542c1d8333a0b187aa69571e03192554a04634e",
+    "mcp/aethermind_mcp.py": "6c7722d355677d1617f6e44e7585b66e8ba5eb28f6201d92a09d8f65c3d90030",
+    "mcp/config-example.json": "f1f53af077a47b4ff1e54c5708be9df53cb158a5f460f2f2e9ed5a455217bdeb",
+    "mcp/requirements-mcp.lock": "59f0dadaa1defe209a3ff039656cb55a18b5e2565352a282a183685ab6c5f8a5",
+    "mcp/tomllib.py": "d8d97bfbdfce5aab456a19a9b5fe2fbb2faed46b4ef71070791fd36f4c9186aa"
+  },
+  "scope": {
+    "excluded": [
+      "backup files (*.bak-*, backup-pre-tree directories)",
+      "__pycache__ and compiled bytecode",
+      "docs/, experiments/, notes/, reports/ (historical content, not served by the engine)",
+      "personhood/, state.md (not loaded by the running engine)",
+      ".pytest_cache/, *.egg-info/, .DS_Store and compiled bytecode: test-run and build residue that changes whenever the suite runs on the serving host and is never served by the engine"
+    ],
+    "included": [
+      "lib/",
+      "mcp/"
+    ]
+  },
+  "service_evidence": {
+    "capabilities": [
+      "acknowledged-layer-append",
+      "explicit-store-init",
+      "record-salvage-report",
+      "reserved-textual-ids",
+      "canonical-texture-write",
+      "project-key-metadata-verification",
+      "active-head-currentness",
+      "scoped-digest-briefing",
+      "as-of-projection"
+    ],
+    "contract_version": "adapter-v1",
+    "format_version": "light-v1",
+    "listener": "tcp port 8452",
+    "lock_backend": "fcntl",
+    "locking_scope": "local-posix-advisory",
+    "runtime_id": "aethermind-python",
+    "runtime_version": "0.3.0"
+  },
+  "title": "AetherMind engine bundle provenance manifest",
+  "tree_root_resolution": "The engine tree root is the directory that holds the lib/ and mcp/ folders on the host that serves the AetherMind MCP service. Resolve that directory on that host before verifying. This file names no host-specific path or address.",
+  "verify": [
+    "On the serving host: cd <engine_tree_root> && for f in $(jq -r '.files | keys[]' <manifest>); do echo \"$(jq -r --arg f \"$f\" '.files[$f]' <manifest>)  $f\"; done | sha256sum -c",
+    "Query the live MCP server's capabilities: implementation_sha256 must equal this manifest's files entry for lib/aethermind/core.py."
+  ],
+  "version": 4,
+  "revised_at": "2026-10-28T20:01:57Z",
+  "revision": "v4 removes the serving host's name from this file and drops one host runtime configuration file from the pin. That file is host setup, not part of a distributable bundle, and its name was the last host identifier here. The remaining 28 pinned hashes are unchanged and still verify against the serving tree.",
+  "updated_at": "2026-10-27T01:35:00Z",
+  "update_note": "mcp/aethermind_mcp.py re-pinned to the serving file, measured 2026-10-27 against the serving engine root. The lib/ side was re-pinned on 2026-10-26 by the AetherMind patch lane; the mcp/ side was left at the pre-patch hash, so the pin disagreed with the running server. All 29 entries verified against the live tree on that date (28 unchanged, one updated); v4 then dropped the host runtime conf, leaving 28."
+}

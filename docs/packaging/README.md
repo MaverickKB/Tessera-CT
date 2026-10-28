@@ -44,10 +44,12 @@ only when it has a receipt.
 
 The release wheel checks `aethermind-engine-manifest.json` only.
 `scripts/build-aethermind-bundle.sh` and `scripts/verify-aethermind-manifest.sh`
-are for an operator who still has an older pin's bytes. They do not name a
-host. Set `TESSERA_PACKAGING_HOST` when the tree is on another machine. With
-no host, set `TESSERA_ENGINE_SOURCE=dir` or `TESSERA_ENGINE_LOCAL=1` and pass
-`TESSERA_ENGINE_ROOT` for a tree on this machine.
+are for an operator who still has an older pin's bytes; the manifest they use,
+`aethermind-engine-manifest-20261023.json`, ships beside them in this directory.
+They do not name a host. Set `TESSERA_PACKAGING_HOST` when the tree is on
+another machine. With no host, set `TESSERA_ENGINE_SOURCE=dir` or
+`TESSERA_ENGINE_LOCAL=1` and pass `TESSERA_ENGINE_ROOT` for a tree on this
+machine.
 
 ## Where the pinned bytes come from
 
@@ -62,14 +64,14 @@ selected by `TESSERA_ENGINE_SOURCE`:
 
 The `archive` source exists because the only surviving copy of that historical
 pin was, for a while, in a gitignored directory on one development machine.
-A newer public commit is vendored in this repository instead; the script below
-still checks the older pin and is not how the release wheel is built.
+A newer public commit is vendored in this repository instead; the script still
+checks the older pin and is not how the release wheel is built.
 
-`scripts/verify-aethermind-manifest.sh` takes `TESSERA_ENGINE_LOCAL=1` to check a tree on
-this machine, so the pin can be verified without a serving host.
+`scripts/verify-aethermind-manifest.sh` takes `TESSERA_ENGINE_LOCAL=1` to check
+a tree on this machine, so the pin can be verified without a serving host.
 
-Every source is verified against the manifest before the build tree is accepted, and the
-build receipt records which source was used.
+Every source is verified against the manifest before the build tree is
+accepted, and the build receipt records which source was used.
 
 ## Building the public release copy
 

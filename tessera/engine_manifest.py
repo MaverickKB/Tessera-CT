@@ -66,11 +66,26 @@ def engine_source(root):
     return vendored_dir(root), False
 
 
+# Compiled bytecode and OS metadata are local build residue, never engine bytes.
+# A test run writes __pycache__ into the vendored tree, and a wheel copies only
+# the manifest's files, so an extra .pyc must not read as tampering when the
+# release flow is "run the tests, then build the wheel".
+_IGNORED_DIRECTORIES = {'__pycache__'}
+_IGNORED_SUFFIXES = {'.pyc', '.pyo'}
+_IGNORED_NAMES = {'.DS_Store'}
+
+
 def _tree_files(source):
     found = {}
     for path in sorted(source.rglob('*')):
-        if path.is_symlink() or path.is_file():
-            found[path.relative_to(source).as_posix()] = path
+        if not (path.is_symlink() or path.is_file()):
+            continue
+        relative = path.relative_to(source)
+        if any(part in _IGNORED_DIRECTORIES for part in relative.parts[:-1]):
+            continue
+        if path.name in _IGNORED_NAMES or path.suffix in _IGNORED_SUFFIXES:
+            continue
+        found[relative.as_posix()] = path
     return found
 
 
