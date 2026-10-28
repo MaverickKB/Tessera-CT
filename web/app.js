@@ -2380,6 +2380,11 @@
       $(id).textContent = voice?.running() ? "Stop" : id === "voice-page-toggle" ? "Talk" : "Voice";
       $(id).disabled = !voice?.running() && (!available || !session || session.archived);
     }
+    // Duplex-only controls: the local pipe speaks with the configured TTS voice
+    // and is always push-to-talk, so Voice, Mode and Mute would do nothing here.
+    for (const id of ["voice-pick-label", "voice-mode-label", "voice-mute"]) {
+      if ($(id)) $(id).hidden = local;
+    }
   }
 
   function infrastructureUnavailable() {
