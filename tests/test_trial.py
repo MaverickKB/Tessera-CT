@@ -47,6 +47,19 @@ def tool_rows(turn, base, failures):
     return rows
 
 
+def quiet_turn_rows(turn, start_minute):
+    """One turn with MIN_TOOL_CALLS successful tool calls, so its failure rate is zero."""
+    rows = []
+    for index in range(MIN_TOOL_CALLS):
+        minute = start_minute + index
+        stamp = f'2026-10-24T{minute // 60:02d}:{minute % 60:02d}:00+00:00'
+        rows.append(turn_row(turn, stamp, 'tool',
+                             text=json.dumps({'name': 'shell', 'arguments': {}})))
+        rows.append(turn_row(turn, stamp, 'echo',
+                             text=json.dumps({'exit_code': 0, 'output': ''})))
+    return rows
+
+
 def test_a_completion_score_is_not_an_instrument():
     """The judge cannot separate two arms, so it must not be offered as one."""
     assert 'completion' not in INSTRUMENTS and 'judge_score' not in INSTRUMENTS
@@ -105,6 +118,36 @@ def test_a_small_improvement_is_a_tie_not_a_win():
     verdict = decide({'tool_calls': 100, 'tool_nonzero': 10},
                      {'tool_calls': 100, 'tool_nonzero': 9}, 'tool_nonzero_rate')
     assert verdict['outcome'] == 'tie'
+
+
+def test_an_unchanged_reading_is_a_tie_not_a_loss():
+    """Both arms reading the same number is the case a trial exists to refuse.
+
+    It used to report "rose from 0.100 to 0.100" as a loss: a record that claims the
+    measurement moved when nothing moved. No movement is a tie, and a tie reverts.
+    """
+    rate = decide({'tool_calls': 100, 'tool_nonzero': 10},
+                  {'tool_calls': 100, 'tool_nonzero': 10}, 'tool_nonzero_rate')
+    assert rate['outcome'] == 'tie'
+    assert 'rose' not in rate['detail']
+    median = decide({'turn_seconds_median': 100}, {'turn_seconds_median': 100},
+                    'turn_seconds_median')
+    assert median['outcome'] == 'tie'
+
+
+def test_a_zero_baseline_cannot_produce_a_win():
+    """A clean arm compared with a clean arm is not an improvement.
+
+    "candidate at most 80% of the baseline" is true for 0 <= 0, so this used to read
+    as a win, keep the candidate, and mark the trial applied without measuring
+    anything. A win needs a strictly positive baseline to have fallen from.
+    """
+    verdict = decide({'tool_calls': 100, 'tool_nonzero': 0},
+                     {'tool_calls': 100, 'tool_nonzero': 0}, 'tool_nonzero_rate')
+    assert verdict['outcome'] == 'tie'
+    assert verdict['before'] == 0 and verdict['after'] == 0
+    assert decide({'turn_seconds_median': 0}, {'turn_seconds_median': 0},
+                  'turn_seconds_median')['outcome'] == 'tie'
 
 
 def test_the_stored_margin_decides_and_the_default_stays_at_eighty_percent():
@@ -199,6 +242,30 @@ def test_a_win_keeps_the_change_and_applies_nothing_more():
     assert trial['applied'] is True
     # The candidate is already in place; there is nothing left to apply.
     assert instruction is None
+
+
+def test_a_trial_whose_arms_both_read_zero_reverts_instead_of_keeping_the_change():
+    """A reading that did not improve must not decide the session.
+
+    Both arms here are clean: 20 tool calls each and no failure, so both readings are
+    zero. This used to be a win, which kept the candidate and marked the trial applied
+    on a comparison that measured nothing.
+    """
+    cfg = config()
+    trial = start('t1', 'subject', 'reasoning', 'high', 'low', 1, 'tool_nonzero_rate', 'because')
+    trial = {**trial, 'phase': 'baseline', 'baseline_first': 1}
+
+    rows = quiet_turn_rows(1, 0)
+    trial, instruction = advance(trial, rows, cfg, 'subject')
+    assert trial['phase'] == 'candidate' and instruction is not None
+    assert trial['baseline']['grade']['tool_calls'] == MIN_TOOL_CALLS
+    assert trial['baseline']['reading'] == 0
+
+    rows = rows + quiet_turn_rows(2, 60)
+    trial, instruction = advance(trial, rows, cfg, 'subject')
+    assert trial['verdict']['outcome'] == 'tie'
+    assert trial['applied'] is False
+    assert instruction == {'apply': {'slug': 'subject', 'lever': 'reasoning', 'value': 'low'}}
 
 
 def test_a_decided_trial_is_not_advanced_again():
