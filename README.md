@@ -12,9 +12,24 @@ outside the checkout. Tests and the standard demo need no live providers.
 
 ## Install and run
 
+The short path: one command creates what is missing (config, engine bundle,
+seed pack), starts the core with AetherMind, and opens the app in a browser.
+
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
+.venv/bin/python -m tessera start
+# Or add the app menu / start menu launcher that runs the same command:
+.venv/bin/python -m tessera install-launcher
+```
+
+The first launch opens on the settings page, which asks for the two required
+things in order: connect a provider, pick a chat model. Everything else is
+optional. `start` reruns cleanly; it only creates what is missing.
+
+The explicit path, for a configuration you drive by hand:
+
+```sh
 # Optional, only for running the test suite (pytest, Pygments, and setuptools):
 .venv/bin/python -m pip install -e ".[test]"
 # Optional: export TESSERA_HOME="<PRIVATE_CONFIG_DIRECTORY>" before init.

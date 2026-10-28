@@ -19,11 +19,18 @@ sudo apt-get install -y python3-venv python3-pip
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 export TESSERA_HOME="<PRIVATE_CONFIG_DIRECTORY>"
-.venv/bin/python -m tessera init
+.venv/bin/python -m tessera start
 ```
+
+`start` creates the config when missing, materializes the verified engine
+bundle, seeds an empty store, starts the core, and opens the app in a browser.
+`init` remains available when you want to create the config alone and edit it
+before the first run; run `start` afterward to launch.
 
 This editable install keeps source changes visible and registers the `tessera`
 command inside the venv. `python -m tessera` also works outside the checkout.
+To put Tessera in the app menu (Linux), Applications (macOS) or the Start Menu
+(Windows), run `tessera install-launcher`; the launcher runs `start`.
 Wheels bundle the same configuration template and static UI. Setuptools is a
 build dependency, not a runtime dependency; an offline install needs a trusted
 local copy of the build requirement declared in `pyproject.toml` (use pip
