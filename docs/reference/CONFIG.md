@@ -696,6 +696,7 @@ Names in `tools.disabled` are operator switches. They apply in every approval mo
 | Key | Default | Environment override | Availability |
 | --- | --- | --- | --- |
 | `voice.enabled` | `false` | `TESSERA_VOICE_ENABLED` | Settings row |
+| `voice.pipe` | `""` | `TESSERA_VOICE_PIPE` | Settings row |
 | `voice.websocket_url` | `""` | `TESSERA_VOICE_WEBSOCKET_URL` | Settings row |
 | `voice.model` | `""` | `TESSERA_VOICE_MODEL` | Settings row |
 | `voice.api_base_url` | `""` | `TESSERA_VOICE_API_BASE_URL` | file-only: no Settings row — set this in config.toml |
@@ -725,3 +726,11 @@ Names in `tools.disabled` are operator switches. They apply in every approval mo
 | `voice.dedicated_title` | `"Voice"` | `TESSERA_VOICE_DEDICATED_TITLE` | Settings row |
 | `voice.dedicated_reasoning` | `"low"` | `TESSERA_VOICE_DEDICATED_REASONING` | Settings row |
 | `voice.dedicated_thinking_budget` | `0` | `TESSERA_VOICE_DEDICATED_THINKING_BUDGET` | Settings row |
+| `voice.stt.base_url` | `""` | `TESSERA_VOICE__STT__BASE_URL` | Settings row |
+| `voice.stt.model` | `""` | `TESSERA_VOICE__STT__MODEL` | Settings row |
+| `voice.stt.models` | `[]` | `TESSERA_VOICE__STT__MODELS` | file-only: no Settings row — set this in config.toml |
+| `voice.stt.timeout` | `10.0` | `TESSERA_VOICE__STT__TIMEOUT` | file-only: no Settings row — set this in config.toml |
+| `voice.tts.base_url` | `""` | `TESSERA_VOICE__TTS__BASE_URL` | Settings row |
+| `voice.tts.model` | `""` | `TESSERA_VOICE__TTS__MODEL` | Settings row |
+| `voice.tts.models` | `[]` | `TESSERA_VOICE__TTS__MODELS` | file-only: no Settings row — set this in config.toml |
+| `voice.tts.timeout` | `10.0` | `TESSERA_VOICE__TTS__TIMEOUT` | file-only: no Settings row — set this in config.toml |

@@ -808,8 +808,9 @@ def test_voice_setup_precedes_preferences_and_advanced_controls(tmp_path):
         section = next(s for s in project(config, {})['sections'] if s['id'] == 'voice')
         fields = section['fields']
         assert [f['id'] for f in fields if f.get('tier') == 'required'] == [
-            'voice.enabled', 'voice.credential_ref', 'voice.model', 'voice.websocket_url']
+            'voice.enabled', 'voice.account', 'voice.model', 'voice.websocket_url', 'voice.pipe']
         assert [f['id'] for f in fields if f.get('tier') == 'optional'] == [
+            'voice.stt.base_url', 'voice.stt.model', 'voice.tts.base_url', 'voice.tts.model',
             'voice.voice', 'voice.dedicated_title']
         assert [f['id'] for f in fields if f.get('tier') == 'advanced'] == [
             'voice.max_session_seconds', 'voice.dedicated_reasoning', 'voice.dedicated_thinking_budget']

@@ -370,35 +370,52 @@ fields contain sanitized summaries; raw transcripts and artifacts stay private.
 
 ## Optional realtime voice
 
-Tessera supports the xAI-style realtime event protocol. Supply current API/WS
-targets, model and subprotocol prefix from the provider's official documentation;
-none is preselected. Edit the copied `credentials.voice_api` and `[voice]`
-tables only if you want voice. The enabled example below deliberately uses
-placeholders. Set `turn_detection` explicitly if your provider requires it;
-the copied template leaves it empty.
+Tessera has two voice pipes and runs one at a time. Full duplex uses one model
+that hears and speaks, and keeps the session history and tools. Local speech
+uses a speech-to-text service and a text-to-speech service; an utterance becomes
+a normal turn in the session and the reply is spoken back.
+
+Settings, under Voice, sets up both. Duplex needs an account: a sign-in under
+Providers, or a provider row pointed at the provider's endpoint. Choosing the
+account fills in the endpoint, the token service and the protocol prefix from the
+provider profile, so nobody types them. The model is a dropdown of the models
+that account offers. Local speech services are endpoints that speak the OpenAI
+audio API; saving an endpoint lists the models it serves, and the model field is
+a dropdown of those names. A pipe choice appears only when both pipes are
+configured, and duplex is the default.
+
+The example below deliberately uses placeholders. Set `turn_detection`
+explicitly if your provider requires it; the copied template leaves it empty.
 
 ```toml
-[credentials.voice_api]
-env = "YOUR_VOICE_API_KEY"
-# keychain_service = "<KEYCHAIN_SERVICE>"
-# keychain_account = "<KEYCHAIN_ACCOUNT>"
+[credentials.xai-oauth]
+oauth = "xai"
 
 [voice]
 enabled = true
-websocket_url = "wss://voice.example.com/realtime"
-model = "<REALTIME_MODEL_ID>"
-api_base_url = "https://voice.example.com"
-client_secret_path = "/<CLIENT_SECRET_MINT_PATH>"
-client_protocol_prefix = "<EPHEMERAL_PROTOCOL_PREFIX>"
-credential_ref = "voice_api"
+pipe = ""
+websocket_url = "wss://api.x.ai/v1/realtime"
+model = "grok-voice-latest"
+api_base_url = "https://api.x.ai/v1"
+client_secret_path = "/realtime/client_secrets"
+client_protocol_prefix = "xai-client-secret."
+credential_ref = "xai-oauth"
 max_session_seconds = 60
 secret_ttl_seconds = 60
 timeout = 5
 max_sessions = 1
 audio_format = "audio/pcm"
 audio_sample_rate = 24000
-turn_detection = { type = "<TURN_DETECTION_TYPE>" }
+turn_detection = { type = "server_vad" }
 tools = []
+
+[voice.stt]
+base_url = "http://localhost:8001/v1"
+model = "<SPEECH_TO_TEXT_MODEL>"
+
+[voice.tts]
+base_url = "http://localhost:8880/v1"
+model = "<TEXT_TO_SPEECH_MODEL>"
 ```
 
 The protocol prefix must be a valid WebSocket subprotocol token; replace its

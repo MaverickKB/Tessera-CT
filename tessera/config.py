@@ -763,8 +763,24 @@ class CodexCatalogConfig:
 
 
 @dataclass
+class SpeechServiceConfig:
+    """One local speech service that speaks the OpenAI-compatible audio API.
+
+    ``models`` is what the endpoint reported the last time it was checked, so the
+    page offers names the server actually serves instead of asking for a guess.
+    """
+    base_url: str = ''
+    model: str = ''
+    models: list = field(default_factory=list)
+    timeout: float = 10.0
+
+
+@dataclass
 class VoiceConfig:
     enabled: bool = False
+    # Which pipe voice runs. Empty picks duplex when both pipes are configured,
+    # because duplex is the proven one. A single configured pipe needs no choice.
+    pipe: str = ''
     websocket_url: str = ''
     model: str = ''
     api_base_url: str = ''
@@ -805,6 +821,10 @@ class VoiceConfig:
     dedicated_title: str = 'Voice'
     dedicated_reasoning: str = 'low'
     dedicated_thinking_budget: int = 0
+    # Local speech: a speech-to-text service and a text-to-speech service. Both
+    # are needed for the local pipe; one alone configures nothing.
+    stt: SpeechServiceConfig = field(default_factory=SpeechServiceConfig)
+    tts: SpeechServiceConfig = field(default_factory=SpeechServiceConfig)
 
 
 @dataclass
@@ -1731,10 +1751,13 @@ def load_config(home=None):
                 if key in values:
                     _note_retired(config, 'swarm.' + key, values.pop(key))
         nested_jev = None
+        nested_speech = None
         if name == 'computer_use':
             nested_jev = values.pop('jev', {})
             if not isinstance(nested_jev, dict):
                 raise ValueError('computer_use.jev must be a table')
+        if name == 'voice':
+            nested_speech = {'stt': values.pop('stt', {}), 'tts': values.pop('tts', {})}
         allowed = set()
         for item in fields(cls):
             allowed.add(item.name)
@@ -1747,6 +1770,15 @@ def load_config(home=None):
             if unknown_jev:
                 raise ValueError(f'Unknown computer_use.jev options: {sorted(unknown_jev)}')
             section.jev = ComputerUseJevConfig(**nested_jev)
+        if nested_speech is not None:
+            allowed_speech = {item.name for item in fields(SpeechServiceConfig)}
+            for key, table in nested_speech.items():
+                if not isinstance(table, dict):
+                    raise ValueError(f'voice.{key} must be a table')
+                unknown_speech = set(table) - allowed_speech
+                if unknown_speech:
+                    raise ValueError(f'Unknown voice.{key} options: {sorted(unknown_speech)}')
+                setattr(section, key, SpeechServiceConfig(**table))
         setattr(config, name, section)
     config.retired_settings = retired
     config.computer_use.helper = expand_config_path(config.computer_use.helper)

@@ -33,7 +33,7 @@ type-checking and rendering the value do not count as reads.
 
 ## Summary at HEAD
 
-106 fields: 105 CONSUMED, 1 NO-READER, 0 UNRESOLVED.
+111 fields: 110 CONSUMED, 1 NO-READER, 0 UNRESOLVED.
 
 The single NO-READER is `service_accounts`, a record-container placeholder
 that serves an empty list with no actions; the page hint already says no
@@ -120,10 +120,15 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `jev.human_gate` | CONSUMED | tessera/jev.py:89 JudgeKit.from_config; tessera/board_tools.py:91 ask_human_gate consults it |
 | `jev.session_gates_enabled` | CONSUMED | tessera/loop.py:928 and :1000 gate session tools on it (jev.py:91 pops it from the from_config dict, so the loop reads config directly) |
 | `voice.enabled` | CONSUMED | tessera/voice.py:187, :244, :280 all branch on settings.enabled |
-| `voice.credential_ref` | CONSUMED | tessera/voice.py:78 configured() requires it (with socket and model) to consider voice ready |
-| `voice.voice` | CONSUMED | tessera/voice.py:388 copies session_options into the lease; the voice name selects the spoken voice on next start |
+| `voice.account` | CONSUMED | tessera/settings_model.py _voice_account writes voice.credential_ref; tessera/voice.py configured() requires it to mint |
 | `voice.model` | CONSUMED | tessera/voice.py:78 configured() |
 | `voice.websocket_url` | CONSUMED | tessera/voice.py:78 configured() |
+| `voice.pipe` | CONSUMED | tessera/voice.py selected_pipe() chooses the pipe a start uses; VoiceSessions.start refuses the local pipe until its runtime lands |
+| `voice.stt.base_url` | CONSUMED | tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model |
+| `voice.stt.model` | CONSUMED | tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model |
+| `voice.tts.base_url` | CONSUMED | tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model |
+| `voice.tts.model` | CONSUMED | tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model |
+| `voice.voice` | CONSUMED | tessera/voice.py:388 copies session_options into the lease; the voice name selects the spoken voice on next start |
 | `voice.max_session_seconds` | CONSUMED | tessera/voice.py:375 added to the session deadline |
 | `voice.dedicated_title` | CONSUMED | tessera/sessions.py:973 seeds the dedicated voice session title; :1025 reconciles it on restart |
 | `voice.dedicated_reasoning` | CONSUMED | tessera/sessions.py:980, :1026 seeds/reconciles the dedicated session reasoning |
