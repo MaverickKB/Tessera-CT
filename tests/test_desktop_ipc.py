@@ -306,9 +306,9 @@ def test_a_zero_mode_pipe_matches_the_leaked_stdin_writer(monkeypatch):
             return SimpleNamespace(st_mode=stat.S_IFIFO, st_ino=3, st_dev=7)
         raise OSError(9, 'bad fd')
 
-    monkeypatch.setattr(os, 'fstat', fstat)
+    monkeypatch.setattr(desktop_module, '_fstat', fstat)
     monkeypatch.setattr(os, 'listdir', lambda path: ['0', '1', '2', '4', '8'])
-    monkeypatch.setattr(os, 'close', lambda fd: closed.append(fd))
+    monkeypatch.setattr(desktop_module, '_close', lambda fd: closed.append(fd))
     desktop_module._drop_leaked_stdin_writer()
     assert closed == [8]
 
@@ -326,9 +326,9 @@ def test_darwin_pipe_peer_is_the_leaked_stdin_writer(monkeypatch):
             return (30, 40)
         return None
 
-    monkeypatch.setattr(os, 'fstat', lambda fd: SimpleNamespace(st_mode=stat.S_IFREG, st_ino=1, st_dev=1))
+    monkeypatch.setattr(desktop_module, '_fstat', lambda fd: SimpleNamespace(st_mode=stat.S_IFREG, st_ino=1, st_dev=1))
     monkeypatch.setattr(os, 'listdir', lambda path: ['6', '7'])
-    monkeypatch.setattr(os, 'close', lambda fd: closed.append(fd))
+    monkeypatch.setattr(desktop_module, '_close', lambda fd: closed.append(fd))
     monkeypatch.setattr(desktop_module, '_darwin_pipe_ends', ends)
     desktop_module._drop_leaked_stdin_writer()
     assert closed == [6]
@@ -340,8 +340,9 @@ def test_a_regular_stdin_is_not_scanned_for_a_leaked_writer(monkeypatch):
             return SimpleNamespace(st_mode=stat.S_IFREG, st_ino=5, st_dev=1)
         raise AssertionError('scanned fd %s' % fd)
 
-    monkeypatch.setattr(os, 'fstat', fstat)
+    monkeypatch.setattr(desktop_module, '_fstat', fstat)
     monkeypatch.setattr(os, 'listdir', lambda path: ['4'])
+    monkeypatch.setattr(desktop_module, '_darwin_pipe_ends', lambda fd: None)
     desktop_module._drop_leaked_stdin_writer()
 
 

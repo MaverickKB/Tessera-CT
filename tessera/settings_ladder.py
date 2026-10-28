@@ -175,8 +175,30 @@ def binding_source(config, reference='', api_key_env='', *, oauth_clears_env=Tru
     return _walk_credential(config, reference, environ)
 
 
-def credential_source(config, name, environ=None):
-    """The source a request to backend `name` would use. Names only, never values."""
+def _public_credential_label(source):
+    """A label safe for the status projection: no env, reference, or keychain names."""
+    if source == 'env':
+        return 'Environment variable set'
+    if source == 'keychain':
+        return 'Keychain item configured'
+    if source == 'oauth':
+        return 'Sign-in credential'
+    if source == 'cli':
+        return 'CLI login'
+    if source == 'unavailable':
+        return 'Credential unavailable'
+    if source == 'none':
+        return 'No credential'
+    return 'Credential configured'
+
+
+def credential_source(config, name, environ=None, *, redact=False):
+    """The source a request to backend `name` would use. Names only, never values.
+
+    When redact is true, the label omits environment variable, credential
+    reference, and keychain names. The status projection uses that form so a
+    status response cannot carry an operator's private names.
+    """
     backend = config.backends.get(name)
     if backend is None:
         return {'source': 'unavailable', 'label': 'No such model'}
@@ -189,8 +211,12 @@ def credential_source(config, name, environ=None):
         label = vendor + ' CLI login (held by the CLI; not checked)'
         if cli.get('allow_api_key_fallback') is True:
             label += ' · API key fallback'
-        return {'source': 'cli', 'label': label}
-    return binding_source(config, reference, backend.api_key_env or '', environ=environ)
+        result = {'source': 'cli', 'label': label}
+    else:
+        result = binding_source(config, reference, backend.api_key_env or '', environ=environ)
+    if redact:
+        result['label'] = _public_credential_label(result.get('source'))
+    return result
 
 
 def no_credential(config, name):

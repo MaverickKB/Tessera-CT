@@ -184,6 +184,15 @@ def _clear_aethermind_choice_cache():
     clear_memory_choices()
 
 
+@pytest.fixture(autouse=True)
+def _clear_embedded_engine_registry():
+    """A fake engine URL from one test must not answer another test's launch."""
+    from tessera.bundled_engine import _REGISTRY
+    _REGISTRY.clear()
+    yield
+    _REGISTRY.clear()
+
+
 def _load_local_memory():
     """Load the stand-in that sits next to this plugin.
 

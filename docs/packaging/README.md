@@ -28,6 +28,18 @@ this file. `TESSERA_BUNDLE_SOURCE` does not supply it.
 
 The release wheel does not build from an older pin of a tree served somewhere else.
 
+## Source checkout (no wheel receipt)
+
+A source checkout has the same vendored bytes but no `build-receipt.json`. The
+embedded engine would not start if that receipt were the only gate. `tessera
+init` and `tessera serve` call `ensure_local_engine_bundle`: it verifies the
+vendored tree against the manifest, copies it once into
+`<home>/runtime/aethermind/bundles/<manifest-hash>`, and writes a build receipt
+in that copy. `engine_packaging` reports `present` before that copy exists and
+`bundled` after it. A tampered tree is not copied. An explicit
+`aethermind.bundled_path` is still receipt-gated, so a named copy is trusted
+only when it has a receipt.
+
 ## Older engine pins
 
 The release wheel checks `aethermind-engine-manifest.json` only.
