@@ -9,7 +9,7 @@ import threading
 from .tree import utf8_prefix, validate_node
 
 
-PLACEHOLDER = '(not summarized yet: zoom it)'
+PLACEHOLDER = '(no summary yet; zoom in for the raw messages)'
 
 
 class View:

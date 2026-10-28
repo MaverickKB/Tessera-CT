@@ -1350,7 +1350,7 @@ class Handler(BaseHTTPRequestHandler):
                 level = half.bit_length() - 1
                 for position in (start, start + half):
                     node = session.tree.node(level, position // half)
-                    value = node if node is not None else '(not summarized yet: zoom it)'
+                    value = node if node is not None else '(no summary yet; zoom in for the raw messages)'
                     lines.append({'start': position, 'count': half, 'level': level,
                                   'text': value, 'bytes': len(value.encode('utf-8'))})
                 self._json(200, {'lines': lines})

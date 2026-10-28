@@ -91,7 +91,7 @@ def test_zoom_validates_ranges_and_pages_full_utf8_message(tmp_path):
     try:
         raw = '🙂é\n' * 100
         log.append('tool', raw)
-        assert '(not summarized yet: zoom it)' in view.render()
+        assert '(no summary yet; zoom in for the raw messages)' in view.render()
         log.append('user', 'request')
         assert view.zoom(0, 2).startswith('0+1|')
         assert '1+1|request' in view.zoom(0, 2)
@@ -200,7 +200,7 @@ def test_lines_return_prompt_byte_cost_raw_text_and_newest_first_age_rank(tmp_pa
             {'start': 0, 'count': 1, 'level': 0, 'text': 'é\n\\', 'bytes': 11, 'age_rank': 2},
             {'start': 1, 'count': 1, 'level': 0, 'text': 'reply', 'bytes': 10, 'age_rank': 1},
             {'start': 2, 'count': 1, 'level': 0,
-             'text': '(not summarized yet: zoom it)', 'bytes': 34, 'age_rank': 0},
+             'text': '(no summary yet; zoom in for the raw messages)', 'bytes': 51, 'age_rank': 0},
         ]
         lines = view.lines()
         assert sum(line['bytes'] for line in lines) + 14 == len(view.render().encode())
