@@ -51,6 +51,8 @@ CATALOG_READERS = {
     'autonomy.floor_name': [Reader('tessera/config.py:863 floor_label; read by tessera/autonomy.py:1529 and tessera/sessions.py:1071')],
     'identity.enabled': [Reader('tessera/sessions.py:766 ensure_operator runs only when enabled; tessera/board.py:280 and :715 resolve owners through the registry')],
     'roles.main': [Reader('tessera/config.py:1278 backend_for resolves the role to a backend')],
+    'roles.fast': [Reader('tessera/loop.py:99 uses the fast role for direct-routed turns')],
+    'roles.compactor': [Reader('tessera/loop.py:209 uses the compactor role for background summaries')],
     'roles.failover': [Reader('tessera/loop.py:629 builds the failover backend on a failed turn')],
     'computer_use.provider': [Reader('tessera/mcp_servers.py:64 computer_backend; on macOS an empty provider also returns native — partial, baseline debt', 'macOS only: the Default option is a duplicate of Native. The baseline line is platform=darwin')],
     'computer_use.timeout': [Reader('tessera/native_cua.py:39 NativeHelper.timeout')],

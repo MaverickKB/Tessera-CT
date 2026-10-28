@@ -327,8 +327,10 @@ def render():
                           'additional hook options (such as `timeout`) belong to the hook consumer.'])
         elif name == 'roles':
             lines.extend(['Default: `{}`. Maps role names to configured backend names.', '',
-                          '| Key | Default | Environment override | Availability |', '| --- | --- | --- | --- |',
-                          row('roles.*', '', sections, settings)])
+                          '| Key | Default | Environment override | Availability |', '| --- | --- | --- | --- |'])
+            for path in ('roles.main', 'roles.fast', 'roles.compactor', 'roles.failover'):
+                lines.append(row(path, '', sections, settings))
+            lines.append(row('roles.*', '', sections, settings))
         else:
             cls = config_fields[name].default_factory
             if not is_dataclass(cls):
