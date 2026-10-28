@@ -452,6 +452,43 @@ def test_intake_end_to_end_through_the_http_route(tmp_path):
         server.server_close()
 
 
+def test_intake_triage_from_the_page_names_the_reviewing_session(tmp_path):
+    """The page sends `session` as the reviewer, so the triaged card must name it.
+
+    The gathering session and the reviewing session are different on purpose. Before this
+    test, the page's actor was dropped at the store boundary and the card kept the
+    gatherer as `updated_by`, so the board's history credited the wrong thread.
+    """
+    config = configuration(tmp_path)
+    config.server.port = 0
+    server = create_server(config)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        server.manager.create('gatherer')
+        server.manager.create('desk')
+        server.manager.board.create('Gathered PR', 'gatherer', 0, 0, card_id='intake-who',
+                                    intake={'source': 'github:owner/repo',
+                                            'reference': 'owner/repo#14'})
+        view = call(server, 'GET', '/api/board/view')[1]
+        ordinal = view['cards'][0]['ordinal']
+        assert view['cards'][0]['updated_by'] == 'gatherer'
+
+        code, body = call(server, 'POST', f'/api/board/cards/{ordinal}/intake-triage',
+                          {'revision': view['revision'], 'subject': 'fix',
+                           'session': 'desk', 'summary': 'null deref fix'})
+        assert code == 200, (code, body)
+        row = body['cards'][0]
+        assert row['intake']['subject'] == 'fix'
+        assert row['updated_by'] == 'desk'
+
+        # The review survives a fresh read of the journal, not only the reply.
+        reloaded = call(server, 'GET', '/api/board/view')[1]
+        assert reloaded['cards'][0]['updated_by'] == 'desk'
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_ignoring_an_intake_card_through_the_route_keeps_it_as_evidence(tmp_path):
     config = configuration(tmp_path)
     config.server.port = 0

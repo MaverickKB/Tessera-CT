@@ -129,7 +129,8 @@ class BoardTools:
                                'reference': card['intake']['reference']} for card in cards]}
         def triage_intake(card_id, subject=None, compatibility=None, summary=None, expected_version=None):
             card = self.store.triage_intake(card_id, subject=subject, compatibility=compatibility,
-                                            summary=summary, expected_version=expected_version)
+                                            summary=summary, actor=runtime.slug,
+                                            expected_version=expected_version)
             return self._result(card)
         def accept_intake(card_id, note='', expected_version=None):
             card = self.store.accept_intake(card_id, runtime.slug, note=note,
