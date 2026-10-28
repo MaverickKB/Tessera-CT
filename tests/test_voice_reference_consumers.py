@@ -70,7 +70,10 @@ def reference_config(tmp_path, monkeypatch, platform="darwin", mode="keychain"):
         return result
 
     resolver.resolve = Mock(side_effect=resolved)
-    monkeypatch.setattr("tessera.voice.CredentialResolver", lambda references: resolver)
+    def fake_resolver(references, *, oauth_home=""):
+        assert oauth_home == str(config.home), "voice must resolve credentials from the account home"
+        return resolver
+    monkeypatch.setattr("tessera.voice.CredentialResolver", fake_resolver)
     return config, resolver, helper, which, sources
 
 
