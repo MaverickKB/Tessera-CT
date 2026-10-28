@@ -79,15 +79,19 @@ probe_interval = 0
 
 
 @pytest.mark.aethermind_unavailable
-def test_enabled_without_endpoints_reports_a_missing_packaged_engine(tmp_path):
+def test_enabled_without_endpoints_reports_a_missing_packaged_engine(tmp_path, monkeypatch):
+    # A bare checkout cold-starts the engine now, so a missing engine, not a
+    # receipt-less checkout, is the case that still reports one missing.
+    monkeypatch.setattr("tessera.bundled_engine._engine_root", lambda checked: None)
+    monkeypatch.setattr("tessera.bundled_engine.ensure_local_engine_bundle", lambda config: None)
+    monkeypatch.setattr("tessera.engine_manifest.vendored_status", lambda root=None: "absent")
     (tmp_path / "config.toml").write_text('[aethermind]\n')
     session = Session(load_config(tmp_path), backend=FakeBackend([]))
     try:
         assert session.capture.client is None
         assert session.memory_choice["source"] == "embedded"
         assert session.memory_choice["url"] == ""
-        assert session.memory_choice["reason"].startswith("bytes present, not started")
-        assert "build receipt" in session.memory_choice["reason"]
+        assert session.memory_choice["reason"] == "Packaged engine is not in this install"
         assert "unavailable" in session.capture.inheritance_block().lower()
     finally:
         session.close()
@@ -102,6 +106,11 @@ def test_a_missing_packaged_engine_refuses_the_turn(tmp_path, monkeypatch, mode)
 
     config = Config(home=tmp_path, cwd=tmp_path)
     config.tools.approval = 'yolo'
+    # A bare checkout cold-starts the engine now, so the modes that measured
+    # a receipt-less checkout refusing pin a missing engine instead.
+    monkeypatch.setattr("tessera.bundled_engine._engine_root", lambda checked: None)
+    monkeypatch.setattr("tessera.bundled_engine.ensure_local_engine_bundle", lambda config: None)
+    monkeypatch.setattr("tessera.engine_manifest.vendored_status", lambda root=None: "absent")
     if mode == "invalid_external":
         config.aethermind.endpoints = ["https://memory.example.com/mcp"]
 
@@ -128,8 +137,7 @@ def test_a_missing_packaged_engine_refuses_the_turn(tmp_path, monkeypatch, mode)
             assert "401" in session.memory_choice["external_error"]
             text = session._turn_state("main", [])
             assert "AetherMind external service was not used (McpError: MCP HTTP 401)." in text
-            assert "bytes present, not started" in text
-            assert "build receipt" in text
+            assert "The embedded engine is not in this install" in text
         else:
             assert session.memory_choice["external_error"] is None
             assert session.memory_choice["url"] == ""
@@ -137,14 +145,15 @@ def test_a_missing_packaged_engine_refuses_the_turn(tmp_path, monkeypatch, mode)
                 assert "bytes present, not started" not in session.memory_choice["reason"]
                 assert "not in this install" in session.memory_choice["reason"]
             else:
-                assert session.memory_choice["reason"].startswith("bytes present, not started")
-                assert "build receipt" in session.memory_choice["reason"]
+                assert session.memory_choice["reason"] == "Packaged engine is not in this install"
         with pytest.raises(AetherMindUnavailable, match="AetherMind is not available: ") as refused:
             session.run_turn("Remember these synthetic words.")
         if mode == "receipt_less":
             assert "not in this install" in str(refused.value)
+        elif mode == "invalid_external":
+            assert "External service did not validate; packaged engine is not in this install" in str(refused.value)
         else:
-            assert "bytes present, not started" in str(refused.value)
+            assert "Packaged engine is not in this install" in str(refused.value)
         assert backend.calls == []
         assert session.capture.debt() == []
 
