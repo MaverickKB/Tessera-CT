@@ -79,6 +79,34 @@ def configured(settings):
                 and settings.client_protocol_prefix and (settings.api_key_env or settings.credential_ref))
 
 
+def pipes(settings):
+    """Which voice pipes are configured.
+
+    Duplex needs the full provider profile. Local speech needs both a
+    speech-to-text service and a text-to-speech service; one alone is not a pipe.
+    """
+    duplex = configured(settings)
+    local = bool(settings.stt.base_url and settings.stt.model
+                 and settings.tts.base_url and settings.tts.model)
+    return {'duplex': duplex, 'local': local}
+
+
+def selected_pipe(settings):
+    """The pipe a start uses.
+
+    A choice exists only when both pipes are configured. Duplex is the default
+    because it is the proven one; a saved choice holds while it is still configured.
+    """
+    ready = [name for name, is_configured in pipes(settings).items() if is_configured]
+    if not ready:
+        return ''
+    if len(ready) == 1:
+        return ready[0]
+    if settings.pipe in ready:
+        return settings.pipe
+    return 'duplex'
+
+
 def validate_voice(settings, credentials):
     if settings.websocket_url:
         try:
@@ -110,6 +138,17 @@ def validate_voice(settings, credentials):
         raise ValueError('Invalid voice timeout or clock skew')
     if settings.credential_ref and settings.credential_ref not in credentials:
         raise ValueError('Voice credential_ref is not configured')
+    if settings.pipe not in ('', 'duplex', 'local'):
+        raise ValueError('Voice pipe must be duplex, local, or empty')
+    for label, service in (('voice.stt', settings.stt), ('voice.tts', settings.tts)):
+        if not isinstance(service.base_url, str) or not isinstance(service.model, str):
+            raise ValueError(label + ' endpoint and model must be text')
+        if service.base_url:
+            http_url(service.base_url)
+        if not isinstance(service.models, list) or any(not isinstance(item, str) for item in service.models):
+            raise ValueError(label + ' models must be a list of names')
+        if type(service.timeout) not in (int, float) or service.timeout <= 0:
+            raise ValueError(label + ' timeout must be a positive number')
     if settings.client_protocol_prefix and not re.fullmatch(TOKEN, settings.client_protocol_prefix):
         raise ValueError('Invalid voice subprotocol prefix')
     if not settings.model_query_param or not re.fullmatch(r'[A-Za-z0-9_-]+', settings.model_query_param):
@@ -253,7 +292,8 @@ class VoiceSessions:
         options = self.settings.session_options if isinstance(self.settings.session_options, dict) else {}
         voices = [str(v) for v in self.settings.voices if isinstance(v, str)]
         return {'enabled': enabled, 'configured': configured(self.settings), 'active_count': count,
-                'voices': voices, 'voice': str(options.get('voice', ''))}
+                'voices': voices, 'voice': str(options.get('voice', '')),
+                'pipe': selected_pipe(self.settings), 'pipes': pipes(self.settings)}
 
     def _idle(self, lease, now):
         """True only for a lease that declared keepalive and then went silent.
@@ -325,6 +365,8 @@ class VoiceSessions:
         if not isinstance(keepalive, bool):
             raise ValueError('keepalive must be a boolean')
         self._require(slug)
+        if selected_pipe(self.settings) == 'local':
+            raise ValueError('Local speech is configured, but the local voice pipe is not available in this build.')
         with self._start_lock:
             self._require(slug)
             fingerprint = self._fingerprint()

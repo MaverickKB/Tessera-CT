@@ -99,8 +99,11 @@ timeout_seconds = 60.0
 models_url = "https://chatgpt.com/backend-api/codex/models"
 client_version = "99.0.0"
 
+# Settings, under Voice, edits these values. Duplex uses an account; local
+# speech uses the [voice.stt] and [voice.tts] endpoints below.
 [voice]
 enabled = false
+pipe = ""
 websocket_url = ""
 model = ""
 api_base_url = ""
@@ -117,6 +120,16 @@ audio_sample_rate = 24000
 turn_detection = {}
 session_options = {}
 tools = []
+
+[voice.stt]
+base_url = ""
+model = ""
+models = []
+
+[voice.tts]
+base_url = ""
+model = ""
+models = []
 
 [aethermind]
 # The embedded engine is the memory service until `url` or `endpoints` names

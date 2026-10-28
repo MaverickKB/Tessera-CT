@@ -38,7 +38,7 @@ from tessera.native_cua import NativeHelper, register_native_tools
 from tessera.prompts import SYSTEM_PROMPT_TEMPLATE
 from tessera.settings_model import catalog, project
 from tessera.sessions import SessionManager
-from tessera.voice import VoiceSessions, configured as voice_configured
+from tessera.voice import VoiceSessions, configured as voice_configured, pipes as voice_pipes, selected_pipe as voice_selected_pipe
 
 
 @pytest.fixture(autouse=True)
@@ -438,6 +438,63 @@ def consume_voice_configured(config):
     return (voice.websocket_url, voice.model, voice.credential_ref, voice_configured(voice))
 
 
+def _speech_baseline(config):
+    """Hold both services configured so a field under test is the only mover."""
+    voice = config.voice
+    voice.websocket_url = 'wss://voice.example.invalid/socket'
+    voice.model = 'voice-model'
+    voice.api_base_url = 'https://voice.example.invalid'
+    voice.client_secret_path = '/client-secrets'
+    voice.client_protocol_prefix = 'prefix.'
+    voice.credential_ref = 'voice-key'
+    voice.stt.base_url = 'https://stt.example.invalid/v1'
+    voice.stt.model = 'stt-model'
+    voice.tts.base_url = 'https://tts.example.invalid/v1'
+    voice.tts.model = 'tts-model'
+    return voice
+
+
+def consume_voice_pipe(config):
+    # tessera/voice.py selected_pipe: a choice exists only when both pipes are
+    # configured, and the saved choice decides which one a start uses.
+    voice = _speech_baseline(config)
+    return (voice.pipe, voice_selected_pipe(voice))
+
+
+def consume_stt_endpoint(config):
+    # tessera/voice.py pipes: local speech needs both services. The other three
+    # pieces are held present and this endpoint is the mover.
+    voice = config.voice
+    voice.stt.model = 'stt-model'
+    voice.tts.base_url = 'https://tts.example.invalid/v1'
+    voice.tts.model = 'tts-model'
+    return (voice.stt.base_url, voice_pipes(voice))
+
+
+def consume_stt_model(config):
+    voice = config.voice
+    voice.stt.base_url = 'https://stt.example.invalid/v1'
+    voice.tts.base_url = 'https://tts.example.invalid/v1'
+    voice.tts.model = 'tts-model'
+    return (voice.stt.model, voice_pipes(voice))
+
+
+def consume_tts_endpoint(config):
+    voice = config.voice
+    voice.stt.base_url = 'https://stt.example.invalid/v1'
+    voice.stt.model = 'stt-model'
+    voice.tts.model = 'tts-model'
+    return (voice.tts.base_url, voice_pipes(voice))
+
+
+def consume_tts_model(config):
+    voice = config.voice
+    voice.stt.base_url = 'https://stt.example.invalid/v1'
+    voice.stt.model = 'stt-model'
+    voice.tts.base_url = 'https://tts.example.invalid/v1'
+    return (voice.tts.model, voice_pipes(voice))
+
+
 def consume_voice_lease(config):
     # tessera/voice.py:375 adds max_session_seconds to the deadline;
     # :388 copies session_options, which is where the voice name lives.
@@ -578,7 +635,12 @@ CONSUMERS = {
     'jev.human_gate': consume_jev,
     'jev.session_gates_enabled': consume_session_gates,
     'voice.enabled': consume_voice_enabled,
-    'voice.credential_ref': consume_voice_configured,
+    'voice.account': consume_voice_configured,
+    'voice.pipe': consume_voice_pipe,
+    'voice.stt.base_url': consume_stt_endpoint,
+    'voice.stt.model': consume_stt_model,
+    'voice.tts.base_url': consume_tts_endpoint,
+    'voice.tts.model': consume_tts_model,
     'voice.voice': consume_voice_lease,
     'voice.model': consume_voice_configured,
     'voice.websocket_url': consume_voice_configured,
@@ -754,8 +816,8 @@ def test_projection_shape_is_pinned(tmp_path):
     # ui.config_journal_entries, the two Codex catalog settings, and ui.mark
     # are scalars on that bare page.
     assert 'aethermind.enabled' not in ids
-    assert len(list(catalog(config, {}))) == 68
-    assert len(ids) == 77
+    assert len(list(catalog(config, {}))) == 73
+    assert len(ids) == 82
 
 
 def test_yolo_banner_settings_save_reaches_status_and_disk(tmp_path):

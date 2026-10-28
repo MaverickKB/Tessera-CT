@@ -40,7 +40,7 @@ def test_voice_defaults_are_inert_and_settings_override_without_network(tmp_path
         manager.create('one')
         resolver=Mock(side_effect=AssertionError('disabled'))
         with patch('tessera.credentials.CredentialResolver.resolve',resolver):
-            assert manager.status()['voice']=={'enabled':False,'configured':False,'active_count':0,'voices':[],'voice':''}
+            assert manager.status()['voice']=={'enabled':False,'configured':False,'active_count':0,'voices':[],'voice':'','pipe':'','pipes':{'duplex':False,'local':False}}
             with pytest.raises(ValueError):
                 manager.voice.start('one')
         resolver.assert_not_called()

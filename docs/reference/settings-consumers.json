@@ -2,7 +2,7 @@
   "source": "tessera/settings_model.py (catalog + record-row specs)",
   "proof": "catalog scalars are flip-tested in tests/test_settings_consumers.py; record rows are classified by named reader site",
   "counts": {
-    "CONSUMED": 107,
+    "CONSUMED": 112,
     "NO-READER": 1
   },
   "fields": [
@@ -462,20 +462,11 @@
       ]
     },
     {
-      "id": "voice.credential_ref",
+      "id": "voice.account",
       "status": "CONSUMED",
       "readers": [
         {
-          "site": "tessera/voice.py:78 configured() requires it (with socket and model) to consider voice ready"
-        }
-      ]
-    },
-    {
-      "id": "voice.voice",
-      "status": "CONSUMED",
-      "readers": [
-        {
-          "site": "tessera/voice.py:388 copies session_options into the lease; the voice name selects the spoken voice on next start"
+          "site": "tessera/settings_model.py _voice_account writes voice.credential_ref; tessera/voice.py configured() requires it to mint"
         }
       ]
     },
@@ -494,6 +485,60 @@
       "readers": [
         {
           "site": "tessera/voice.py:78 configured()"
+        }
+      ]
+    },
+    {
+      "id": "voice.pipe",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py selected_pipe() chooses the pipe a start uses; VoiceSessions.start refuses the local pipe until its runtime lands"
+        }
+      ]
+    },
+    {
+      "id": "voice.stt.base_url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model"
+        }
+      ]
+    },
+    {
+      "id": "voice.stt.model",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model"
+        }
+      ]
+    },
+    {
+      "id": "voice.tts.base_url",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model"
+        }
+      ]
+    },
+    {
+      "id": "voice.tts.model",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py pipes() counts local speech configured only when both services have an endpoint and a model"
+        }
+      ]
+    },
+    {
+      "id": "voice.voice",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/voice.py:388 copies session_options into the lease; the voice name selects the spoken voice on next start"
         }
       ]
     },

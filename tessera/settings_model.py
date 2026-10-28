@@ -14,6 +14,9 @@ from .credentials import CredentialResolver, KeychainStore
 from .floor_definition import FloorDefinitionError, peek_world_view, save_definition, staged_world_view
 from .systems import SYSTEM_KINDS
 from .settings_ladder import ladder, credential_source, binding_source
+from .speech_services import (DUPLEX_PROVIDERS, SpeechProbeError, connection_for,
+                              duplex_connections, probe_models)
+from .voice import pipes as voice_pipes, selected_pipe as voice_selected_pipe
 from .agent_selection import backend_catalog
 from .secret_names import flagged_env_value, is_secret_name
 
@@ -54,7 +57,8 @@ SECTION_START = {
                 'Enabled, Session tools, and an excluded tool stay off when you turn them off, in Unleashed too. '
                 'Unleashed only drops approvals, warnings, and default limits.'),
     'computer': 'Start here: choose a provider, then configure screen questions and their credential if needed.',
-    'voice': 'Start here: enable voice and choose its credential, model and socket before tuning voice preferences.',
+    'voice': ('Start here: connect a duplex account, or add a speech-to-text and a '
+              'text-to-speech service. A pipe choice appears only when both are ready.'),
     'appearance': 'Start here: choose a theme and an icon and logo set; the remaining display preferences are optional.',
     'permissions': 'Start here: choose the approval policy for tool actions.',
     'autonomy': 'Start here: choose whether autonomy runs and describe what matters in World view.',
@@ -285,6 +289,142 @@ def _credential_options(config, include_empty=True):
     for name in config.credentials:
         pairs.append((name, name))
     return tuple(pairs)
+
+
+def _voice_account_options(connections, current):
+    """Accounts the page offers, plus whatever the file already names."""
+    pairs = [('', 'No account')]
+    for item in connections:
+        pairs.append((item['reference'], item['label']))
+    known = [value for value, _label in pairs]
+    if current and current not in known:
+        pairs.append((current, current + ' (not a duplex account)'))
+    return tuple(pairs)
+
+
+def _voice_model_options(connection, current):
+    """Models the chosen account offers, plus whatever the file already names."""
+    pairs = []
+    if connection is not None:
+        for model in connection['models']:
+            pairs.append((model, model))
+    known = [value for value, _label in pairs]
+    if current and current not in known:
+        pairs.append((current, current + ' (not offered by this account)'))
+    return tuple(pairs)
+
+
+def _voice_status(config, connection):
+    """The one line the Voice row shows: ready, off, or what is missing."""
+    voice = config.voice
+    chosen = voice_selected_pipe(voice)
+    if not voice.enabled:
+        return 'Voice is off.'
+    if chosen == 'local':
+        return 'Configured: local speech. The local pipe is not available in this build.'
+    if chosen == 'duplex':
+        if connection is None:
+            return 'Not ready: the configured credential is not a duplex account. Choose an account.'
+        if not connection['connected']:
+            return 'Not ready: ' + connection['status']
+        return 'Ready: duplex voice over ' + voice.websocket_url + '.'
+    return 'Not ready: connect a duplex account, or add a speech-to-text and a text-to-speech service.'
+
+
+def _voice_account_status(connection):
+    if connection is None:
+        return 'No connected account offers a duplex model. Sign in under Providers.'
+    return connection['status']
+
+
+def _speech_specs(config, service_id, label):
+    """Endpoint and model for one local speech service.
+
+    The model is a list the endpoint reported, never a typed name. Until the
+    endpoint has been saved and listed its models there is nothing to choose.
+    """
+    service = getattr(config.voice, service_id)
+    path = ('voice', service_id)
+    endpoint = Spec('voice.' + service_id + '.base_url', 'voice', 'string', label + ' endpoint',
+                    'live', path + ('base_url',), key='base_url', tier='optional',
+                    hint='The base URL of a local server that speaks the OpenAI audio API. '
+                         'Saving it lists the models the server serves.')
+    options = []
+    for model in service.models:
+        if isinstance(model, str) and model:
+            options.append((model, model))
+    known = [value for value, _option_label in options]
+    if service.model and service.model not in known:
+        options.append((service.model, service.model))
+    if options:
+        count = str(len(options)) + ' model' + ('' if len(options) == 1 else 's') + ' listed.'
+        model = Spec('voice.' + service_id + '.model', 'voice', 'enum', label + ' model',
+                     'live', path + ('model',), key='model', options=tuple(options), tier='optional',
+                     status=count, hint='A model this endpoint reported. Nothing is typed here.')
+        return [(endpoint, service.base_url), (model, service.model)]
+    model = Spec('voice.' + service_id + '.model', 'voice', 'display', label + ' model',
+                 'live', path + ('model',), write='display', inert=True, tier='optional',
+                 status='Save the endpoint to list the models it serves.')
+    return [(endpoint, service.base_url), (model, service.model or 'Not chosen')]
+
+
+def _voice_specs(config):
+    """The Voice section: accounts and models, never credentials.
+
+    A duplex account is a sign-in or a provider the app already holds; the
+    provider profile supplies the socket, token service and protocol prefix.
+    Local speech services list the models their endpoints report.
+    """
+    voice = config.voice
+    connections = duplex_connections(config)
+    connection = connection_for(config, voice.credential_ref)
+    account_options = _voice_account_options(connections, voice.credential_ref)
+    model_options = _voice_model_options(connection, voice.model)
+    if connection is None:
+        model_spec = Spec('voice.model', 'voice', 'display', 'Duplex model', 'live', ('voice', 'model'),
+                          write='display', inert=True, status='Choose an account first.')
+        model_value = voice.model or 'Not chosen'
+    else:
+        model_spec = Spec('voice.model', 'voice', 'enum', 'Duplex model', 'live', ('voice', 'model'),
+                          options=model_options, key='model',
+                          hint='A full-duplex model this account offers. The model carries the voice.')
+        model_value = voice.model
+    specs = [
+        (Spec('voice.enabled', 'voice', 'bool', 'Voice', 'live', ('voice', 'enabled'), key='enabled',
+              status=_voice_status(config, connection)), voice.enabled),
+        (Spec('voice.account', 'voice', 'enum', 'Account', 'live', ('voice', 'credential_ref'),
+              options=account_options, key='credential_ref', status=_voice_account_status(connection),
+              hint='The account that mints the voice session. Sign-ins and providers live under Providers.'),
+         voice.credential_ref),
+        (model_spec, model_value),
+        # The endpoint is the account profile's, not a field to type.
+        (Spec('voice.websocket_url', 'voice', 'display', 'Realtime endpoint', 'live', ('voice', 'websocket_url'),
+              write='display', inert=True,
+              status='Set by the account. Voice connects here.' if voice.websocket_url
+                     else 'Set when an account is chosen.'),
+         voice.websocket_url),
+    ]
+    state = voice_pipes(voice)
+    if state['duplex'] and state['local']:
+        pipe_spec = Spec('voice.pipe', 'voice', 'enum', 'Pipe', 'live', ('voice', 'pipe'),
+                         options=(('duplex', 'Duplex'), ('local', 'Local speech')), key='pipe',
+                         hint='Duplex uses one full-duplex model. Local speech uses the speech-to-text '
+                              'and text-to-speech services below. Duplex is the default.')
+        pipe_value = voice_selected_pipe(voice)
+    elif state['duplex'] or state['local']:
+        only = 'Duplex' if state['duplex'] else 'Local speech'
+        pipe_spec = Spec('voice.pipe', 'voice', 'display', 'Pipe', 'live', ('voice', 'pipe'),
+                         write='display', inert=True,
+                         status=only + ' is the only configured pipe, so it runs and no choice is offered.')
+        pipe_value = only
+    else:
+        pipe_spec = Spec('voice.pipe', 'voice', 'display', 'Pipe', 'live', ('voice', 'pipe'),
+                         write='display', inert=True, status='No pipe is configured yet.')
+        pipe_value = 'None'
+    specs.append((pipe_spec, pipe_value))
+    specs.extend(_speech_specs(config, 'stt', 'Speech-to-text'))
+    specs.extend(_speech_specs(config, 'tts', 'Text-to-speech'))
+    return specs
 
 
 # The stored values are wire names the config validator accepts; the labels are the
@@ -605,16 +745,9 @@ def catalog(config, approval):
         voice_spec = Spec('voice.voice', 'voice', 'string', 'Voice', 'live', ('voice', 'session_options', 'voice'),
                           key='voice', tier='optional',
                           hint='Used on the next voice start. An explicit Voice page choice overrides it for that tab until this setting changes.')
+    items.extend(_voice_specs(config))
     items.extend([
-        (Spec('voice.enabled', 'voice', 'bool', 'Voice', 'live', ('voice', 'enabled'), key='enabled'), voice.enabled),
-        (Spec('voice.credential_ref', 'voice', 'string', 'Credential in use', 'live', ('voice', 'credential_ref'),
-              write='display', inert=True, key='credential_ref',
-              hint='Edited in config.toml. The voice key is for voice only.'),
-         binding_source(config, voice.credential_ref, voice.api_key_env, oauth_clears_env=False)['label']),
         (voice_spec, current_voice),
-        (Spec('voice.model', 'voice', 'string', 'Model', 'live', ('voice', 'model'), key='model'), voice.model),
-        (Spec('voice.websocket_url', 'voice', 'string', 'Socket', 'restart', ('voice', 'websocket_url'),
-              key='websocket_url'), voice.websocket_url),
         (Spec('voice.max_session_seconds', 'voice', 'int', 'Session seconds', 'live', ('voice', 'max_session_seconds'),
               minimum=1, maximum=86400, key='max_session_seconds', tier='advanced'), voice.max_session_seconds),
         # The dedicated voice session: its own name and its own reasoning posture.
@@ -3019,6 +3152,10 @@ class SettingsService:
         if spec.write == 'approval':
             return self._approval(body)
         value = coerce(spec, body['value'])
+        if spec.id == 'voice.account':
+            return self._voice_account(spec, value)
+        if spec.id in ('voice.stt.base_url', 'voice.tts.base_url'):
+            return self._speech_endpoint(spec, value)
         if spec.id == 'aethermind.url':
             endpoints = list(self.manager.config.aethermind.endpoints or [])
             if endpoints:
@@ -3049,6 +3186,75 @@ class SettingsService:
                 save_definition(self.manager.config, staged, 'operator')
             except FloorDefinitionError as exc:
                 raise ValueError(str(exc)) from None
+        return result
+
+    def _voice_account(self, spec, value):
+        """Bind duplex voice to an account, and materialize the provider profile.
+
+        The page names an account, never a credential. Choosing one writes the
+        credential the account already holds and the endpoint details the provider
+        publishes, so no socket, token path or prefix is typed by hand.
+        """
+        config = self.manager.config
+        connections = duplex_connections(config)
+        chosen = next((item for item in connections if item['reference'] == value), None)
+        if not value:
+            edits = [
+                {'path': ['voice', 'credential_ref'], 'value': ''},
+                {'path': ['voice', 'websocket_url'], 'value': ''},
+                {'path': ['voice', 'api_base_url'], 'value': ''},
+                {'path': ['voice', 'client_secret_path'], 'value': ''},
+                {'path': ['voice', 'client_protocol_prefix'], 'value': ''},
+                {'path': ['voice', 'model'], 'value': ''},
+            ]
+            result = commit(self.manager, edits, False)
+            result['detail'] = 'Duplex voice has no account.'
+            return result
+        if chosen is None:
+            raise ValueError('That account does not offer a duplex model')
+        profile = DUPLEX_PROVIDERS[chosen['provider']]
+        edits = []
+        if chosen['reference'] not in config.credentials:
+            edits.append({'path': ['credentials', chosen['reference'], 'oauth'], 'value': chosen['provider']})
+        model = config.voice.model
+        if model not in profile['models']:
+            model = profile['models'][0]
+        edits.extend([
+            {'path': ['voice', 'credential_ref'], 'value': chosen['reference']},
+            {'path': ['voice', 'websocket_url'], 'value': profile['websocket_url']},
+            {'path': ['voice', 'api_base_url'], 'value': profile['api_base_url']},
+            {'path': ['voice', 'client_secret_path'], 'value': profile['client_secret_path']},
+            {'path': ['voice', 'client_protocol_prefix'], 'value': profile['client_protocol_prefix']},
+            {'path': ['voice', 'model'], 'value': model},
+        ])
+        result = commit(self.manager, edits, False)
+        result['detail'] = 'Duplex account set to ' + chosen['label'] + '.'
+        return result
+
+    def _speech_endpoint(self, spec, value):
+        """Save a local speech endpoint and list the models it reports.
+
+        The model list is what the server answered, so the model field is a
+        dropdown of real names. A failed probe keeps the endpoint and says why.
+        """
+        service_id = spec.path[1]
+        service = getattr(self.manager.config.voice, service_id)
+        base = ['voice', service_id]
+        models = []
+        detail = 'Endpoint cleared.'
+        if value:
+            try:
+                models = probe_models(value, service.timeout)
+                count = str(len(models)) + ' model' + ('' if len(models) == 1 else 's')
+                detail = 'Endpoint saved. ' + count + ' listed.'
+            except SpeechProbeError as error:
+                detail = 'Endpoint saved. Could not list models: ' + str(error)
+        edits = [{'path': list(spec.path), 'value': value},
+                 {'path': base + ['models'], 'value': models}]
+        if not value or (service.model and service.model not in models):
+            edits.append({'path': base + ['model'], 'value': ''})
+        result = commit(self.manager, edits, False)
+        result['detail'] = detail
         return result
 
     def _approval(self, body):

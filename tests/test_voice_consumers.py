@@ -185,7 +185,8 @@ def test_loopback_mint_returns_only_ephemeral_access_and_never_persists_secrets(
         assert EPHEMERAL_KEY not in response["websocket_url"]
         code, status = call(server, "GET", "/api/status", headers=AUTH)
         assert code == 200
-        assert status["voice"] == {"enabled": True, "configured": True, "active_count": 1, "voices": [], "voice": ""}
+        assert status["voice"] == {"enabled": True, "configured": True, "active_count": 1, "voices": [], "voice": "",
+                                   "pipe": "duplex", "pipes": {"duplex": True, "local": False}}
         for private in (PROVIDER_KEY, EPHEMERAL_KEY, "EXAMPLE_VOICE_PROVIDER_KEY", "voice.example.com",
                         "voice-model-placeholder", "client-placeholder."):
             assert private not in json.dumps(status)
