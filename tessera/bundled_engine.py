@@ -15,9 +15,11 @@ it needs a port and a provisioned runtime. This module owns that lifecycle:
 """
 
 import hashlib
+import json
 import os
 import pathlib
 import re
+import shutil
 import socket
 import stat
 import subprocess
@@ -40,12 +42,91 @@ def _engine_root(config):
     if not raw:
         from .assets import asset_path
         root = asset_path('aethermind-engine')
-        return root if (root / 'mcp' / 'aethermind_mcp.py').is_file() and (root / 'build-receipt.json').is_file() else None
+        entry = root / 'mcp' / 'aethermind_mcp.py'
+        if not entry.is_file():
+            return None
+        if (root / 'build-receipt.json').is_file():
+            return root
+        # A source checkout has the engine bytes but no wheel receipt. A
+        # verified home-local bundle is the receipt-backed copy that can start.
+        return _local_bundle_root(config, root)
     root = pathlib.Path(raw).expanduser()
     if not root.is_absolute():
         home = getattr(config, 'home', None) or pathlib.Path('~').expanduser()
         root = home / root
     return root
+
+
+def _local_bundle_root(config, source):
+    from .engine_manifest import EngineBundleError, load_manifest, manifest_file, verify_engine_tree
+    try:
+        manifest = load_manifest()
+        verify_engine_tree(source, manifest, override=False)
+        manifest_bytes = manifest_file().read_bytes()
+    except EngineBundleError:
+        return None
+    key = hashlib.sha256(manifest_bytes).hexdigest()[:20]
+    home = pathlib.Path(config.home).expanduser().resolve()
+    bundle = home / 'runtime' / 'aethermind' / 'bundles' / key
+    if not (bundle / 'build-receipt.json').is_file():
+        return None
+    return bundle
+
+
+def ensure_local_engine_bundle(config):
+    """Materialize a verified source checkout as a receipt-backed bundle.
+
+    A wheel ships build-receipt.json. A source checkout has the same engine
+    bytes but no receipt, so the embedded engine would never start. Copy the
+    manifest-verified vendored tree into this home once, write the receipt
+    there, and let _engine_root use that copy. Returns the bundle root or None.
+    """
+    raw = getattr(config.aethermind, 'bundled_path', '') or ''
+    if raw:
+        return None
+    from .assets import asset_path
+    source = asset_path('aethermind-engine')
+    entry = source / 'mcp' / 'aethermind_mcp.py'
+    if not entry.is_file():
+        return None
+    if (source / 'build-receipt.json').is_file():
+        return None
+    from .engine_manifest import EngineBundleError, load_manifest, manifest_file, verify_engine_tree
+    try:
+        manifest = load_manifest()
+        verify_engine_tree(source, manifest, override=False)
+        manifest_bytes = manifest_file().read_bytes()
+    except EngineBundleError:
+        return None
+    key = hashlib.sha256(manifest_bytes).hexdigest()[:20]
+    home = pathlib.Path(config.home).expanduser().resolve()
+    bundle = home / 'runtime' / 'aethermind' / 'bundles' / key
+    if (bundle / 'build-receipt.json').is_file():
+        return bundle
+    parent = bundle.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    temporary = parent / (key + '.tmp')
+    if temporary.exists():
+        shutil.rmtree(temporary)
+    payload = {
+        'source': 'verified source checkout',
+        'manifest': manifest_file().name,
+        'manifest_sha256': hashlib.sha256(manifest_bytes).hexdigest(),
+        'commit': str(manifest.get('commit', '')),
+        'files': len(manifest.get('files') or {}),
+    }
+    try:
+        shutil.copytree(source, temporary)
+        (temporary / 'build-receipt.json').write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+        if bundle.exists():
+            shutil.rmtree(bundle)
+        temporary.rename(bundle)
+    except OSError:
+        if temporary.exists():
+            shutil.rmtree(temporary, ignore_errors=True)
+        return None
+    return bundle
 
 
 def _runtime_root(config, root):

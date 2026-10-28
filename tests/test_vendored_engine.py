@@ -5,7 +5,8 @@ import shutil
 
 import pytest
 
-from tessera.bundled_engine import mcp_requirements_lock
+from tessera import assets
+from tessera.bundled_engine import _engine_root, ensure_local_engine_bundle, mcp_requirements_lock
 from tessera.cli import _missing_memory_engine
 from tessera.config import Config
 from tessera.engine_manifest import (
@@ -84,3 +85,34 @@ def test_doctor_does_not_call_a_matching_vendored_tree_missing(tmp_path):
     config = Config(home=tmp_path, cwd=tmp_path)
     assert _missing_memory_engine(config) is None
     assert engine_packaging(config) == 'present'
+
+
+def test_a_verified_source_tree_materializes_a_receipt_backed_bundle(tmp_path, monkeypatch):
+    copy = tmp_path / 'engine'
+    shutil.copytree(vendored_dir(), copy)
+    monkeypatch.setattr(assets, 'asset_path',
+                        lambda name: copy if name == 'aethermind-engine' else tmp_path / 'missing')
+    config = Config(home=tmp_path / 'home', cwd=tmp_path)
+    bundle = ensure_local_engine_bundle(config)
+    assert bundle is not None
+    assert (bundle / 'build-receipt.json').is_file()
+    assert _engine_root(config) == bundle
+    assert engine_packaging(config) == 'bundled'
+
+
+def test_a_tampered_source_tree_does_not_materialize(tmp_path, monkeypatch):
+    copy = tmp_path / 'engine'
+    shutil.copytree(vendored_dir(), copy)
+    target = copy / 'lib' / 'aethermind' / 'core.py'
+    target.write_bytes(target.read_bytes() + b'\n')
+    monkeypatch.setattr(assets, 'asset_path',
+                        lambda name: copy if name == 'aethermind-engine' else tmp_path / 'missing')
+    config = Config(home=tmp_path / 'home', cwd=tmp_path)
+    assert ensure_local_engine_bundle(config) is None
+    assert _engine_root(config) is None
+
+
+def test_an_explicit_bundle_is_not_replaced(tmp_path):
+    config = Config(home=tmp_path / 'home', cwd=tmp_path)
+    config.aethermind.bundled_path = str(tmp_path / 'explicit')
+    assert ensure_local_engine_bundle(config) is None

@@ -1534,6 +1534,8 @@ def create_server(config, manager=None, web_root=None, backend_factory=None):
 
 
 def serve(config):
+    from .bundled_engine import ensure_local_engine_bundle
+    ensure_local_engine_bundle(config)
     with create_server(config) as server:
         # A supervisor's SIGTERM drains like /api/core/restart instead of killing running turns.
         signal.signal(signal.SIGTERM, lambda *args: server.restart())

@@ -2077,7 +2077,7 @@ class SessionManager:
         report = {'backends': list(self.config.backends),
                 'agent_backends': (None if connection else backend_catalog(self.config)),
                 'chat_backends': [name for name, item in self.config.backends.items() if offered_for_chat(name, item)],
-                'backend_credentials': {name: credential_source(self.config, name) for name in self.config.backends},
+                'backend_credentials': {name: credential_source(self.config, name, redact=True) for name in self.config.backends},
                 'roles': {'main': self.config.roles.get('main', ''), 'failover': self.config.roles.get('failover', '')},
                 'agent_name': self.config.agent_name,
                 # The handle a board write from this page records as its owner. The
