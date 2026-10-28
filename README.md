@@ -12,20 +12,36 @@ outside the checkout. Tests and the standard demo need no live providers.
 
 ## Install and run
 
-The short path: one command creates what is missing (config, engine bundle,
-seed pack), starts the core with AetherMind, and opens the app in a browser.
+From a clean machine, no clone needed:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install "git+https://github.com/MaverickKB/Tessera-CT.git"
+.venv/bin/python -m tessera start
+```
+
+`start` creates what is missing (config, engine bundle, seed pack), starts the
+core with AetherMind, and opens the app in a browser. The first launch opens on
+the settings page, which asks for the two required things in order: connect a
+provider, pick a chat model. Everything else is optional. `start` reruns
+cleanly; it only creates what is missing.
+
+To put Tessera in the app menu (Linux), Applications (macOS) or the Start Menu
+(Windows), run:
+
+```sh
+.venv/bin/python -m tessera install-launcher
+```
+
+The launcher runs `start` with this interpreter and home; reruns update it.
+
+From a checkout instead of the git install:
 
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/python -m tessera start
-# Or add the app menu / start menu launcher that runs the same command:
-.venv/bin/python -m tessera install-launcher
 ```
-
-The first launch opens on the settings page, which asks for the two required
-things in order: connect a provider, pick a chat model. Everything else is
-optional. `start` reruns cleanly; it only creates what is missing.
 
 The explicit path, for a configuration you drive by hand:
 

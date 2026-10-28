@@ -17,11 +17,12 @@ sudo apt-get install -y python3-venv python3-pip
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install "git+https://github.com/MaverickKB/Tessera-CT.git"
 export TESSERA_HOME="<PRIVATE_CONFIG_DIRECTORY>"
 .venv/bin/python -m tessera start
 ```
 
+No clone is needed; pip fetches and builds the package from the repository.
 `start` creates the config when missing, materializes the verified engine
 bundle, seeds an empty store, starts the core, and opens the app in a browser.
 `init` remains available when you want to create the config alone and edit it
