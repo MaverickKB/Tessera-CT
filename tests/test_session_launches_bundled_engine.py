@@ -73,6 +73,7 @@ def test_a_config_that_omits_enabled_still_runs_aethermind(tmp_path, monkeypatch
 @pytest.mark.aethermind_unavailable
 def test_a_missing_tree_reports_that_the_packaged_engine_is_absent(tmp_path, monkeypatch):
     monkeypatch.setattr(bundled_engine, '_engine_root', lambda config: None)
+    monkeypatch.setattr(bundled_engine, 'ensure_local_engine_bundle', lambda config: None)
     monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
     config = config_with_bundle(tmp_path)
     session = Session(config, backend=FakeBackend([]))
@@ -195,19 +196,19 @@ def test_a_stored_false_flag_still_runs_the_embedded_engine_and_settings_says_so
 def test_no_engine_anywhere_leaves_the_session_without_a_client(tmp_path, monkeypatch):
     """The other half of the control: a real absence must not invent a client.
 
-    An engine-less wheel reports no engine rather than a broken one. Here nothing
-    is monkeypatched, so the real
-    launcher runs against a checkout with no packaged engine at the path this
-    home would resolve.
+    An engine-less wheel reports no engine rather than a broken one. A bare
+    checkout cold-starts the engine now, so the real launcher runs against a
+    home whose packaged engine is absent at every path it would resolve.
     """
     monkeypatch.setattr(bundled_engine, '_engine_root', lambda config: None)
+    monkeypatch.setattr(bundled_engine, 'ensure_local_engine_bundle', lambda config: None)
+    monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
     config = config_with_bundle(tmp_path)
     session = Session(config, backend=FakeBackend([]))
     try:
         assert session.capture.client is None, 'a client appeared with no engine to talk to'
         assert session.memory_choice['url'] == ''
-        assert session.memory_choice['reason'].startswith('bytes present, not started')
-        assert 'build receipt' in session.memory_choice['reason']
+        assert session.memory_choice['reason'] == 'Packaged engine is not in this install'
     finally:
         session.close()
 

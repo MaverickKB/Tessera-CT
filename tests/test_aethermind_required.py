@@ -179,7 +179,7 @@ class _EngineProc:
 
 
 _CAUSES = {
-    'no_receipt': 'bytes present, not started',
+    'no_receipt': 'Packaged engine is not in this install',
     'missing_bundle': 'Packaged engine is not in this install',
     'dead_engine': 'Embedded engine stopped',
 }
@@ -207,7 +207,13 @@ def test_chat_infinity_and_child_refuse_without_a_working_engine(tmp_path, monke
     dead_url = 'http://127.0.0.1:59998/mcp'
     if mode == 'missing_bundle':
         monkeypatch.setattr(bundled_engine, '_engine_root', lambda checked: None)
+        monkeypatch.setattr(bundled_engine, 'ensure_local_engine_bundle', lambda checked: None)
         monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
+    elif mode == 'no_receipt':
+        # A bare checkout cold-starts the engine now, so a receipt-less
+        # explicit bundled_path is the case that still refuses.
+        from local_memory import receipt_less_bundle
+        config.aethermind.bundled_path = str(receipt_less_bundle(tmp_path))
     elif mode == 'dead_engine':
         calls = []
 
@@ -282,7 +288,12 @@ def test_chat_infinity_and_child_refuse_without_a_working_engine(tmp_path, monke
 
 
 @pytest.mark.aethermind_unavailable
-def test_swarm_job_refuses_before_any_worker_when_aethermind_is_unavailable(tmp_path):
+def test_swarm_job_refuses_before_any_worker_when_aethermind_is_unavailable(tmp_path, monkeypatch):
+    # A bare checkout cold-starts the engine now, so a missing engine is the
+    # case that still refuses a swarm job before any worker runs.
+    monkeypatch.setattr('tessera.bundled_engine._engine_root', lambda checked: None)
+    monkeypatch.setattr('tessera.bundled_engine.ensure_local_engine_bundle', lambda config: None)
+    monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
     config = Config(home=tmp_path, cwd=tmp_path)
     config.swarm.enabled = True
     config.board.enabled = True
@@ -339,9 +350,13 @@ def test_stored_enabled_false_still_runs_the_embedded_engine(tmp_path, monkeypat
 
 
 def test_cli_run_refuses_when_no_aethermind_is_configured(tmp_path):
+    # A bare checkout cold-starts the engine now, so a config that names
+    # an absent bundled_path is the case that still refuses: the explicit
+    # path is not the packaged copy and it has no receipt.
     (tmp_path / 'config.toml').write_text(
         '[backends.test]\nbase_url="http://127.0.0.1:9/v1"\nmodel="test-model"\n'
-        '[roles]\nmain="test"\n[tools]\napproval = "yolo"\n')
+        '[roles]\nmain="test"\n[tools]\napproval = "yolo"\n'
+        '[aethermind]\nbundled_path = "no-such-bundle"\n')
     env = {key: value for key, value in os.environ.items() if key != 'TESSERA_AETHERMIND_ENABLED'}
     env['TESSERA_HOME'] = str(tmp_path)
     env['PYTHONPATH'] = str(ROOT) + os.pathsep + env.get('PYTHONPATH', '')
@@ -350,7 +365,7 @@ def test_cli_run_refuses_when_no_aethermind_is_configured(tmp_path):
         capture_output=True, text=True, timeout=20)
     assert result.returncode == 1, result.stderr
     assert result.stderr.startswith('tessera: AetherMind is not available')
-    assert 'bytes present, not started' in result.stderr
+    assert 'Packaged engine is not in this install' in result.stderr
     _refused(result.stderr)
 
 
@@ -371,16 +386,21 @@ def test_an_injected_capture_without_a_client_refuses_the_turn(tmp_path, approva
 
 
 @pytest.mark.aethermind_unavailable
-def test_mirror_names_the_failure_when_no_engine_is_up(tmp_path):
+def test_mirror_names_the_failure_when_no_engine_is_up(tmp_path, monkeypatch):
     from tessera.mirror import AppendMirror
 
+    # A bare checkout cold-starts the engine now, so a missing engine is
+    # the case that still names the failure.
+    monkeypatch.setattr('tessera.bundled_engine._engine_root', lambda checked: None)
+    monkeypatch.setattr('tessera.bundled_engine.ensure_local_engine_bundle', lambda config: None)
+    monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
     config = Config(home=tmp_path, cwd=tmp_path)
     mirror = AppendMirror(config)
     mirror.record('subject', 'session', 'chat', {'i': 0, 'text': 'offline'})
     status = mirror.status()
     assert status['local_failures'] == 1
     _refused(status['notice'])
-    assert 'bytes present, not started' in status['notice']
+    assert 'Packaged engine is not in this install' in status['notice']
     assert list(tmp_path.iterdir()) == []
 
 
@@ -620,25 +640,33 @@ def test_stop_bundled_engine_labels_a_missing_receipt(tmp_path):
     from tessera.bundled_engine import stop_bundled_engine
 
     config = Config(home=tmp_path, cwd=tmp_path)
+    # A bare checkout materializes its bundle now, so stop on one reports a
+    # running-or-stopped engine, not a missing one. A receipt-less explicit
+    # path is the case that still labels the missing receipt.
+    config.aethermind.bundled_path = str(receipt_less_bundle(tmp_path))
     missing = stop_bundled_engine(config)
     assert missing['stopped'] is False
-    assert 'bytes present, not started' in missing['reason']
-    assert 'Packaged engine is not in this install' not in missing['reason']
+    assert 'Packaged engine is not in this install' in missing['reason']
     config.aethermind.bundled_path = str(tmp_path / 'does-not-exist')
     absent = stop_bundled_engine(config)
     assert absent['stopped'] is False
     assert absent['reason'] == 'Packaged engine is not in this install'
     assert 'receipt' not in absent['reason']
-    config.aethermind.bundled_path = str(receipt_less_bundle(tmp_path))
     labeled = stop_bundled_engine(config)
     assert labeled['stopped'] is False
     assert labeled['reason'] == 'Packaged engine is not in this install'
 
 
 @pytest.mark.aethermind_unavailable
-def test_bundle_absence_uses_one_reason_for_choice_refusal_and_stop(tmp_path):
+def test_bundle_absence_uses_one_reason_for_choice_refusal_and_stop(tmp_path, monkeypatch):
     from local_memory import receipt_less_bundle
     from tessera.bundled_engine import choose_memory, stop_bundled_engine, unavailable_message
+
+    # A bare checkout cold-starts the engine now, so a missing engine is the
+    # case whose one reason choice, refusal, and stop must still share.
+    monkeypatch.setattr('tessera.bundled_engine._engine_root', lambda checked: None)
+    monkeypatch.setattr('tessera.bundled_engine.ensure_local_engine_bundle', lambda config: None)
+    monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
 
     def surfaces(checked):
         choice = choose_memory(checked)
@@ -650,7 +678,7 @@ def test_bundle_absence_uses_one_reason_for_choice_refusal_and_stop(tmp_path):
     choice_reason, refusal, stopped = surfaces(Config(home=bare_home, cwd=tmp_path))
     assert choice_reason == stopped
     assert choice_reason in refusal
-    assert 'bytes present, not started' in choice_reason
+    assert choice_reason == 'Packaged engine is not in this install'
 
     missing_home = tmp_path / 'missing'
     missing_home.mkdir()
@@ -929,7 +957,12 @@ def test_a_failed_engine_stop_keeps_and_records_the_error(tmp_path, monkeypatch,
 
 
 @pytest.mark.aethermind_unavailable
-def test_a_refused_session_does_not_call_the_summarizer(tmp_path):
+def test_a_refused_session_does_not_call_the_summarizer(tmp_path, monkeypatch):
+    # A bare checkout cold-starts the engine now, so a missing engine is the
+    # case whose refused session must still leave the summarizer alone.
+    monkeypatch.setattr('tessera.bundled_engine._engine_root', lambda checked: None)
+    monkeypatch.setattr('tessera.bundled_engine.ensure_local_engine_bundle', lambda config: None)
+    monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
     config = Config(home=tmp_path, cwd=tmp_path)
     backend = FakeBackend(['should not run'])
     compactor = FakeBackend(['summary line'])

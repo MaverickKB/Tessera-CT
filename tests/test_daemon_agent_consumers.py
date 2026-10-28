@@ -377,9 +377,14 @@ def test_public_a2a_receipt_and_ack_pages_survive_partial_delivery_restart(tmp_p
 
 
 @pytest.mark.aethermind_unavailable
-def test_parent_plan_refuses_before_the_model_when_aethermind_is_unavailable(tmp_path):
+def test_parent_plan_refuses_before_the_model_when_aethermind_is_unavailable(tmp_path, monkeypatch):
     from tessera.bundled_engine import AetherMindUnavailable
 
+    # A bare checkout cold-starts the engine now, so a missing engine is
+    # the case whose parent plan still refuses before the model runs.
+    monkeypatch.setattr('tessera.bundled_engine._engine_root', lambda checked: None)
+    monkeypatch.setattr('tessera.bundled_engine.ensure_local_engine_bundle', lambda checked: None)
+    monkeypatch.setattr('tessera.engine_manifest.vendored_status', lambda root=None: 'absent')
     config = config_for(tmp_path)
     config.agents.planner_tokens = 50
     config.agents.wall_seconds = 20
@@ -395,7 +400,7 @@ def test_parent_plan_refuses_before_the_model_when_aethermind_is_unavailable(tmp
         message = str(refused.value)
         assert 'AetherMind is not available' in message
         assert 'Fix:' in message
-        assert 'bytes present, not started' in message
+        assert 'Packaged engine is not in this install' in message
         assert provider.calls == []
         store = daemon.agents._scheduler_instance().store
         task = store.get('agent-' + request['requestId'] + '-plan')
