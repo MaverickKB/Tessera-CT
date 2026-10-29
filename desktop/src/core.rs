@@ -513,14 +513,25 @@ mod tests {
         assert!(second.attached(), "attached to the kept core, not spawned again");
         assert_eq!(second.origin, origin);
 
-        // A deliberate stop of a kept core is still graceful (SIGTERM drains).
+        // Cleanup differs by platform: SIGTERM drains a kept core on unix, and
+        // Windows stops one by taking its process tree. Sending no signal and
+        // then asserting it stopped is a unix-only expectation.
         #[cfg(unix)]
-        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
-        let deadline = Instant::now() + settings.shutdown();
-        while Instant::now() < deadline && probe(&origin, Duration::from_millis(200), "") {
-            std::thread::sleep(Duration::from_millis(50));
+        {
+            unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+            let deadline = Instant::now() + settings.shutdown();
+            while Instant::now() < deadline && probe(&origin, Duration::from_millis(200), "") {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            assert!(!probe(&origin, Duration::from_millis(200), ""), "SIGTERM stops a kept core");
         }
-        assert!(!probe(&origin, Duration::from_millis(200), ""), "SIGTERM stops a kept core");
+        #[cfg(not(unix))]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/T", "/F", "/PID", &pid.to_string()])
+                .stdout(Stdio::null()).stderr(Stdio::null()).status();
+            std::thread::sleep(Duration::from_millis(300));
+        }
         std::fs::remove_dir_all(home).ok();
     }
 
