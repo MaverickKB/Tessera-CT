@@ -30,9 +30,13 @@ pub struct Core {
 /// Parse a configured core URL: http, loopback IP, explicit port, root path only.
 pub fn loopback_origin(raw: &str) -> Result<Url, String> {
     let url = Url::parse(raw).map_err(|_| "attach_url is not a URL".to_string())?;
+    // A fragment is allowed: it names the page the window opens on (for example
+    // `#view=settings`) and is never sent to the core, so it changes nothing
+    // about the address this app probes or supervises. Everything else about
+    // the URL still has to be a bare loopback origin.
     if url.scheme() != "http" || !is_loopback(url.host_str().unwrap_or("")) || url.port().is_none()
         || !url.username().is_empty() || url.password().is_some() || url.path() != "/"
-        || url.query().is_some() || url.fragment().is_some() {
+        || url.query().is_some() {
         return Err("attach_url must be an http loopback origin with a port".into());
     }
     Ok(url)

@@ -106,7 +106,14 @@ fn main() {
                     .remote(format!("{}/*", origin.origin().ascii_serialization()))
                     .permission("server-controls");
                 app.add_capability(permission)?;
-                let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
+                // The window opens the address the operator configured, fragment included,
+                // so a configured `#view=settings` lands on Settings. The core is
+                // still addressed without it.
+                let window_url = url::Url::parse(&settings.attach_url)
+                    .ok()
+                    .filter(|parsed| parsed.fragment().is_some())
+                    .unwrap_or_else(|| origin.clone());
+                let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(window_url))
                     .title(&settings.title)
                     // Runs before the page. A missing WebKit handler must not become a red banner.
                     .initialization_script(include_str!("../../web/shell-errors.js"))
