@@ -845,10 +845,10 @@ class Capture:
         path = Path(text)
         if path.is_absolute():
             return text
-        # A bare name for a configured store is that store: `default` means the
-        # configured `<home>/projects/default`, not a directory beside the
-        # engine's runtime.
-        matches = [p for p in known if Path(p).name == path.name]
+        # Only a bare name may alias. A slash, backslash, or tilde is a path:
+        # Path.name would treat `other/default` and `~/archive/default` as `default`.
+        bare = '/' not in text and '\\' not in text and '~' not in text
+        matches = [p for p in known if Path(p).name == text] if bare else []
         if len(matches) == 1:
             return matches[0]
         raise ValueError(

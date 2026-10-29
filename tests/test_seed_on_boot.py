@@ -312,6 +312,45 @@ def test_a_bare_project_name_reaches_the_configured_store(tmp_path):
     assert store in str(refused.value)
 
 
+def _path_refusing_capture(tmp_path):
+    """A client that fails if a path is forwarded to the memory service."""
+    from tessera.capture import Capture
+
+    class Client:
+        def tree_view(self, project_id, budget_chars=2000):
+            raise AssertionError('a path must not reach the service')
+
+        def read_layers(self, project_id, **filters):
+            raise AssertionError('a path must not reach the service')
+
+    store = str(tmp_path / 'projects' / 'default')
+    return Capture(Client(), tmp_path / 'outbox', store)
+
+
+def _assert_path_refused(capture, project_id):
+    with pytest.raises(ValueError) as refused:
+        capture.memory_tree(project_id=project_id)
+    assert 'not a configured store' in str(refused.value)
+    assert capture.service_error is None
+    with pytest.raises(ValueError) as recalled:
+        capture.memory_recall(query='anything', project_id=project_id)
+    assert 'not a configured store' in str(recalled.value)
+    assert capture.service_error is None
+
+
+def test_other_default_is_refused_before_the_service_call(tmp_path):
+    """`other/default` is a path. Its last component must not select the store."""
+    capture = _path_refusing_capture(tmp_path)
+    _assert_path_refused(capture, 'other/default')
+    _assert_path_refused(capture, 'other\\default')
+
+
+def test_tilde_archive_default_is_refused_before_the_service_call(tmp_path):
+    """`~/archive/default` is a path. A tilde must not select the store."""
+    capture = _path_refusing_capture(tmp_path)
+    _assert_path_refused(capture, '~/archive/default')
+
+
 def test_a_bare_project_name_in_recall_is_refused_before_it_dirty_health(tmp_path):
     """A wrong name is a bad argument, not a memory service failure."""
     from tessera.capture import Capture
@@ -326,13 +365,15 @@ def test_a_bare_project_name_in_recall_is_refused_before_it_dirty_health(tmp_pat
     assert capture.service_error is None
 
 
-def test_the_prompt_names_the_store_path_and_never_a_bare_default(tmp_path):
-    """The guidance must not hand the model a name that cannot resolve."""
+def test_the_prompt_says_a_matching_bare_name_reads_that_store(tmp_path):
+    """A bare name that matches one configured store reads it; a path does not."""
     from tessera.config import PromptConfig
 
     guidance = PromptConfig().memory_guidance
     assert 'Pass project_id exactly as written above' in guidance
-    assert 'a bare name is not a store' in guidance
+    assert 'a bare name that matches exactly one configured store reads that store' in guidance
+    assert 'a path does not' in guidance
+    assert 'reads nothing' not in guidance
 
 
 def test_start_refuses_instead_of_serving_an_unseeded_store(tmp_path, monkeypatch, capsys):
