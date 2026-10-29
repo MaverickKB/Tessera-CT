@@ -33,6 +33,16 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
             patchelf libgtk-3-dev
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Python core the lifecycle tests launch
+        shell: bash
+        run: |
+          python -m venv .venv
+          PY=$( [ -x .venv/bin/python ] && echo .venv/bin/python || echo .venv/Scripts/python.exe )
+          "$PY" -m pip install -q --upgrade pip
+          "$PY" -m pip install -q -e .
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -58,6 +68,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Python core the lifecycle tests launch
+        shell: bash
+        run: |
+          python -m venv .venv
+          PY=$( [ -x .venv/bin/python ] && echo .venv/bin/python || echo .venv/Scripts/python.exe )
+          "$PY" -m pip install -q --upgrade pip
+          "$PY" -m pip install -q -e .
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
