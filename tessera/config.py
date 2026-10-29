@@ -444,7 +444,7 @@ class PromptConfig:
         'lookup tool, not injected context; nothing from it reaches you unless you call it. The memory_* '
         'tools reach it.\n'
         '- Stores: {project} (this harness){personal}. Pass project_id exactly as written above; '
-        'a bare name is not a store and reads nothing.\n'
+        'a bare name that matches exactly one configured store reads that store; a path does not.\n'
         '- A missing summary tree is normal. When memory_tree is available, it falls back to recall '
         'and says so in one line. Do not request a tree build.\n'
         '- Before answering about past work, decisions, people, projects, the operator, or any name you do not '
