@@ -464,12 +464,15 @@ class VoiceSessions:
             if self.settings.session_shape == 'openai':
                 # OpenAI's Realtime session keeps voice and turn detection inside
                 # audio.input/audio.output. A top-level voice is an unknown
-                # parameter and the socket refuses the whole update.
+                # parameter and the socket refuses the whole update, so the
+                # account-written selector is always moved out, even when this
+                # start overrides it.
                 session.setdefault('type', 'realtime')
+                configured_voice = session.pop('voice', None)
                 if voice is not None:
                     output_audio['voice'] = voice
-                elif 'voice' in session:
-                    output_audio['voice'] = session.pop('voice')
+                elif isinstance(configured_voice, str) and configured_voice:
+                    output_audio['voice'] = configured_voice
                 input_audio['turn_detection'] = detection
             else:
                 if voice is not None:

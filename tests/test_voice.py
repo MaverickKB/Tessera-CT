@@ -147,6 +147,7 @@ def test_openai_realtime_lease_uses_the_ga_session_shape(tmp_path,monkeypatch):
         manager.voice.stop('one',response['voice_id'])
         override=manager.voice.start('one',voice='cedar')
         assert override['session_update']['session']['audio']['output']['voice']=='cedar'
+        assert 'voice' not in override['session_update']['session']
 
 
 def test_voice_is_scoped_stoppable_and_expiry_enforced_before_logging(tmp_path,monkeypatch):
