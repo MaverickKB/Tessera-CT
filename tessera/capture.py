@@ -822,6 +822,39 @@ class Capture:
             return match.group(1)
         return ""
 
+    def _resolve_project(self, requested):
+        """Map a requested project id onto a configured store, or refuse it.
+
+        The engine resolves a relative project name against its own working
+        directory, so a model that writes `default` gets
+        `<runtime>/default`, which no store backs, and the read reports an empty
+        store. The harness knows the real stores, so it maps the names it
+        configured and refuses anything else instead of forwarding a string that
+        resolves somewhere else.
+
+        An absolute path is passed through: it already names one directory, and
+        pointing a read at another store stays possible.
+        """
+        known = [p for p in dict.fromkeys(
+            [self.project_id, self.note_project, self.personal_project]) if p]
+        text = str(requested or '').strip()
+        if not text:
+            return self.project_id
+        if text in known:
+            return text
+        path = Path(text)
+        if path.is_absolute():
+            return text
+        # A bare name for a configured store is that store: `default` means the
+        # configured `<home>/projects/default`, not a directory beside the
+        # engine's runtime.
+        matches = [p for p in known if Path(p).name == path.name]
+        if len(matches) == 1:
+            return matches[0]
+        raise ValueError(
+            'project_id ' + repr(text) + ' is not a configured store; pass one of '
+            + ', '.join(known) + ' exactly as written, or an absolute store path.')
+
     def memory_recall(self, query=None, level=None, index=None, project_id=None):
         if (level is None) != (index is None):
             raise ValueError("memory_recall requires both level and index")
@@ -831,12 +864,14 @@ class Capture:
             raise ValueError("memory_recall accepts query or level/index, not both")
         if self.client is None:
             return {"error": "memory service unavailable"}
+        # A wrong project name is a bad argument, not a memory service failure:
+        # resolve it before the try so it cannot dirty the service health.
+        project = self._resolve_project(project_id)
         try:
-            project = project_id or self.project_id
             if level is not None:
                 value = self.client.tree_zoom(project, level, index)
             else:
-                projects = [project_id] if project_id else [p for p in dict.fromkeys(
+                projects = [project] if project_id else [p for p in dict.fromkeys(
                     [self.project_id, self.note_project, self.personal_project]) if p]
                 if len(projects) == 1:
                     value = self._recalled(self.client.read_layers(projects[0], query=query, last_n=self.recall_limit))
@@ -859,7 +894,7 @@ class Capture:
     def memory_tree(self, project_id=None, budget_chars=2000):
         if self.client is None:
             return {"error": "memory service unavailable"}
-        project = project_id or self.project_id
+        project = self._resolve_project(project_id)
         try:
             result = self.client.tree_view(project, budget_chars)
         except Exception as error:

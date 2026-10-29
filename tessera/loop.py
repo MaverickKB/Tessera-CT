@@ -357,7 +357,7 @@ class Session:
                 canonical = memory.note_project == memory.personal_project
                 role = 'canonical personal store; typed notes go here' if canonical else 'personal, read-only'
                 personal = f', {memory.personal_project} ({role})'
-            text = self._text_for_offered(prompt.memory_guidance.replace('{project}', memory.project or 'default')
+            text = self._text_for_offered(prompt.memory_guidance.replace('{project}', memory.project or '(no store configured)')
                                           .replace('{personal}', personal), offered)
             if text:
                 parts.append(text)
