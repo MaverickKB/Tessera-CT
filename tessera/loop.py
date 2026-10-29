@@ -1121,17 +1121,31 @@ class Session:
                     if response.get('reasoning'):
                         metadata['thought'] = response['reasoning']
                     if not calls:
-                        if self.router._tools_failed(tool_records):
-                            verification = self.router.verify_outputs([{'request': message, 'reply': content,
-                                                                        'tool_outputs': tool_records}])[0]
-                        else:
-                            verification = self.router.verify_output(message, content, tool_records)
-                        metadata['output_gate'] = self.router.output_gate(message, content, tool_records,
-                                                                          verification=verification, human=self.judge_human)
-                        judge_score = verification['completion']
-                        metadata['verification'] = verification
-                        metadata['judge_score'] = judge_score
-                        metadata['judge_source'] = verification['source']
+                        # Turn scoring and the output gate are separate, opt-in judge
+                        # features. With jev.enabled off there is no judge and no turn
+                        # scoring; with session_gates_enabled off the approval policy
+                        # alone decides. Running either unconditionally made a fresh
+                        # build fall back to the heuristic judge and record refusals
+                        # the operator never asked for.
+                        judge_on = self.config.jev.enabled
+                        gates_on = self.config.jev.session_gates_enabled
+                        if judge_on or gates_on:
+                            if self.router._tools_failed(tool_records):
+                                verification = self.router.verify_outputs([{'request': message, 'reply': content,
+                                                                            'tool_outputs': tool_records}])[0]
+                            else:
+                                verification = self.router.verify_output(message, content, tool_records)
+                            if judge_on:
+                                judge_score = verification['completion']
+                                metadata['verification'] = verification
+                                metadata['judge_score'] = judge_score
+                                metadata['judge_source'] = verification['source']
+                            # The output gate is recorded whenever the judge or the
+                            # session gate is on; session_gates_enabled only decides
+                            # whether its verdict enforces success below.
+                            metadata['output_gate'] = self.router.output_gate(
+                                message, content, tool_records,
+                                verification=verification, human=self.judge_human)
                         if wake:
                             self.last_turn_silent = self.rest_requested or not content.strip()
                             metadata['silent' if self.last_turn_silent else 'proactive'] = True

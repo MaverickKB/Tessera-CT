@@ -740,7 +740,7 @@ class LearningStore:
                 judge_failed = judge_score is not None and judge_score < self.pass_score
                 if judge_failed and self._bind_improvement(lesson):
                     changed = True
-                self._record_match(lesson, loaded, judge_score, pinned)
+                self._record_match(lesson, loaded, judge_score, success, pinned)
                 changed = True
             if changed:
                 self._save()
@@ -799,7 +799,7 @@ class LearningStore:
                 found.append(lesson)
         return found
 
-    def _record_match(self, lesson, loaded, judge_score, pinned=None):
+    def _record_match(self, lesson, loaded, judge_score, success, pinned=None):
         skill = lesson.get('skill') or ''
         loaded_this = bool(skill) and skill in loaded
         pinned_this = bool(skill) and skill in (pinned or [])
@@ -809,7 +809,12 @@ class LearningStore:
         # the record says which way the skill reached the turn.
         entry = {'at': self.clock(), 'loaded': loaded_this, 'pinned': pinned_this,
                  'judge_score': judge_score, 'passed': False, 'source': 'turn'}
-        passed = available and judge_score is not None and judge_score >= self.pass_score
+        # With no configured judge the turn has no completion score, so the turn's own
+        # success flag is the only signal. The reminder and no-match branches above use
+        # the same rule: success passes a missing score. Requiring a score here made
+        # a judge-less session record every matched turn as a miss and could never
+        # absorb a lesson.
+        passed = available and success and (judge_score is None or judge_score >= self.pass_score)
         missed = False
         if passed:
             entry['passed'] = True
