@@ -142,7 +142,6 @@ class TesseraServer(ThreadingHTTPServer):
 
     def __init__(self, config, manager, web_root, family, address):
         self.address_family = family
-        self.config = config
         self.manager = manager
         self.web_root = Path(web_root).resolve()
         self.oauth_login = LoginDesk(Path(config.home) / 'oauth-login')
@@ -166,6 +165,11 @@ class TesseraServer(ThreadingHTTPServer):
             except (ValueError, RuntimeError, OSError):
                 pass
         super().__init__(address, Handler)
+
+    @property
+    def config(self):
+        """The live config. A settings save adopts a new object; never read a stale one."""
+        return self.manager.config
 
     def server_bind(self):
         TCPServer.server_bind(self)
