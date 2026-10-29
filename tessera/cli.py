@@ -275,18 +275,23 @@ def _start(config, args):
     if origin:
         print(f'Tessera from {origin["url"]} at {origin["commit"][:10]}', flush=True)
     # start owns its process, so an update restart respawns here rather than
-    # waiting on a supervisor. SIGTERM drains and exits this loop iteration;
-    # respawn keeps the same address unless the port was chosen by the OS, in
-    # which case the new iteration picks a fresh one and the page reconnects.
+    # waiting on a supervisor. SIGTERM drains and exits. An update restart
+    # execs a fresh interpreter with the bound port on the command line,
+    # because the new process reads config from disk and would otherwise pick
+    # a new port; the page only reconnects to the origin it came from.
+    if getattr(args, 'port', None) is not None:
+        config.server.port = args.port
     config.server.port = config.server.port or 0
+    first_iteration = [True]
     while True:
         server = create_server(config)
         server.self_supervised = True
         config.server.port = server.server_address[1]
-        if not getattr(args, 'no_browser', False):
+        if first_iteration[0] and not getattr(args, 'no_browser', False):
+            first_iteration[0] = False
             # The page must not open before the core answers. Probe readiness from
-            # a thread against the bound address, open once, and let serve_forever
-            # take the foreground either way. Later respawns do not reopen it.
+            # a thread against the bound address, open once. An update restart
+            # execs a fresh interpreter, so later iterations do not reopen it.
             import threading
             import time
             import urllib.request
@@ -306,23 +311,38 @@ def _start(config, args):
             threading.Thread(target=_open_when_ready, daemon=True).start()
         print(f'Serving Tessera at {server.url}', flush=True)
         import signal
-        signal.signal(signal.SIGTERM, lambda *args2: server.restart())
+        terminating = []
+
+        def _terminate(*_args):
+            terminating.append(True)
+            server.restart()
+
+        signal.signal(signal.SIGTERM, _terminate)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
+            server.server_close()
             server.manager.close()
             from .server import _release_embedded_engine
             _release_embedded_engine(config)
             return 0
-        # A drain-for-restart exits serve_forever; this process is the
-        # supervisor, so serve the new code from the same home. The old
-        # listener is closed before rebinding so the same address can be
-        # taken again immediately.
+        # serve_forever returns after a drain. A termination exits; an update
+        # restart execs a fresh interpreter, because the already-imported
+        # modules are the old installation's and would keep serving old code
+        # behind the new static assets. execv replaces this process image with
+        # a new Python at the same address, holding the listener gap shut.
         server.server_close()
         server.manager.close()
         from .server import _release_embedded_engine
         _release_embedded_engine(config)
-        print('Restarted with the updated install.', flush=True)
+        if terminating:
+            return 0
+        restart_argv = [sys.executable, '-m', 'tessera', '--home', str(home),
+                        'start', '--no-browser',
+                        '--port', str(server.server_address[1])]
+        print('Restarting with the updated install…', flush=True)
+        os.execv(sys.executable, restart_argv)
+    return 0
 
 
 def _named_chat(config, name):
@@ -378,6 +398,8 @@ def main(argv=None):
                                        help='Set up what is missing, then run the desktop core and open the UI')
     start_parser.add_argument('--no-browser', action='store_true',
                               help='Start the core without opening the browser')
+    start_parser.add_argument('--port', type=int,
+                              help='Serve on this port; 0 selects a free port. An update restart passes the bound port so the page reconnects to the same origin.')
     start_parser.add_argument('--install-launcher', action='store_true',
                               help='Also write the OS launcher (app menu, start menu, Applications)')
     launcher_parser = commands.add_parser('install-launcher',

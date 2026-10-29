@@ -39,10 +39,11 @@ def _direct_url():
             continue
         url = data.get('url') or ''
         commit = ((data.get('vcs_info') or {}).get('commit_id')) or ''
+        requested = ((data.get('vcs_info') or {}).get('requested_revision')) or ''
         if url.startswith('git+'):
             url = url[4:]
         if 'github.com' in url:
-            return {'url': url, 'commit': commit, 'kind': 'git-install'}
+            return {'url': url, 'commit': commit, 'branch': requested, 'kind': 'git-install'}
     return None
 
 
@@ -114,13 +115,11 @@ def check(timeout=10):
     except (OSError, ValueError) as error:
         return {'available': False, 'origin': origin, 'slug': slug,
                 'reason': f'Upstream could not be reached: {type(error).__name__}.'}
-    if data.get('status') in ('diverged', 'identical', 'ahead'):
-        behind = int(data.get('behind_by') or 0)
-    elif data.get('status') == 'behind':
-        behind = int(data.get('ahead_by') or 0)
-    else:
-        return {'available': False, 'origin': origin, 'slug': slug,
-                'reason': f'The repository answered with an unknown comparison status {data.get("status")!r}.'}
+    # The comparison is local...upstream, so upstream-only commits — the ones
+    # this install is missing — are always in ahead_by, whether the history is
+    # ahead (the normal outdated case) or diverged. behind_by counts the local
+    # commits upstream lacks, which is not what "how far behind" means.
+    behind = int(data.get('ahead_by') or 0)
     commits = []
     for commit in (data.get('commits') or [])[:30]:
         message = (commit.get('commit') or {}).get('message') or ''
@@ -139,8 +138,11 @@ def apply(timeout=600):
     origin = install_report()
     if origin is None:
         return {'updated': False, 'reason': 'No install origin to update from.'}
-    command = [sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps',
-               'git+' + origin['url']]
+    # Reinstall the same ref the user chose, not the repository default: an
+    # install from a branch or tag keeps tracking that ref across updates.
+    ref = origin.get('branch') or ''
+    spec = 'git+' + origin['url'] + ('@' + ref if ref else '')
+    command = [sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps', spec]
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError) as error:
