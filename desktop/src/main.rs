@@ -14,12 +14,13 @@ mod config;
 mod core;
 mod menu;
 mod server;
+mod supervisor;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::webview::PageLoadEvent;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 /// Tells the page which operating system this window is, and whether this
 /// process owns the core as a child or through a system service.
@@ -78,7 +79,17 @@ fn main() {
     let reported = Arc::new(Mutex::new(false));
     let stopping = Arc::new(AtomicBool::new(false));
 
+    // The workspace page gets real Start server and Stop server controls on
+    // every platform. macOS can hand the core to launchd; elsewhere this app is
+    // already the supervisor, so it exposes that supervisor the same way.
+    let supervisor = supervisor::Supervisor { core: core.clone(), settings: settings.clone() };
     let app = tauri::Builder::default()
+        .manage(supervisor)
+        .manage(origin.clone())
+        .invoke_handler(tauri::generate_handler![
+            supervisor::supervisor_status,
+            supervisor::supervisor_change
+        ])
         .setup({
             let settings = settings.clone();
             let origin = origin.clone();
@@ -89,11 +100,18 @@ fn main() {
                 let handle = app.handle().clone();
                 app.set_menu(menu::build(app.handle(), &settings.title)?)?;
                 app.on_menu_event(|app, event| menu::handle(app, event.id().as_ref()));
+                let permission = tauri::ipc::CapabilityBuilder::new("workspace-server")
+                    .window("main")
+                    .local(false)
+                    .remote(format!("{}/*", origin.origin().ascii_serialization()))
+                    .permission("server-controls");
+                app.add_capability(permission)?;
                 let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
                     .title(&settings.title)
                     // Runs before the page. A missing WebKit handler must not become a red banner.
                     .initialization_script(include_str!("../../web/shell-errors.js"))
                     .initialization_script(shell_banner("child"))
+                    .initialization_script(supervisor::PAGE_BRIDGE)
                     .inner_size(settings.width, settings.height)
                     .min_inner_size(settings.min_width, settings.min_height)
                     // Navigation can never leave the core's own origin.

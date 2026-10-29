@@ -70,10 +70,15 @@ cargo +stable test
 ```
 
 That command wrote `desktop/target/release/bundle/deb/Tessera_0.1.0_amd64.deb`.
-An AppImage was not produced.
-A macOS bundle and a Windows bundle were not built in that run. LaunchAgent
-start and stop stay macOS-only; on Linux the Settings page says they are
-unavailable.
+An AppImage was not produced in that run; the bundler now builds `deb` and
+`appimage` together.
+
+`.github/workflows/desktop.yml` builds the shell for Linux (`deb`, `AppImage`)
+and Windows (`msi`, `nsis`) on every change to it, so both platforms have an
+installable artifact instead of a source tree nobody built.
+
+Handing the core to a system service (launchd) stays macOS-only. Start and Stop
+in the workspace are not: see the next section.
 
 Sign macOS builds so permission grants (Microphone) survive rebuilds:
 `APPLE_SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" cargo tauri build`,
@@ -83,6 +88,19 @@ or re-sign an installed copy with `codesign --force --deep --sign "<identity>" T
 stdout carries one JSON line: `{"event":"tessera-desktop.window-ready","startup_ms":...}`.
 
 ## Settings
+
+### Start and stop the server on Linux and Windows
+
+The same two buttons work without a system service. In the default and
+`keep_core` modes the app is already the core's supervisor, and
+`src/supervisor.rs` exposes it to the page: **Start server** spawns or respawns
+the core at the configured address, **Stop server** closes it and waits until
+the address stops answering. The window stays open, so Start brings it back with
+the same sessions and configuration.
+
+`loaded` is false only when the app attached to a core it did not start, such as
+one a systemd unit or a terminal owns. The page then hides the buttons rather
+than offering controls that would refuse.
 
 ### Native server controls on macOS
 

@@ -62,9 +62,9 @@
       if (platform === "macos") {
         status.textContent = "This app starts and stops its own core. LaunchAgent controls appear only when a LaunchAgent plist is configured.";
       } else if (platform === "linux") {
-        status.textContent = "This app starts and stops its own core. LaunchAgent start and stop is macOS-only and is not available on Linux.";
+        status.textContent = "This window is attached to a core another process started. Start and stop it where it was launched.";
       } else if (platform === "windows") {
-        status.textContent = "This app starts and stops its own core. LaunchAgent start and stop is macOS-only and is not available on Windows. This window does not install a Windows service.";
+        status.textContent = "This window is attached to a core another process started. Start and stop it where it was launched. This window does not install a Windows service.";
       } else {
         status.textContent = "This app starts and stops its own core. System service controls are not available on this operating system.";
       }

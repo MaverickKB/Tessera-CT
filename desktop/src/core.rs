@@ -261,6 +261,31 @@ impl Core {
         false
     }
 
+    /// Start the core again at the address this app was using.
+    ///
+    /// With an `attach_url` the address is configured, so `respawn` applies.
+    /// Without one the app chose the port when it launched the core, and a
+    /// restart must come back on that same port or the open window is left
+    /// pointing at nothing. This is the path Start server takes after Stop in
+    /// the default mode on Linux and Windows.
+    pub fn restart(&mut self, settings: &Settings) -> Result<(), String> {
+        if !settings.attach_url.is_empty() {
+            return self.respawn(settings);
+        }
+        let mut same = settings.clone();
+        same.attach_url = self.origin.to_string();
+        let home = self.home.clone().ok_or("No Tessera home configured for a restarted core")?;
+        let env = self.env.clone();
+        let mut fresh = Core::spawn_detached(&same, &home, &env)?;
+        self.pid = fresh.pid;
+        if let Some(mut dead) = self.child.take() {
+            let _ = dead.wait();
+        }
+        self.child = fresh.child.take();
+        self.origin = fresh.origin.clone();
+        Ok(())
+    }
+
     /// Start a fresh detached core at the same address after the last one exited.
     pub fn respawn(&mut self, settings: &Settings) -> Result<(), String> {
         let home = self.home.clone().ok_or("No Tessera home configured for a kept core")?;
@@ -307,6 +332,15 @@ impl Core {
     /// Close stdin (graceful), then SIGTERM, then kill; always reaps the child.
     pub fn stop(&mut self, settings: &Settings) {
         if self.keep { return; } // A kept core outlives the window by design.
+        self.shutdown(settings);
+    }
+
+    /// Stop the core on the operator's explicit request.
+    ///
+    /// Unlike `stop`, this also stops a kept core, because Stop server in the
+    /// workspace is a deliberate act and must not be answered with "still
+    /// running". A core this app attached to but never started stays untouched.
+    pub fn shutdown(&mut self, settings: &Settings) {
         if self.attached() { return; } // Never stop a core this app did not start.
         drop(self.stdin.take());
         if self.wait_for(settings.shutdown()) { return; }

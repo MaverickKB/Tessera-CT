@@ -1,0 +1,81 @@
+name: desktop app
+
+# The native shell is part of the product, not an extra. This builds it for
+# Linux and Windows on every change to it, so a shell that does not compile or
+# bundle there is caught here instead of on an operator's machine.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'web/desktop.js'
+      - 'web/shell-errors.js'
+      - 'web/index.html'
+      - '.github/workflows/desktop.yml'
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'web/desktop.js'
+      - 'web/shell-errors.js'
+      - 'web/index.html'
+      - '.github/workflows/desktop.yml'
+
+jobs:
+  linux:
+    name: desktop shell (ubuntu)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: WebKitGTK and bundler prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libgtk-3-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - name: Unit tests
+        working-directory: desktop
+        run: cargo test --locked
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Bundle
+        working-directory: desktop
+        run: cargo tauri build --bundles deb,appimage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tessera-linux
+          if-no-files-found: error
+          path: |
+            desktop/target/release/bundle/deb/*.deb
+            desktop/target/release/bundle/appimage/*.AppImage
+
+  windows:
+    name: desktop shell (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - name: Unit tests
+        working-directory: desktop
+        run: cargo test --locked
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Bundle
+        working-directory: desktop
+        run: cargo tauri build --bundles nsis,msi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tessera-windows
+          if-no-files-found: error
+          path: |
+            desktop/target/release/bundle/nsis/*.exe
+            desktop/target/release/bundle/msi/*.msi
