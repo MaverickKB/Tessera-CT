@@ -702,6 +702,45 @@ async function ready(){await voice.start('session-one');const socket=sockets.at(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_the_server_reads_the_live_config_after_a_settings_save(tmp_path):
+    """A settings save adopts a fresh Config object; the server must follow it.
+
+    The server kept its own reference, so the page CSP still allowed only the
+    old voice WebSocket after switching to OpenAI and the browser blocked the
+    connection. Read the config through the manager instead.
+    """
+    from tessera.config import load_config
+    from tessera.server import create_server
+    from tessera.sessions import SessionManager
+    from tessera.settings_model import adopt_config
+    (tmp_path / "config.toml").write_text(
+        '[voice]\nenabled = true\nwebsocket_url = "wss://api.x.ai/v1/realtime"\n', encoding="utf-8")
+    config = load_config(tmp_path)
+    config.server.port = 0
+    with SessionManager(config) as manager:
+        server = create_server(config, manager=manager)
+        try:
+            new_config = load_config(tmp_path)
+            new_config.voice.websocket_url = "wss://api.openai.com/v1/realtime"
+            adopt_config(manager, new_config)
+            assert server.config is manager.config
+            assert server.config.voice.websocket_url == "wss://api.openai.com/v1/realtime"
+        finally:
+            server.server_close()
+
+
+def test_index_loads_the_local_voice_controller_before_the_app():
+    """app.js constructs TesseraLocalVoice at load; its script must arrive first.
+
+    The nav-glyph change replaced index.html and dropped the local-voice tag.
+    Every page then threw "TesseraLocalVoice is not a constructor" and the Voice
+    page never booted. Pin the tag and its order.
+    """
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    assert "/static/voice-local.js" in html
+    assert html.index("/static/voice-local.js") < html.index("/static/app.js")
+
+
 def test_browser_voice_accepts_openai_nested_turn_detection():
     """The OpenAI lease nests turn detection under audio.input.
 

@@ -768,7 +768,7 @@ def test_engine_log_route_reads_the_manager_config(tmp_path):
         assert code == 200
         assert body['cap'] == 32
         assert body['available'] is False
-        assert server.config.aethermind.engine_log_max_bytes != 32
+        assert server.config.aethermind.engine_log_max_bytes == 32
     finally:
         server.shutdown()
         server.server_close()

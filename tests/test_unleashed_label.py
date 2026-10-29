@@ -170,8 +170,8 @@ def test_favicon_follows_the_f_it_setting_alone(tmp_path):
         status, content_type, body = _favicon(server)
         assert status == 200 and body == icon and content_type.startswith('image/png')
         server.manager.apply_settings({'id': 'ui.mark', 'value': 'gremlin'})
-        assert server.manager.config is not server.config
-        assert server.config.ui.mark == 'cairn'
+        assert server.manager.config is server.config
+        assert server.config.ui.mark == 'gremlin'
         status, content_type, body = _favicon(server)
         assert status == 200 and body == icon and content_type.startswith('image/png')
         server.manager.apply_settings({'id': 'ui.mark', 'value': 'cairn'})
