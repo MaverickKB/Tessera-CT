@@ -642,8 +642,14 @@ def ensure_bundled_engine(config, clock=time.monotonic, *, force=False):
         env['PYTHONDONTWRITEBYTECODE'] = '1'
         log_path = runtime / 'engine.log'
         log_path.write_bytes(b'')
+        # The working directory is the Tessera home. The engine resolves a
+        # relative project_root, such as the config file's "projects/default",
+        # against cwd. The seeder writes that name under this home. The venv,
+        # the log, and the child's HOME (its project registry) stay under
+        # runtime, and those paths are absolute.
         process = subprocess.Popen([python, str(entry), str(port)],
-                                   cwd=str(runtime), env=env,
+                                   cwd=str(pathlib.Path(config.home).expanduser().resolve()),
+                                   env=env,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         log_thread = threading.Thread(
             target=_pump_engine_log, args=(process.stdout, log_path, limit),

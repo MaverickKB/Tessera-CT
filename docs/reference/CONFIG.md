@@ -82,7 +82,7 @@ Default: `{}`. Entries live under `accounts.*`.
 | `aethermind.inheritance_refresh_seconds` | `900.0` | `TESSERA_AETHERMIND_INHERITANCE_REFRESH_SECONDS` | file-only: no Settings row — set this in config.toml |
 | `aethermind.enabled` | `"ignored"` | `TESSERA_AETHERMIND_ENABLED` | retired: memory is required; the packaged engine runs unless an external service validates (accepted for compatibility; ignored); file-only: no Settings row |
 
-`aethermind.project`, `aethermind.personal_project`, and `aethermind.note_project` are store addresses. A relative name is relative to the Tessera home, and the loader resolves every non-empty value to an absolute path before any session sees it, because the embedded engine runs with its own working directory and would otherwise open a different store than the one that was seeded.
+`aethermind.project`, `aethermind.personal_project`, and `aethermind.note_project` are store addresses. A relative name is relative to the Tessera home. The loader resolves every non-empty value to an absolute path, and the embedded engine's working directory is that same home, so a relative `project_root` and the resolved path open the store that was seeded.
 
 ## `agents`
 

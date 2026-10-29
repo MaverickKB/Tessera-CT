@@ -175,10 +175,10 @@ VALUE_NOTES = {
 MANUAL_SWITCHES = {
     'aethermind': (
         '`aethermind.project`, `aethermind.personal_project`, and `aethermind.note_project` '
-        'are store addresses. A relative name is relative to the Tessera home, and the loader '
-        'resolves every non-empty value to an absolute path before any session sees it, because '
-        'the embedded engine runs with its own working directory and would otherwise open a '
-        'different store than the one that was seeded.'
+        'are store addresses. A relative name is relative to the Tessera home. The loader '
+        'resolves every non-empty value to an absolute path, and the embedded engine\'s working '
+        'directory is that same home, so a relative `project_root` and the resolved path open '
+        'the store that was seeded.'
     ),
     'skills': (
         'Operator switches (`skills.enabled` off, and names in `skills.disabled`) apply in every '
