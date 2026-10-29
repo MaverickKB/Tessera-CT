@@ -55,7 +55,7 @@
 				<key>BUNDLE_LOADER</key>
 				<string>$(TEST_HOST)</string>
 				<key>MARKETING_VERSION</key>
-				<string>0.1.0</string>
+				<string>0.1.1</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
 				<string>1,2</string>
 				<key>TEST_HOST</key>
@@ -502,7 +502,7 @@
 				<key>BUNDLE_LOADER</key>
 				<string>$(TEST_HOST)</string>
 				<key>MARKETING_VERSION</key>
-				<string>0.1.0</string>
+				<string>0.1.1</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
 				<string>1,2</string>
 				<key>TEST_HOST</key>
@@ -643,7 +643,7 @@
 				<key>SWIFT_VERSION</key>
 				<string>5.0</string>
 				<key>MARKETING_VERSION</key>
-				<string>0.1.0</string>
+				<string>0.1.1</string>
 				<key>INFOPLIST_FILE</key>
 				<string>TesseraVoice/Resources/Info.plist</string>
 				<key>TARGETED_DEVICE_FAMILY</key>
@@ -887,7 +887,7 @@
 				<key>SWIFT_VERSION</key>
 				<string>5.0</string>
 				<key>MARKETING_VERSION</key>
-				<string>0.1.0</string>
+				<string>0.1.1</string>
 				<key>INFOPLIST_FILE</key>
 				<string>TesseraVoice/Resources/Info.plist</string>
 				<key>TARGETED_DEVICE_FAMILY</key>

@@ -1,6 +1,6 @@
 [package]
 name = "tessera-desktop"
-version = "0.1.0"
+version = "0.1.1"
 description = "Native desktop home for the Tessera harness"
 edition = "2021"
 license = "Apache-2.0"
