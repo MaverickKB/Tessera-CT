@@ -11,14 +11,10 @@ answers without any of them. These tests hold the boot guarantee:
 - a seed that cannot be written is a refusal, not a warning beside an empty store.
 """
 
-import hashlib
 import io
 import json
-import os
 import shutil
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -326,33 +322,6 @@ def test_start_gives_a_first_run_a_real_project_store(tmp_path):
     assert (tmp_path / 'projects' / 'default' / '.aethermind' / 'layers.aem').is_file()
 
 
-def _mcp_search_path():
-    """A directory that can import mcp, installing Tessera's lock when needed.
-
-    The embedded server imports mcp. The suite does not install that extra
-    into the test interpreter, and this host may not be able to build a venv.
-    The child still runs the real server entry; only its import path is supplied.
-    """
-    probe = subprocess.run(
-        [sys.executable, '-c', 'import mcp.server.fastmcp'],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if probe.returncode == 0:
-        return ''
-    from tessera.bundled_engine import mcp_requirements_lock
-    lock = mcp_requirements_lock()
-    digest = hashlib.sha256(lock.read_bytes()).hexdigest()[:16]
-    cache = Path(tempfile.gettempdir()) / 'tessera-mcp-test' / digest
-    if not (cache / 'mcp' / '__init__.py').is_file():
-        if cache.exists():
-            shutil.rmtree(cache)
-        cache.mkdir(parents=True)
-        subprocess.check_call([
-            sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check',
-            '--quiet', '--target', str(cache), '--require-hashes', '-r', str(lock),
-        ])
-    return str(cache)
-
-
 def _receipt_bundle(home):
     """A startable copy of the vendored engine.
 
@@ -375,7 +344,15 @@ def test_a_relative_project_is_readable_after_boot_without_a_setup_verb(tmp_path
     the pack. The reader then asks for the relative name the config file
     contains. Zero layers is the blank load: the seeder and that reader opened
     different directories.
+
+    The embedded server imports mcp. A fresh ``.[test]`` install does not
+    include it, and this suite stays offline, so the proof runs only when
+    that import is already possible. It does not download mcp.
     """
+    pytest.importorskip(
+        'mcp.server.fastmcp',
+        reason='embedded boot proof needs mcp already installed; the suite does not download it',
+    )
     from tessera import bundled_engine
     from tessera.aethermind import AetherMindClient
 
@@ -388,10 +365,8 @@ def test_a_relative_project_is_readable_after_boot_without_a_setup_verb(tmp_path
         f'bundled_path = {json.dumps(str(bundle))}\n',
         encoding='utf-8')
     config = load_config(home)
-    search = _mcp_search_path()
-    if search:
-        current = os.environ.get('PYTHONPATH', '')
-        monkeypatch.setenv('PYTHONPATH', search + (os.pathsep + current if current else ''))
+    # The packaged launch builds a venv and pip-installs the MCP lock. This
+    # proof uses the interpreter that already imported mcp, and does not download.
     monkeypatch.setattr(bundled_engine, '_provision', lambda root, runtime=None: sys.executable)
     seeded = home.resolve() / 'projects' / 'default'
     try:
