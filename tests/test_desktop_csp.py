@@ -95,6 +95,11 @@ def _production_sources():
     return files
 
 
+def _web_path(reference):
+    # Asset version queries are cache-busting, not part of the file path.
+    return WEB / reference.removeprefix("/static/").split("?", 1)[0]
+
+
 def _same_origin(reference):
     assert reference and not reference.startswith("//"), reference
     assert not _REMOTE.search(reference), reference
@@ -141,7 +146,7 @@ def test_desktop_csp_matches_the_shipped_ui_inventory():
     for reference in scripts + styles + images + manifests:
         _same_origin(reference)
         assert reference.startswith("/static/")
-        assert (WEB / reference.removeprefix("/static/")).is_file()
+        assert _web_path(reference).is_file()
     assert "'self'" in POLICY["script-src"]
     assert "'self'" in POLICY["style-src"]
     assert "'self'" in POLICY["img-src"] and "blob:" in POLICY["img-src"] and "data:" in POLICY["img-src"]
@@ -151,7 +156,7 @@ def test_desktop_csp_matches_the_shipped_ui_inventory():
 
     css_images = []
     for sheet in styles:
-        path = WEB / sheet.removeprefix("/static/")
+        path = _web_path(sheet)
         body = path.read_text()
         assert "@font-face" not in body and "@import" not in body
         for match in _URL.finditer(body):
