@@ -817,7 +817,8 @@ def test_projection_shape_is_pinned(tmp_path):
     # are scalars on that bare page.
     assert 'aethermind.enabled' not in ids
     assert len(list(catalog(config, {}))) == 73
-    assert len(ids) == 82
+    # 82 catalog+record fields, plus update.status on the Update section.
+    assert len(ids) == 83
 
 
 def test_yolo_banner_settings_save_reaches_status_and_disk(tmp_path):

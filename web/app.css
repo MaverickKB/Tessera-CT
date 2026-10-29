@@ -52,6 +52,7 @@ h3 { font-size: 1.05rem; }
 .glyph-voice { --menu-glyph: var(--glyph-voice); }
 .glyph-integrations { --menu-glyph: var(--glyph-integrations); }
 .glyph-settings { --menu-glyph: var(--glyph-settings); }
+.glyph-shelf { --menu-glyph: var(--glyph-shelf); }
 .navigation-note { margin: auto 0.8rem 0; padding-top: 2rem; color: var(--muted); font-size: 0.85rem; line-height: 1.65; }
 .navigation-toggle { display: none; }
 .app-content { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
@@ -926,6 +927,10 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
   margin-left: 0;
 }
 .settings-offscreen { display: none; }
+.update-report { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: 0.4rem 0 0.8rem; }
+.update-report .set-fact { margin: 0; }
+.update-commits { display: flex; flex-direction: column; gap: 0.25rem; max-width: 46rem; }
+.update-commits .set-fact { margin: 0; }
 .settings-nav { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.6rem 0; background: var(--paper); }
 .settings-nav button { font-size: 0.8rem; border-color: transparent; }
 .settings-nav button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }

@@ -41,4 +41,6 @@ tessera/tools.py:ToolRegistry.__init__.approval # some callers still omit the Co
 tessera/trial.py:MIN_TOOL_CALLS # module literal has no Config contract
 tessera/trial.py:RATE_MARGIN # module literal has no Config contract
 tessera/trial.py:SECONDS_MARGIN # module literal has no Config contract
+tessera/updates.py:apply.timeout # default used without a Config-supplied argument
+tessera/updates.py:check.timeout # default used without a Config-supplied argument
 tessera/voice.py:TRANSCRIBE_MODEL # module literal has no Config contract

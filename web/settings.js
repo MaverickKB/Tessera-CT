@@ -1134,6 +1134,73 @@
       return wrap;
     }
 
+    function paintUpdate(main) {
+      const inBlock = !String(main.className || "").includes("settings-main");
+      if (!inBlock) {
+        main.append(crumbBar(["Settings", "Update"]));
+        main.append(element("h2", "", "Update"));
+      }
+      main.append(element("p", "set-hint", fieldById("update.status")?.hint || ""));
+      const report = element("div", "update-report");
+      const checkButton = element("button", "", "Check upstream");
+      const applyButton = element("button", "", "Update now");
+      checkButton.type = "button";
+      applyButton.type = "button";
+      applyButton.disabled = true;
+      const line = (text) => element("p", "set-fact", text);
+      const rows = element("div", "update-commits");
+      report.append(checkButton, applyButton, line("Not checked yet."));
+      main.append(report, rows);
+      let latest = null;
+
+      async function check() {
+        checkButton.disabled = true;
+        applyButton.disabled = true;
+        report.replaceChildren(checkButton, applyButton, line("Checking upstream…"));
+        try { latest = await api("/api/update/check", "GET"); }
+        catch (error) {
+          report.replaceChildren(checkButton, applyButton, line(error.message || "The check failed."));
+          checkButton.disabled = false;
+          return;
+        }
+        checkButton.disabled = false;
+        if (!latest.available) {
+          report.replaceChildren(checkButton, applyButton, line(latest.reason || "Updates are not available for this install."));
+          return;
+        }
+        applyButton.disabled = latest.behind < 1;
+        const origin = latest.origin || {};
+        const head = line((latest.behind < 1 ? "Up to date with " : latest.behind + " commit" + (latest.behind === 1 ? "" : "s") + " behind ")
+          + (origin.url || "upstream") + " (" + (latest.branch || "main") + "), at " + String(latest.current || "").slice(0, 10));
+        report.replaceChildren(checkButton, applyButton, head);
+        rows.replaceChildren();
+        for (const commit of latest.commits || []) {
+          rows.append(element("p", "set-fact", (commit.sha || "") + "  " + (commit.message || "")));
+        }
+      }
+
+      async function apply() {
+        applyButton.disabled = true;
+        checkButton.disabled = true;
+        report.replaceChildren(checkButton, applyButton, line("Updating. The core restarts when the reinstall finishes…"));
+        try {
+          const result = await api("/api/update/apply", "POST", {});
+          if (result?.updated) {
+            report.replaceChildren(checkButton, applyButton, line(result.reason || "Updated. Waiting for the core to come back…"));
+          } else {
+            report.replaceChildren(checkButton, applyButton, line(result?.reason || "The update did not complete."));
+            checkButton.disabled = false;
+          }
+        } catch (error) {
+          report.replaceChildren(checkButton, applyButton, line(error.message || "The update failed."));
+          checkButton.disabled = false;
+        }
+      }
+
+      checkButton.addEventListener("click", () => check());
+      applyButton.addEventListener("click", () => apply());
+    }
+
     function paintProvider(main, pageId) {
       const pages = view.data.provider_pages;
       const page = pageId === "provider-keys" ? pages.keys
@@ -1220,7 +1287,7 @@
       ]) navigation.append(navButton(item[0], item[1], "settings-nav-sub"));
       navigation.append(navButton("models", "Models", "settings-nav-sub"));
       const optional = new Set(["credentials", "identity", "voice", "appearance", "integrations", "hosts", "plugins"]);
-      const advanced = new Set(["accounts", "systems", "computer", "permissions", "autonomy", "judge"]);
+      const advanced = new Set(["accounts", "systems", "computer", "permissions", "autonomy", "judge", "update"]);
       const labels = {credentials: "Saved credentials", accounts: "Service accounts"};
       navigation.append(element("div", "settings-nav-label", "Optional"));
       for (const section of view.data.sections || []) {
@@ -1290,6 +1357,8 @@
           const record = (saved.records || []).find((item) => item.name === view.form.name);
           if (record) main.append(renderForm(saved, record.fields || [], record.name));
         }
+      } else if (page === "update") {
+        paintUpdate(main);
       } else if (page === "file-only") {
         const listed = fileOnlyBlock();
         if (listed) main.append(listed);
@@ -1410,6 +1479,11 @@
         // Keep setup and preferences visible, with tuning in a section disclosure.
         const fields = section.fields || [];
         const advanced = fields.filter((field) => field.tier === "advanced");
+        if (section.id === "update") {
+          const host = element("div", "update-panel");
+          block.append(host);
+          paintUpdate(host);
+        }
         for (const field of fields.filter((field) => field.tier !== "advanced")) {
           block.append(field.type === "list-of-records" ? renderRecords(field) : renderScalar(field));
         }

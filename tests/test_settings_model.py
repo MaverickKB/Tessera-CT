@@ -91,7 +91,8 @@ def test_projection_describes_every_control(tmp_path):
     assert code == 200
     sections = {item['id']: item for item in body['sections']}
     assert list(sections) == ['providers', 'models', 'credentials', 'identity', 'accounts', 'integrations', 'hosts',
-                              'systems', 'plugins', 'computer', 'voice', 'appearance', 'permissions', 'autonomy', 'judge']
+                              'systems', 'plugins', 'computer', 'voice', 'appearance', 'permissions', 'autonomy', 'judge',
+                              'update']
     identity = {field['id']: field for field in sections['identity']['fields']}
     assert list(identity) == ['agent_name', 'operator_name', 'identity.enabled', 'autonomy.floor_name']
     # A fresh install must not be pre-named as someone else's companion.

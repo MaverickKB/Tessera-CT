@@ -255,39 +255,59 @@ def _start(config, args):
         written = install_launcher(home)
         print(f"Launcher written: {written['entry']}")
     from .server import create_server
-    server = create_server(config)
-    if not getattr(args, 'no_browser', False):
-        # The page must not open before the core answers. Probe readiness from
-        # a thread against the bound address, open once, and let serve_forever
-        # take the foreground either way.
-        import threading
-        import time
-        import urllib.request
-        import webbrowser
-        url = server.url
+    from . import updates
+    origin = updates.install_report()
+    if origin:
+        print(f'Tessera from {origin["url"]} at {origin["commit"][:10]}', flush=True)
+    # start owns its process, so an update restart respawns here rather than
+    # waiting on a supervisor. SIGTERM drains and exits this loop iteration;
+    # respawn keeps the same address unless the port was chosen by the OS, in
+    # which case the new iteration picks a fresh one and the page reconnects.
+    config.server.port = config.server.port or 0
+    while True:
+        server = create_server(config)
+        server.self_supervised = True
+        config.server.port = server.server_address[1]
+        if not getattr(args, 'no_browser', False):
+            # The page must not open before the core answers. Probe readiness from
+            # a thread against the bound address, open once, and let serve_forever
+            # take the foreground either way. Later respawns do not reopen it.
+            import threading
+            import time
+            import urllib.request
+            import webbrowser
+            url = server.url
 
-        def _open_when_ready():
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline:
-                try:
-                    urllib.request.urlopen(url.rstrip('/') + '/api/status?shape=connection', timeout=1)
-                    webbrowser.open(url)
-                    return
-                except OSError:
-                    time.sleep(0.2)
+            def _open_when_ready(url=url):
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    try:
+                        urllib.request.urlopen(url.rstrip('/') + '/api/status?shape=connection', timeout=1)
+                        webbrowser.open(url)
+                        return
+                    except OSError:
+                        time.sleep(0.2)
 
-        threading.Thread(target=_open_when_ready, daemon=True).start()
-    print(f'Serving Tessera at {server.url}', flush=True)
-    import signal
-    signal.signal(signal.SIGTERM, lambda *args2: server.restart())
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    server.manager.close()
-    from .server import _release_embedded_engine
-    _release_embedded_engine(config)
-    return 0
+            threading.Thread(target=_open_when_ready, daemon=True).start()
+        print(f'Serving Tessera at {server.url}', flush=True)
+        import signal
+        signal.signal(signal.SIGTERM, lambda *args2: server.restart())
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            server.manager.close()
+            from .server import _release_embedded_engine
+            _release_embedded_engine(config)
+            return 0
+        # A drain-for-restart exits serve_forever; this process is the
+        # supervisor, so serve the new code from the same home. The old
+        # listener is closed before rebinding so the same address can be
+        # taken again immediately.
+        server.server_close()
+        server.manager.close()
+        from .server import _release_embedded_engine
+        _release_embedded_engine(config)
+        print('Restarted with the updated install.', flush=True)
 
 
 def _named_chat(config, name):

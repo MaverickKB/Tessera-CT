@@ -38,6 +38,7 @@ SECTIONS = (
     ('permissions', 'Permissions'),
     ('autonomy', 'Autonomy'),
     ('judge', 'Session judge (Jev)'),
+    ('update', 'Update'),
 )
 # Keep setup guidance beside the registry so every client sees the same starting point.
 SECTION_START = {
@@ -63,6 +64,9 @@ SECTION_START = {
     'permissions': 'Start here: choose the approval policy for tool actions.',
     'autonomy': 'Start here: choose whether autonomy runs and describe what matters in World view.',
     'judge': 'Start here: review the judge and action gate switches, then supply the judge credential.',
+    'update': ('Start here: check upstream for new commits, read what changed, and '
+               'update this install in place. The update reinstalls from the same '
+               'repository URL and restarts the core.'),
 }
 SAFE_FACT = {'ask': 'Safe asks', 'deny_risky': 'Safe blocks', 'never': 'Safe allows'}
 _TIER_RANK = {'required': 0, 'optional': 1, 'advanced': 2}
@@ -2124,6 +2128,13 @@ def project(config, approval, manager=None, keychain=None):
     grouped['hosts'].append(hosts_field(config))
     grouped['systems'].append(systems_field(config))
     grouped['plugins'].append(mcp_field(config, manager))
+    grouped['update'].append({
+        'id': 'update.status', 'section': 'update', 'type': 'info', 'tier': 'required',
+        'label': 'This install', 'value': '', 'write': 'none', 'apply': 'none',
+        'hint': ('The section shows where this install came from, how many commits it is '
+                 'behind upstream, and what changed. Check contacts the repository '
+                 'read-only; Update reinstalls in place and restarts the core.'),
+    })
     sections = []
     for section, label in SECTIONS:
         fields = grouped[section]
