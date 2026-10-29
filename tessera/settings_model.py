@@ -3216,6 +3216,9 @@ class SettingsService:
                 {'path': ['voice', 'api_base_url'], 'value': ''},
                 {'path': ['voice', 'client_secret_path'], 'value': ''},
                 {'path': ['voice', 'client_protocol_prefix'], 'value': ''},
+                {'path': ['voice', 'client_protocol_extra'], 'value': []},
+                {'path': ['voice', 'session_shape'], 'value': ''},
+                {'path': ['voice', 'transcribe_model'], 'value': ''},
                 {'path': ['voice', 'model'], 'value': ''},
                 {'path': ['voice', 'voices'], 'value': []},
             ]
@@ -3237,6 +3240,9 @@ class SettingsService:
             {'path': ['voice', 'api_base_url'], 'value': profile['api_base_url']},
             {'path': ['voice', 'client_secret_path'], 'value': profile['client_secret_path']},
             {'path': ['voice', 'client_protocol_prefix'], 'value': profile['client_protocol_prefix']},
+            {'path': ['voice', 'client_protocol_extra'], 'value': list(profile.get('client_protocol_extra', ()))},
+            {'path': ['voice', 'session_shape'], 'value': profile.get('session_shape', '')},
+            {'path': ['voice', 'transcribe_model'], 'value': profile.get('transcribe_model', '')},
             {'path': ['voice', 'model'], 'value': model},
         ])
         # Ask the provider which voices it offers. The answer becomes the voice
@@ -3251,7 +3257,15 @@ class SettingsService:
         edits.append({'path': ['voice', 'voices'], 'value': voices})
         if voices:
             current = str((config.voice.session_options or {}).get('voice') or '').lower()
-            selected = current if current in voices else ('eve' if 'eve' in voices else voices[0])
+            default = str(profile.get('default_voice') or '').lower()
+            if current in voices:
+                selected = current
+            elif default in voices:
+                selected = default
+            elif 'eve' in voices:
+                selected = 'eve'
+            else:
+                selected = voices[0]
             options = dict(config.voice.session_options or {})
             options['voice'] = selected
             edits.append({'path': ['voice', 'session_options'], 'value': options})

@@ -24,12 +24,35 @@ DUPLEX_PROVIDERS = {
         'api_base_url': 'https://api.x.ai/v1',
         'client_secret_path': '/realtime/client_secrets',
         'client_protocol_prefix': 'xai-client-secret.',
+        'client_protocol_extra': (),
+        'session_shape': 'xai',
+        'transcribe_model': 'grok-transcribe',
         'models': ('grok-voice-latest', 'grok-voice-3.0'),
+        'default_voice': 'eve',
+    },
+    # OpenAI's Realtime API, bound to the Codex sign-in Tessera already holds.
+    # The browser pairs two subprotocols, the session carries its audio under
+    # audio.input/audio.output, and the voice lives at audio.output.voice.
+    # Published models and voices come from the Realtime API reference.
+    'openai-codex': {
+        'label': 'OpenAI Codex',
+        'websocket_url': 'wss://api.openai.com/v1/realtime',
+        'api_base_url': 'https://api.openai.com/v1',
+        'client_secret_path': '/realtime/client_secrets',
+        'client_protocol_prefix': 'openai-insecure-api-key.',
+        'client_protocol_extra': ('realtime',),
+        'session_shape': 'openai',
+        'transcribe_model': 'gpt-4o-transcribe',
+        'models': ('gpt-realtime-2.1', 'gpt-realtime-2.1-mini', 'gpt-realtime-2',
+                   'gpt-realtime-1.5', 'gpt-realtime', 'gpt-realtime-mini'),
+        'voices': ('marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo',
+                   'sage', 'shimmer', 'verse'),
+        'default_voice': 'marin',
     },
 }
 
 # The credential name the Providers page uses for each sign-in.
-SIGNIN_CREDENTIALS = {'xai': 'xai-oauth'}
+SIGNIN_CREDENTIALS = {'xai': 'xai-oauth', 'openai-codex': 'openai-codex'}
 
 
 def _host(url):
@@ -160,6 +183,11 @@ def probe_voices(config, connection):
     profile = DUPLEX_PROVIDERS.get(provider)
     if profile is None:
         raise SpeechProbeError('That account does not name a duplex provider.')
+    # A provider with a published roster answers from that roster. OpenAI has no
+    # voice-list endpoint; its Realtime API reference names the supported voices.
+    published = profile.get('voices')
+    if published:
+        return list(published)
     reference = connection.get('reference') or ''
     try:
         token = CredentialResolver(config.credentials, oauth_home=str(config.home)).resolve(reference).value

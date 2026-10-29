@@ -708,6 +708,9 @@ Names in `tools.disabled` are operator switches. They apply in every approval mo
 | `voice.api_key_env` | `""` | — (credential selector; configure in TOML) | file-only: no Settings row — set this in config.toml |
 | `voice.credential_ref` | `""` | `TESSERA_VOICE_CREDENTIAL_REF` | Settings row |
 | `voice.client_protocol_prefix` | `""` | `TESSERA_VOICE_CLIENT_PROTOCOL_PREFIX` | file-only: no Settings row — set this in config.toml |
+| `voice.client_protocol_extra` | `[]` | `TESSERA_VOICE_CLIENT_PROTOCOL_EXTRA` | file-only: no Settings row — set this in config.toml |
+| `voice.session_shape` | `""` | `TESSERA_VOICE_SESSION_SHAPE` | file-only: no Settings row — set this in config.toml |
+| `voice.transcribe_model` | `""` | `TESSERA_VOICE_TRANSCRIBE_MODEL` | file-only: no Settings row — set this in config.toml |
 | `voice.model_query_param` | `"model"` | `TESSERA_VOICE_MODEL_QUERY_PARAM` | file-only: no Settings row — set this in config.toml |
 | `voice.max_session_seconds` | `600` | `TESSERA_VOICE_MAX_SESSION_SECONDS` | Settings row |
 | `voice.secret_ttl_seconds` | `60` | `TESSERA_VOICE_SECRET_TTL_SECONDS` | file-only: no Settings row — set this in config.toml |

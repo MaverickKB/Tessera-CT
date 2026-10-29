@@ -61,7 +61,7 @@ def test_mint_is_lazy_expiry_only_and_never_returns_long_lived_key(tmp_path,monk
     client=VoiceClient(config.voice,credentials=CredentialResolver(),opener=send,clock=lambda:100)
     assert seen==[]
     assert client.mint()=={'value':'ephemeral-fixture','expires_at':160}
-    assert json.loads(seen[0].data)=={'expires_after':{'seconds':config.voice.secret_ttl_seconds}}
+    assert json.loads(seen[0].data)=={'expires_after':{'anchor':'created_at','seconds':config.voice.secret_ttl_seconds}}
     assert seen[0].get_method()=='POST' and seen[0].get_header('Authorization')=='Bearer '+'fixture-voice-api-key'
     assert seen[0].full_url=='https://voice.example.com/realtime/client-secrets-placeholder'
 
@@ -109,6 +109,44 @@ def test_toolless_voice_uses_existing_log_view_without_chat_provider(tmp_path,mo
         # This fixture has no chat backend, so the spoken line is recorded but cannot start a turn.
         assert all('ephemeral-fixture' not in p.read_text() and 'fixture-voice-api-key' not in p.read_text()
                    for p in tmp_path.rglob('*.jsonl'))
+
+
+def test_openai_realtime_lease_uses_the_ga_session_shape(tmp_path,monkeypatch):
+    """OpenAI keeps voice and turn detection inside audio, not at session top level.
+
+    A top-level session.voice or session.turn_detection is an unknown parameter
+    and OpenAI refuses the whole update. The browser also pairs the "realtime"
+    subprotocol with the ephemeral key, unlike xAI's single protocol.
+    """
+    config=voice_config(tmp_path)
+    config.voice.websocket_url='wss://api.openai.com/v1/realtime'
+    config.voice.model='gpt-realtime-2.1'
+    config.voice.api_base_url='https://api.openai.com'
+    config.voice.client_secret_path='/v1/realtime/client_secrets'
+    config.voice.client_protocol_prefix='openai-insecure-api-key.'
+    config.voice.client_protocol_extra=['realtime']
+    config.voice.session_shape='openai'
+    config.voice.transcribe_model='gpt-4o-transcribe'
+    config.voice.session_options={'voice':'marin'}
+    config.voice.voices=['marin','cedar']
+    with SessionManager(config) as manager:
+        manager.create('one')
+        calls=mint_fake(monkeypatch,manager)
+        response=manager.voice.start('one')
+        assert len(calls)==1
+        assert response['protocols']==['realtime','openai-insecure-api-key.ephemeral-fixture']
+        assert 'model=gpt-realtime-2.1' in response['websocket_url']
+        session=response['session_update']['session']
+        assert session['type']=='realtime'
+        assert session['audio']['output']['voice']=='marin'
+        assert session['audio']['input']['turn_detection']=={'type':'server_vad'}
+        assert session['audio']['input']['transcription']=={'model':'gpt-4o-transcribe'}
+        assert session['audio']['input']['format']=={'type':'audio/pcm','rate':24000}
+        assert session['audio']['output']['format']=={'type':'audio/pcm','rate':24000}
+        assert 'voice' not in session and 'turn_detection' not in session
+        manager.voice.stop('one',response['voice_id'])
+        override=manager.voice.start('one',voice='cedar')
+        assert override['session_update']['session']['audio']['output']['voice']=='cedar'
 
 
 def test_voice_is_scoped_stoppable_and_expiry_enforced_before_logging(tmp_path,monkeypatch):

@@ -87,7 +87,7 @@ def mint_fixture(manager, resolver):
         requests.append(request)
         assert request.full_url == "https://voice.example.com/client-secrets-placeholder"
         assert request.get_method() == "POST" and timeout == manager.config.voice.timeout
-        assert json.loads(request.data) == {"expires_after": {"seconds": manager.config.voice.secret_ttl_seconds}}
+        assert json.loads(request.data) == {"expires_after": {"anchor": "created_at", "seconds": manager.config.voice.secret_ttl_seconds}}
         return io.BytesIO(json.dumps({"value": EPHEMERAL_KEY, "expires_at": 160,
                                      "diagnostic": KEYCHAIN_KEY}).encode())
 

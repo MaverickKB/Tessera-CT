@@ -795,6 +795,11 @@ class VoiceConfig:
     api_key_env: str = ''
     credential_ref: str = ''
     client_protocol_prefix: str = ''
+    # Providers differ in how the browser authenticates and how the session is
+    # shaped. The chosen account writes these; they are never typed by hand.
+    client_protocol_extra: list = field(default_factory=list)
+    session_shape: str = ''
+    transcribe_model: str = ''
     model_query_param: str = 'model'
     max_session_seconds: int = 600
     secret_ttl_seconds: int = 60
@@ -1054,6 +1059,14 @@ class Config:
         for section in ('aethermind', 'jev', 'view', 'tools', 'agents', 'server', 'daemon', 'compactor', 'swarm', 'status', 'channels', 'board', 'intake', 'identity', 'infrastructure', 'grafana', 'voice', 'autonomy', 'cua', 'computer_use', 'prompt', 'skills', 'ui'):
             value = getattr(self, section)
             _validate_fields(value, section)
+        voice = self.voice
+        if voice.session_shape not in ('', 'xai', 'openai'):
+            raise ValueError('voice.session_shape must be empty, xai, or openai')
+        if not isinstance(voice.client_protocol_extra, list) or any(
+                not isinstance(item, str) or not item for item in voice.client_protocol_extra):
+            raise ValueError('voice.client_protocol_extra must name protocol tokens')
+        if not isinstance(voice.transcribe_model, str):
+            raise ValueError('voice.transcribe_model must be text')
         _validate_codex(self.codex)
         skills = self.skills
         if (skills.note_bytes < 128 or skills.note_description_chars < 16 or skills.search_limit < 1

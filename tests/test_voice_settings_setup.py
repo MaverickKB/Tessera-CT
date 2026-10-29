@@ -25,8 +25,11 @@ from test_server import call
 @pytest.fixture(autouse=True)
 def provider_voices(monkeypatch):
     """No test talks to a provider. The probe's answer is the dropdown contract."""
-    monkeypatch.setattr(settings_model, 'probe_voices',
-                        lambda config, connection: ['ara', 'eve', 'rex'])
+    def answer(config, connection):
+        if connection.get('provider') == 'openai-codex':
+            return ['marin', 'cedar', 'alloy']
+        return ['ara', 'eve', 'rex']
+    monkeypatch.setattr(settings_model, 'probe_voices', answer)
 
 
 HOME = '''
@@ -153,8 +156,45 @@ def test_clearing_the_account_clears_the_provider_profile(tmp_path):
         assert saved.voice.api_base_url == ''
         assert saved.voice.client_secret_path == ''
         assert saved.voice.client_protocol_prefix == ''
+        assert saved.voice.client_protocol_extra == []
+        assert saved.voice.session_shape == ''
+        assert saved.voice.transcribe_model == ''
         assert saved.voice.model == ''
         assert saved.voice.voices == []
+    finally:
+        stop(server, thread)
+
+
+def test_the_openai_codex_account_writes_the_realtime_profile(tmp_path):
+    server, thread = serve(tmp_path)
+    try:
+        write_grant(tmp_path, 'openai-codex')
+        fields = voice_fields(server)
+        labels = [option['label'] for option in fields['voice.account']['options']]
+        assert 'OpenAI Codex sign-in' in labels
+        code, body = call(server, 'POST', '/api/settings', {
+            'id': 'voice.account', 'value': 'openai-codex'})
+        assert code == 200, body
+        saved = load_config(tmp_path)
+        assert saved.voice.credential_ref == 'openai-codex'
+        assert saved.voice.websocket_url == 'wss://api.openai.com/v1/realtime'
+        assert saved.voice.api_base_url == 'https://api.openai.com/v1'
+        assert saved.voice.client_secret_path == '/realtime/client_secrets'
+        assert saved.voice.client_protocol_prefix == 'openai-insecure-api-key.'
+        assert saved.voice.client_protocol_extra == ['realtime']
+        assert saved.voice.session_shape == 'openai'
+        assert saved.voice.transcribe_model == 'gpt-4o-transcribe'
+        assert saved.voice.model == 'gpt-realtime-2.1'
+        assert saved.credentials['openai-codex'].oauth == 'openai-codex'
+        assert saved.voice.voices == ['marin', 'cedar', 'alloy']
+        assert saved.voice.session_options['voice'] == 'marin'
+        fields = voice_fields(server)
+        assert fields['voice.model']['type'] == 'enum'
+        assert [option['value'] for option in fields['voice.model']['options']][0] == 'gpt-realtime-2.1'
+        assert fields['voice.voice']['type'] == 'enum'
+        assert fields['voice.voice']['value'] == 'marin'
+        assert fields['voice.websocket_url']['value'] == 'wss://api.openai.com/v1/realtime'
+        assert fields['voice.enabled']['status'].startswith('Ready: duplex voice over wss://api.openai.com')
     finally:
         stop(server, thread)
 
