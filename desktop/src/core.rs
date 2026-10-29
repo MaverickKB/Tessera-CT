@@ -86,8 +86,21 @@ pub fn parse_ready(line: &str, pid: u32) -> Result<Url, String> {
     if obj.len() != expected.len() || !expected.iter().all(|k| obj.contains_key(*k)) {
         return Err("Invalid core startup reply".into());
     }
-    if obj["type"] != "tessera.ready" || obj["version"] != 1 || obj["transport"] != "loopback-http"
-        || obj["pid"].as_u64() != Some(pid as u64) {
+    if obj["type"] != "tessera.ready" || obj["version"] != 1 || obj["transport"] != "loopback-http" {
+        return Err("Core startup failed".into());
+    }
+    // The line arrived on the pipe of the child this app spawned, so the pipe is
+    // the provenance. The pid is a second check where the OS hands back the pid
+    // of the process that writes: on Windows a virtualenv's python.exe is a
+    // launcher, and the interpreter that answers is its child, so the numbers
+    // legitimately differ and the reported pid only has to be present.
+    let reported = obj["pid"].as_u64().unwrap_or(0);
+    #[cfg(unix)]
+    if reported != pid as u64 {
+        return Err("Core startup failed".into());
+    }
+    #[cfg(not(unix))]
+    if reported == 0 {
         return Err("Core startup failed".into());
     }
     let url = Url::parse(obj["url"].as_str().ok_or("Invalid core address")?).map_err(|_| "Invalid core address")?;
@@ -327,6 +340,17 @@ impl Core {
     }
 
     fn kill(&mut self) {
+        // On Windows a virtualenv's python.exe is a launcher whose child is the
+        // interpreter that owns the port, so killing the handle alone leaves the
+        // core serving. taskkill /T takes the tree.
+        #[cfg(windows)]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/T", "/F", "/PID", &self.pid.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
         if let Some(child) = self.child.as_mut() {
             let _ = child.kill();
             let _ = child.wait();
@@ -372,7 +396,10 @@ mod tests {
         assert_eq!(parse_ready(ok, 42).unwrap().as_str(), "http://127.0.0.1:12345/");
         let v6 = r#"{"type":"tessera.ready","version":1,"transport":"loopback-http","url":"http://[::1]:5000","pid":7}"#;
         assert!(parse_ready(v6, 7).is_ok());
+        #[cfg(unix)]
         assert!(parse_ready(ok, 43).is_err(), "pid must be the owned child");
+        #[cfg(not(unix))]
+        assert!(parse_ready(ok, 43).is_ok(), "a Windows venv launcher reports the interpreter pid");
         for url in ["https://127.0.0.1:1", "http://0.0.0.0:1", "http://example.com:1", "http://127.0.0.1",
                     "http://127.0.0.1:1/private", "http://user@127.0.0.1:1", "http://127.0.0.1:1/?q", "http://127.evil.example:1"] {
             let line = format!(r#"{{"type":"tessera.ready","version":1,"transport":"loopback-http","url":"{url}","pid":1}}"#);
