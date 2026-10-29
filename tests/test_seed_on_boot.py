@@ -13,6 +13,8 @@ answers without any of them. These tests hold the boot guarantee:
 
 import io
 import json
+import shutil
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -73,11 +75,11 @@ def test_the_store_a_session_addresses_is_the_store_that_is_seeded(tmp_path):
 
 
 def test_a_relative_project_is_resolved_before_any_reader_sees_it(tmp_path):
-    """A relative name must reach the engine absolute.
+    """A relative name in config.toml is an absolute store after load.
 
-    The embedded engine runs with its own working directory, so a bare
-    `projects/default` sent to it addresses `<runtime>/projects/default` and not
-    the store the seeder wrote. The loader resolves it once, for every reader.
+    Sessions pass that absolute path. The live check that the engine itself
+    can still be asked for the relative name is
+    test_a_relative_project_is_readable_after_boot_without_a_setup_verb.
     """
     relative_home = tmp_path / 'relative'
     relative_home.mkdir()
@@ -382,3 +384,69 @@ def test_start_gives_a_first_run_a_real_project_store(tmp_path):
     text = (tmp_path / 'config.toml').read_text(encoding='utf-8')
     assert 'your-project-id' not in text
     assert (tmp_path / 'projects' / 'default' / '.aethermind' / 'layers.aem').is_file()
+
+
+def _receipt_bundle(home):
+    """A startable copy of the vendored engine.
+
+    A source checkout has no build receipt, and the test fixture refuses to
+    materialize one. The copy is what the child executes. The receipt is not
+    written into the vendored tree.
+    """
+    from tessera.assets import asset_path
+    bundle = home / 'engine-bundle'
+    shutil.copytree(asset_path('aethermind-engine'), bundle)
+    (bundle / 'build-receipt.json').write_text(
+        json.dumps({'engine': 'test-boot'}) + '\n', encoding='utf-8')
+    return bundle
+
+
+def test_a_relative_project_is_readable_after_boot_without_a_setup_verb(tmp_path, monkeypatch):
+    """Boot with project = "projects/default" and read that relative path.
+
+    No `tessera init` and no `tessera seed`. The engine launch is what writes
+    the pack. The reader then asks for the relative name the config file
+    contains. Zero layers is the blank load: the seeder and that reader opened
+    different directories.
+
+    The embedded server imports mcp. A fresh ``.[test]`` install does not
+    include it, and this suite stays offline, so the proof runs only when
+    that import is already possible. It does not download mcp.
+    """
+    pytest.importorskip(
+        'mcp.server.fastmcp',
+        reason='embedded boot proof needs mcp already installed; the suite does not download it',
+    )
+    from tessera import bundled_engine
+    from tessera.aethermind import AetherMindClient
+
+    home = tmp_path / 'home'
+    home.mkdir()
+    bundle = _receipt_bundle(home)
+    (home / 'config.toml').write_text(
+        '[aethermind]\n'
+        'project = "projects/default"\n'
+        f'bundled_path = {json.dumps(str(bundle))}\n',
+        encoding='utf-8')
+    config = load_config(home)
+    # The packaged launch builds a venv and pip-installs the MCP lock. This
+    # proof uses the interpreter that already imported mcp, and does not download.
+    monkeypatch.setattr(bundled_engine, '_provision', lambda root, runtime=None: sys.executable)
+    seeded = home.resolve() / 'projects' / 'default'
+    try:
+        url = bundled_engine.ensure_bundled_engine(config, force=True)
+        assert url and url.startswith('http://127.0.0.1:') and not url.endswith(':1/mcp'), url
+        assert (seeded / '.aethermind' / 'layers.aem').is_file()
+        assert _layer_count(seeded) >= MINIMUM_LAYERS
+        client = AetherMindClient(url, timeout=30)
+        # The string in config.toml, not the absolute path the loader rewrote.
+        relative = client.read_layers('projects/default')
+        layers = relative.get('layers') if isinstance(relative, dict) else None
+        assert isinstance(layers, list) and len(layers) >= MINIMUM_LAYERS, relative
+        assert Path(relative['store']) == seeded, relative
+        absolute = client.read_layers(config.aethermind.project)
+        absolute_layers = absolute.get('layers') if isinstance(absolute, dict) else None
+        assert isinstance(absolute_layers, list) and len(absolute_layers) >= MINIMUM_LAYERS, absolute
+        assert Path(absolute['store']) == seeded, absolute
+    finally:
+        bundled_engine.stop_bundled_engine(config)
