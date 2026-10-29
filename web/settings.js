@@ -68,7 +68,10 @@
     }
 
     function applyResult(result) {
-      if (result?.settings) view.data = result.settings;
+      if (result?.settings) {
+        if (result.settings.provider_pages) view.data = result.settings;
+        else view.data = Object.assign({}, view.data, result.settings);
+      }
       if (result?.approval && onApproval) onApproval(result.approval);
       const patch = readAppearance(view.data);
       if (onAppearance && Object.keys(patch).length) onAppearance(patch);
@@ -1305,6 +1308,49 @@
       floorButton.dataset.section = "floor";
       floorButton.addEventListener("click", () => { view.section = "floor"; paint(); });
       navigation.append(floorButton);
+      const sectionSelect = element("select", "settings-section-select");
+      sectionSelect.id = "settings-section-select";
+      sectionSelect.setAttribute("aria-label", "Settings section");
+      const addOption = (parent, value, label) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        parent.append(option);
+      };
+      addOption(sectionSelect, "all", "All settings");
+      const groups = [
+        ["Required", [["provider-accounts", "Accounts"], ["provider-keys", "API keys"],
+                      ["provider-endpoints", "Endpoints"], ["models", "Models"]]],
+        ["Optional", [["credentials", "Saved credentials"], ["identity", "Identity"], ["voice", "Voice"],
+                      ["appearance", "Appearance"], ["integrations", "Integrations"], ["hosts", "Hosts"],
+                      ["plugins", "Plugins"]]],
+        ["Advanced", [["accounts", "Service accounts"], ["systems", "Systems"], ["computer", "Computer use"],
+                      ["permissions", "Permissions"], ["autonomy", "Autonomy"],
+                      ["judge", "Session judge (Jev)"], ["update", "Update"],
+                      ["file-only", "Set in config.toml"], ["floor", "Floor definition"]]],
+      ];
+      const known = new Set(["all"]);
+      for (const [label, items] of groups) {
+        const group = document.createElement("optgroup");
+        group.label = label;
+        for (const [value, text] of items) {
+          addOption(group, value, text);
+          known.add(value);
+        }
+        sectionSelect.append(group);
+      }
+      sectionSelect.value = known.has(view.section) ? view.section : "all";
+      sectionSelect.addEventListener("change", () => {
+        view.section = sectionSelect.value;
+        view.search = "";
+        view.form = null;
+        view.detail = "";
+        paint();
+      });
+      const sectionLabel = element("label", "settings-section-label", "Settings section");
+      sectionLabel.setAttribute("for", "settings-section-select");
+      navigation.insertBefore(sectionLabel, navigation.firstChild);
+      navigation.insertBefore(sectionSelect, sectionLabel.nextSibling);
       const search = element("input", "settings-search");
       search.type = "search";
       search.placeholder = "Find a setting";
@@ -1316,6 +1362,19 @@
         paint();
       });
       const main = element("div", "settings-main");
+      main.append(search);
+      if (view.section !== "all" && !view.search.trim()) {
+        const back = element("button", "settings-back", "All settings");
+        back.type = "button";
+        back.addEventListener("click", () => {
+          view.section = "all";
+          view.search = "";
+          view.form = null;
+          view.detail = "";
+          paint();
+        });
+        main.append(back);
+      }
       if (Array.isArray(view.data.setup_steps) && view.data.setup_steps.length) {
         const steps = element("ol", "settings-setup");
         for (const step of view.data.setup_steps) {
@@ -1388,7 +1447,7 @@
         }
       }
       shell.append(navigation, main);
-      root.append(search, shell, hidden);
+      root.append(shell, hidden);
       const floor = element("section", "settings-block");
       floor.dataset.section = "floor";
       floor.hidden = page !== "floor";
@@ -1713,7 +1772,8 @@
 
     function show(result) {
       if (!result?.settings || view.form) return;
-      view.data = result.settings;
+      if (result.settings.provider_pages) view.data = result.settings;
+      else view.data = Object.assign({}, view.data, result.settings);
       paint();
     }
 

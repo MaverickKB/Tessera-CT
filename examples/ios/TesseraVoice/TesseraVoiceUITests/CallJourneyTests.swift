@@ -29,6 +29,11 @@ final class CallJourneyTests: XCTestCase {
             screenshot.name = destination
             screenshot.lifetime = .keepAlways
             add(screenshot)
+            if destination == "Settings" {
+                let sectionLabel = web.staticTexts["Settings section"]
+                XCTAssertTrue(sectionLabel.waitForExistence(timeout: 5),
+                              "The phone Settings page has no visible section label.")
+            }
         }
         app.buttons["Voice"].firstMatch.tap()
         XCTAssertTrue(app.buttons["Start call"].waitForExistence(timeout: 5))

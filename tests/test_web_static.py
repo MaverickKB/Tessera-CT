@@ -364,7 +364,7 @@ def test_web_assets_and_accessible_application_regions():
     assert decorative and all(attrs.get("aria-hidden") == "true" for attrs in decorative)
     for tag, attrs in page.elements:
         if tag in ("script", "link"):
-            path = attrs.get("src", attrs.get("href", ""))
+            path = attrs.get("src", attrs.get("href", "")).split("?", 1)[0]
             assert path.startswith("/static/")
             assert (WEB / path.removeprefix("/static/")).is_file()
 
@@ -739,6 +739,27 @@ def test_index_loads_the_local_voice_controller_before_the_app():
     html = (WEB / "index.html").read_text(encoding="utf-8")
     assert "/static/voice-local.js" in html
     assert html.index("/static/voice-local.js") < html.index("/static/app.js")
+
+
+def test_phone_workspace_has_a_section_select_and_one_row_controls():
+    """The phone layout keeps the top bar to one row and the settings list in a
+    select. Desk and Timers move into the menu drawer; the settings nav no longer
+    scrolls sideways with most sections hidden.
+    """
+    html = (WEB / "index.html").read_text(encoding="utf-8")
+    app_js = (WEB / "app.js").read_text(encoding="utf-8")
+    settings_js = (WEB / "settings.js").read_text(encoding="utf-8")
+    css = (WEB / "app.css").read_text(encoding="utf-8")
+    assert 'id="nav-desk"' in html and 'id="nav-timers"' in html
+    assert "settings-section-select" in settings_js
+    assert 'sectionSelect.id = "settings-section-select"' in settings_js
+    assert 'element("label", "settings-section-label", "Settings section")' in settings_js
+    assert 'element("button", "settings-back", "All settings")' in settings_js
+    assert "result.settings.provider_pages" in settings_js
+    assert ".settings-section-select { display: block;" in css
+    assert ".settings-section-label { display: block;" in css
+    assert "#desk-toggle, #timers-toggle { display: none; }" in css
+    assert "integration-stat" in app_js
 
 
 def test_browser_voice_accepts_openai_nested_turn_detection():

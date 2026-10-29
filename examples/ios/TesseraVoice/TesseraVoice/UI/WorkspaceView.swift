@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import Foundation
 
 struct WorkspaceConnection: Equatable {
     let url: URL
@@ -85,7 +86,13 @@ struct WorkspaceView: UIViewRepresentable {
         webView.isInspectable = false
         webView.allowsBackForwardNavigationGestures = true
         state.webView = webView
-        var request = URLRequest(url: connection.workspaceURL(slug: settings.selectedSlug))
+        let workspace = connection.workspaceURL(slug: settings.selectedSlug)
+        var components = URLComponents(url: workspace, resolvingAgainstBaseURL: false)
+        var queryItems = components?.queryItems ?? []
+        queryItems.append(URLQueryItem(name: "v", value: String(Int(Date().timeIntervalSince1970))))
+        components?.queryItems = queryItems
+        var request = URLRequest(url: components?.url ?? workspace)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         if let token = connection.token, !token.isEmpty {
             request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
         }
