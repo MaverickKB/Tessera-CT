@@ -84,9 +84,19 @@ vendors that engine and refuses to build when the tree does not match
 optional override of those same bytes, not a way to leave the engine out. The
 command says so rather than writing a half-installed store.
 
-The pack is not installed automatically on first launch. Writing rules into a
-store is a deliberate act; an install that quietly seeded itself would be a
-worse default than one clear command.
+The pack is also written automatically, and that is the guarantee an install
+stands on: AetherMind never comes up empty. The store a session addresses is
+seeded before the embedded engine answers, so a first session holds these rules
+whether or not anyone ran a setup verb. `tessera start` seeds it too, and the
+`tessera seed` command remains for seeding explicitly or into a store named by
+hand. What the pack never does is overwrite: a body already in the store is
+skipped, including one the operator has rewritten.
+
+If the store cannot take the pack, the session refuses by name instead of
+starting against an empty one. A hand-written or foreign record that makes the
+store unreadable is moved aside intact (`.aethermind.corrupt-<timestamp>`) and
+the pack is written into a fresh store, so the unreadable bytes stay available
+as the rollback.
 
 ### From a source checkout
 

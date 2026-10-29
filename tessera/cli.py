@@ -9,17 +9,15 @@ import sys
 import socket
 from urllib.parse import urlsplit
 
-from .config import load_config
+from .config import PLACEHOLDER_PROJECTS, load_config
 from .assets import asset_path
 
 
 # Hosts the example config ships that can never answer. Kept as a literal list rather
 # than a heuristic so the message names the exact line a person has to change.
 PLACEHOLDER_HOSTS = ('models.example.com', 'api.example.com')
-# The example config's memory project names, in the same sense as the hosts:
-# a session that keeps one addresses a store that does not exist. start heals
-# the config in place; --check names the gap for whoever wants the diagnosis.
-PLACEHOLDER_PROJECTS = ('your-project-id', 'your-personal-project-id')
+# PLACEHOLDER_PROJECTS comes from the loader, which is the one place that decides
+# whether a project value is a store address or still the example's text.
 
 
 def _healed_project_value(home):
@@ -32,13 +30,32 @@ def _healed_personal_value(home):
     return str(Path(home).expanduser() / 'projects' / 'personal')
 
 
+def _is_placeholder_project(value):
+    """Whether a loaded project value still names the example's placeholder.
+
+    The loader resolves every non-empty project to an absolute path, so the
+    placeholder is recognized by its last component rather than by the whole
+    string.
+    """
+    text = str(value or '').strip()
+    if not text:
+        return False
+    return Path(text).name in PLACEHOLDER_PROJECTS
+
+
 def _placeholder_memory_projects(config):
-    """The aethermind keys whose values are still the example's placeholders."""
+    """The aethermind keys start must replace with a real store.
+
+    The example's placeholder names are one case. An empty project is the other:
+    an empty name addresses no store at all, so the first session would open
+    memoryless and stay that way. Both heal to a store under this home.
+    """
     memory = config.aethermind
     keys = []
-    if (getattr(memory, 'project', '') or '').strip() in PLACEHOLDER_PROJECTS:
+    project = (getattr(memory, 'project', '') or '').strip()
+    if not project or _is_placeholder_project(project):
         keys.append(('project', _healed_project_value))
-    if (getattr(memory, 'personal_project', '') or '').strip() in PLACEHOLDER_PROJECTS:
+    if _is_placeholder_project(getattr(memory, 'personal_project', '')):
         keys.append(('personal_project', _healed_personal_value))
     return keys
 
@@ -51,12 +68,12 @@ def _placeholder_memory_project(config):
     one addresses a store that does not exist.
     """
     configured = (getattr(config.aethermind, 'project', '') or '').strip()
-    if configured and configured in PLACEHOLDER_PROJECTS:
-        return ('[aethermind] project is still the placeholder '
-                f'{configured!r}. Set it to a real project path '
-                '(for example a directory under your Tessera home) in config.toml or '
-                'Settings before the first turn; the session addresses the store '
-                'that name resolves to.')
+    if _is_placeholder_project(configured):
+        return ('[aethermind] project is still the example placeholder '
+                f'{Path(configured).name!r}, which resolves to {configured!r}. '
+                'Set it to a real project path (for example a directory under your '
+                'Tessera home) in config.toml or Settings before the first turn; '
+                'the session addresses the store that name resolves to.')
     return None
 
 
@@ -226,30 +243,28 @@ def _start(config, args):
         if not first_run:
             names = ', '.join(key for key, _ in placeholders)
             healed = ', '.join(str(edit['value']) for edit in edits)
-            print(f'start: [aethermind] {names} were still placeholders; '
+            print(f'start: [aethermind] {names} named no usable store yet; '
                   f'reset to {healed}. A config backup was written beside config.toml.')
     ensure_local_engine_bundle(config)
-    # Seed an empty store so the first session opens with its judgment installed.
-    # The seed must land in the store the session addresses, not a sibling of it:
-    # a path project is seeded at that path; a bare registered name is seeded at
-    # the same home-relative path start would heal it to; an empty project
-    # seeds the home, which is where a bundled engine keeps its own store.
-    configured = (config.aethermind.project or '').strip()
-    if configured and ('/' in configured or configured.startswith('~')):
-        store = Path(configured).expanduser()
-    elif configured:
-        store = home / configured
-    else:
-        store = home
-    shelf = Path(config.skills.shelf).expanduser() if config.skills.shelf else home / 'skills'
+    # Seed the store the session will address, before the core answers anything.
+    # AetherMind never comes up empty: an install whose store cannot take the
+    # pack refuses here, by name, instead of serving a session with no rules.
     try:
-        result = seed_pack.install(store, skills_dir=shelf)
-        if result.get('layers_written') or result.get('skills_staged'):
-            print(seed_pack.describe(result))
+        result = seed_pack.ensure(config)
     except RuntimeError as error:
-        # A store that cannot take the seed pack is named, not fatal: the core
-        # still serves, and the harness works without seeds.
-        print(f'tessera: seed pack not written: {error}', file=sys.stderr)
+        store = seed_pack.store_path(config)
+        print(f'tessera: the memory store {store} could not be seeded: {error}', file=sys.stderr)
+        print('tessera: not serving, because an empty store would answer every '
+              'memory read with nothing.', file=sys.stderr)
+        print('tessera: ' + seed_pack.RECOVERY_HINT, file=sys.stderr)
+        return 1
+    if result.get('unavailable'):
+        # Native Windows refuses every store write. Say so, in the sentence the
+        # rest of the product uses, rather than starting quietly with no seeds.
+        print('tessera: the seed pack was not written: ' + seed_pack.lock_refusal_sentence(),
+              file=sys.stderr)
+    elif result.get('layers_written') or result.get('skills_staged') or result.get('quarantined'):
+        print(seed_pack.describe(result))
     if getattr(args, 'install_launcher', False):
         from .launcher import install as install_launcher
         written = install_launcher(home)
@@ -492,20 +507,12 @@ def main(argv=None):
             return 0
         if args.command == 'seed':
             from . import seeds as seed_pack
-            # The store is the configured memory project when it names a path;
-            # otherwise it is the home, which is where a bundled engine keeps
-            # its own store. A store that does not exist yet is created, because
-            # a fresh install is exactly the case this command exists for.
-            store = args.store
-            if store is None:
-                configured = config.aethermind.project
-                if configured and ('/' in configured or configured.startswith('~')):
-                    store = Path(configured).expanduser()
-                else:
-                    store = config.home
-            shelf = args.skills_dir
-            if shelf is None:
-                shelf = Path(config.skills.shelf).expanduser() if config.skills.shelf else config.home / 'skills'
+            # The store and shelf resolve through the same helpers the boot
+            # path uses, so this command cannot seed a sibling of the store a
+            # session addresses. A store that does not exist yet is created,
+            # because a fresh install is exactly the case it exists for.
+            store = args.store if args.store is not None else seed_pack.store_path(config)
+            shelf = args.skills_dir if args.skills_dir is not None else seed_pack.shelf_path(config)
             result = seed_pack.install(store, skills_dir=shelf, dry_run=args.dry_run)
             print(seed_pack.describe(result))
             return 0

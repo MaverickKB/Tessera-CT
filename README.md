@@ -94,10 +94,16 @@ It is not loaded unless `identity_file` points at copies in the home. Adopters
 name their own companion.
 
 `tessera seed --dry-run` reports what would be written without writing it.
-`--store PATH` names the store and `--skills-dir PATH` names the shelf. Seeding
-is deliberate, not automatic on first launch. A rerun never rewrites a body
-already in the store and never replaces a skill you have customized: the pack is
-a floor, and your version wins.
+`--store PATH` names the store and `--skills-dir PATH` names the shelf.
+
+The same pack is written automatically, because a memory service with no rules
+in it answers every read with nothing and looks like the product working. The
+store a session addresses is seeded before the embedded engine starts, so the
+first session of an install holds these rules whether or not anyone ran a setup
+verb. A rerun never rewrites a body already in the store and never replaces a
+skill you have customized: the pack is a floor, and your version wins. If the
+store cannot take the pack the session refuses by name rather than starting
+empty; an unreadable store is moved aside intact and re-seeded.
 
 Writing a store needs the AetherMind engine. A release wheel carries the
 vendored copy.

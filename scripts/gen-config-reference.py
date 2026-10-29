@@ -173,6 +173,13 @@ VALUE_NOTES = {
 
 
 MANUAL_SWITCHES = {
+    'aethermind': (
+        '`aethermind.project`, `aethermind.personal_project`, and `aethermind.note_project` '
+        'are store addresses. A relative name is relative to the Tessera home, and the loader '
+        'resolves every non-empty value to an absolute path before any session sees it, because '
+        'the embedded engine runs with its own working directory and would otherwise open a '
+        'different store than the one that was seeded.'
+    ),
     'skills': (
         'Operator switches (`skills.enabled` off, and names in `skills.disabled`) apply in every '
         'approval mode, including Unleashed. Search and load honor them. Unleashed removes approval prompts '

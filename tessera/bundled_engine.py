@@ -129,6 +129,34 @@ def ensure_local_engine_bundle(config):
     return bundle
 
 
+def _seed_store(config):
+    """Write the seed pack into the store this install's sessions address.
+
+    Called before the embedded engine starts, so the first read of a fresh
+    install already holds the rules. Idempotent: a store that has the pack is
+    hash-checked and left alone, and a rule the operator rewrote is not replaced.
+
+    A failure is raised rather than logged. A memory service that starts against
+    an empty store answers every read with nothing, which is worse than a named
+    refusal, because it looks like the product working.
+    """
+    from . import seeds as seed_pack
+    store = seed_pack.store_path(config)
+    try:
+        result = seed_pack.ensure(config)
+    except Exception as error:
+        reason = str(error).strip() or type(error).__name__
+        raise RuntimeError(
+            'the memory store at ' + str(store) + ' could not be seeded, so the '
+            'engine was not started against an empty store: ' + reason
+        ) from error
+    # A result marked unavailable means this platform has no file lock, so the
+    # engine refuses every write. Serving reads is still correct and the session
+    # reports the lock refusal in its own words; blocking the launch here would
+    # replace that sentence with a seed error and stop a turn that still runs.
+    return result
+
+
 def _runtime_root(config, root):
     # Installed assets can be read-only; each Tessera home owns its runtime.
     identity = str(root.resolve()) + chr(10) + sys.executable
@@ -598,6 +626,9 @@ def ensure_bundled_engine(config, clock=time.monotonic, *, force=False):
         previous = _REGISTRY.pop(key, None)
         if previous is not None:
             _finish_log(previous)
+        # Seed inside the launch lock, so two sessions starting together do not
+        # both read an empty store and both write the pack.
+        _seed_store(config)
         limit = _log_limit(config)
         python = _provision(root, runtime)
         port = _pick_port()

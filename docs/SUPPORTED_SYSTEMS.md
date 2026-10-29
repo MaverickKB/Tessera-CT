@@ -33,8 +33,10 @@ against a real running system, unless the entry says otherwise.
   AetherMind engine reports `lock_backend` `unavailable` there: its only file
   lock is `fcntl`. Before a turn, Tessera reads that report and refuses with
   `embedded AetherMind needs file locking that native Windows lacks; run Tessera under WSL, or configure an external AetherMind`.
-  Settings shows that sentence. No native Windows desktop or VM install has
-  been run. Native Windows is a later update.
+  Settings shows that sentence. The seed pack cannot be written there either,
+  because the engine refuses every write; `tessera start` reports that once and
+  the store stays empty until WSL or an external AetherMind is used. No native
+  Windows desktop or VM install has been run. Native Windows is a later update.
 - A live systemd user-service start, a Windows service, and Windows
   Credential Manager (no run has been performed). Settings says what this
   host will not do.

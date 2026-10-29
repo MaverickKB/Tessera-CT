@@ -124,7 +124,19 @@ def test_texture_bodies_are_hashed_without_separator_noise():
 # installed wheel. These tests run it for real against a scratch store, using
 # the bundled engine when the checkout has one.
 
-ENGINE_LIB = ROOT / "build" / "lib" / "tessera" / "_assets" / "aethermind-engine"
+def _engine_lib():
+    """The engine this checkout can actually write a store with.
+
+    The packaged lookup already knows a wheel from a source tree. Resolving it
+    the same way is what keeps these tests running on a clean checkout; the old
+    build/lib path only existed after a wheel build, so the tests that prove the
+    pack reaches a store silently skipped exactly where they mattered.
+    """
+    from tessera.assets import asset_path
+    return asset_path("aethermind-engine")
+
+
+ENGINE_LIB = _engine_lib()
 
 
 def _engine_available():

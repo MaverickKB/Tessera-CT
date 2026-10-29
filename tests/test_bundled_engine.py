@@ -1,7 +1,9 @@
 """Bundled runtime interpreter selection across supported platform layouts."""
 
 import io
+import shutil
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -124,12 +126,26 @@ bundled_engine_path = bundled_engine._venv_python
 
 
 def packaged_assets(tmp_path, monkeypatch):
-    from tessera import assets
+    """A package layout as an install has it: engine bytes and the seed pack.
+
+    The pack is part of a startable install, not an optional extra. A fixture
+    without one describes a wheel that could never have come from this source,
+    and the engine now refuses to start against a store it cannot seed.
+    """
+    from tessera import assets, seeds
     package = tmp_path / 'site' / 'tessera'
     root = package / '_assets' / 'aethermind-engine'
     (root / 'mcp').mkdir(parents=True)
     (root / 'mcp' / 'aethermind_mcp.py').touch()
     (root / 'build-receipt.json').write_text('{}')
+    # A vendored engine carries its stdlib lib/ tree; that tree is what writes
+    # the seed pack into a store, so a fixture without it is not an install.
+    real = Path(bundled_engine.__file__).resolve().parent / '_assets' / 'aethermind-engine' / 'lib'
+    shutil.copytree(real, root / 'lib')
+    staged = package / '_assets' / 'seeds'
+    staged.mkdir(parents=True)
+    source = seeds.pack_path().parent
+    shutil.copytree(source, staged, dirs_exist_ok=True)
     monkeypatch.setattr(assets, '__file__', str(package / 'assets.py'))
     return root
 
