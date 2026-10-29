@@ -67,6 +67,14 @@ jobs:
           elif command -v dash >/dev/null 2>&1; then
             prove dash
           fi
+      # The relative-project boot proof imports mcp.server.fastmcp and skips
+      # when that import fails. .[test] does not install it. This step does,
+      # from the same hashed lock the embedded engine uses, so Ubuntu and
+      # macOS actually run that test. The test itself does not pip.
+      - name: Install the embedded MCP lock
+        run: |
+          python -m pip install --require-hashes -r docs/packaging/aethermind-mcp-requirements.lock
+          python -c "import mcp.server.fastmcp"
       - name: Pytest
         run: python -m pytest -q
       - name: Smoke
