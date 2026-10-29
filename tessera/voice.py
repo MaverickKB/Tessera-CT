@@ -239,7 +239,7 @@ class VoiceClient:
             if not self._secret:
                 raise CredentialError('Missing voice credential')
             request = urllib.request.Request(http_url(settings.api_base_url) + settings.client_secret_path,
-                data=json.dumps({'expires_after': {'seconds': settings.secret_ttl_seconds}}).encode(),
+                data=json.dumps({'expires_after': {'anchor': 'created_at', 'seconds': settings.secret_ttl_seconds}}).encode(),
                 headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + self._secret}, method='POST')
             send = self.opener or urllib.request.build_opener(_NoRedirect()).open
             with send(request, timeout=settings.timeout) as response:
@@ -439,20 +439,21 @@ class VoiceSessions:
             query[self.settings.model_query_param] = self.settings.model
             endpoint = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), ''))
             session = deepcopy(self.settings.session_options)
-            session.setdefault('turn_detection', deepcopy(self.settings.turn_detection) or None)
             audio = session.setdefault('audio', {})
+            input_audio = audio.setdefault('input', {})
+            output_audio = audio.setdefault('output', {})
             for direction in ('input', 'output'):
-                audio.setdefault(direction, {}).setdefault('format',
+                audio[direction].setdefault('format',
                     {'type': self.settings.audio_format, 'rate': self.settings.audio_sample_rate})
             # The speaker's transcript is the only path from speech into the
             # session, and the provider emits it only when transcription is
             # configured. Without this the lease is silent: no transcript event,
             # no session turn, and the provider answers on its own instead.
-            audio['input'].setdefault('transcription', {'model': TRANSCRIBE_MODEL})
-            if voice is not None:
-                session['voice'] = voice
-            session.update(instructions=instructions, tools=tools)
-            detection = session.get('turn_detection')
+            input_audio.setdefault('transcription',
+                {'model': self.settings.transcribe_model or TRANSCRIBE_MODEL})
+            detection = session.pop('turn_detection', None)
+            if not isinstance(detection, dict):
+                detection = deepcopy(self.settings.turn_detection)
             if not isinstance(detection, dict):
                 detection = {}
             detection = dict(detection)
@@ -460,14 +461,32 @@ class VoiceSessions:
             # turn_detection carries only `type` and `idle_timeout_ms`. An unknown key
             # is silently ignored, so it must not read as a guarantee.
             detection.pop('create_response', None)
-            session['turn_detection'] = detection
+            if self.settings.session_shape == 'openai':
+                # OpenAI's Realtime session keeps voice and turn detection inside
+                # audio.input/audio.output. A top-level voice is an unknown
+                # parameter and the socket refuses the whole update, so the
+                # account-written selector is always moved out, even when this
+                # start overrides it.
+                session.setdefault('type', 'realtime')
+                configured_voice = session.pop('voice', None)
+                if voice is not None:
+                    output_audio['voice'] = voice
+                elif isinstance(configured_voice, str) and configured_voice:
+                    output_audio['voice'] = configured_voice
+                input_audio['turn_detection'] = detection
+            else:
+                if voice is not None:
+                    session['voice'] = voice
+                session['turn_detection'] = detection
+            session.update(instructions=instructions, tools=tools)
             session = self._scrub(session, secrets)
             if self._scrub(endpoint, secrets) != endpoint:
                 with self._lock:
                     self._leases.pop(voice_id, None)
                 raise VoiceError('configuration')
             return {'voice_id': voice_id, 'websocket_url': endpoint,
-                    'protocols': [self.settings.client_protocol_prefix + minted['value']],
+                    'protocols': [*self.settings.client_protocol_extra,
+                                  self.settings.client_protocol_prefix + minted['value']],
                     'expires_at': minted['expires_at'], 'session_expires_at': deadline,
                     'max_session_seconds': self.settings.max_session_seconds,
                     'audio_sample_rate': self.settings.audio_sample_rate,

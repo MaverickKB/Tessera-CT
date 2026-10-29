@@ -11,7 +11,8 @@ import threading
 import pytest
 
 from tessera.config import load_config
-from tessera.speech_services import DUPLEX_PROVIDERS, SpeechProbeError, probe_voices
+from tessera.speech_services import (DUPLEX_PROVIDERS, SpeechProbeError, duplex_connections,
+                                     probe_voices, provider_for_endpoint)
 
 
 GRANT = {'access_token': 'example-access', 'refresh_token': 'example-refresh', 'expires_at': 9_999_999_999}
@@ -118,3 +119,31 @@ def test_a_missing_sign_in_is_named_not_guessed(tmp_path, monkeypatch):
     finally:
         httpd.shutdown()
     assert 'not available' in str(caught.value)
+
+
+def test_a_published_voice_roster_needs_no_request(tmp_path, monkeypatch):
+    """OpenAI names its voices in the API reference; it has no list endpoint."""
+    def refuse(*args, **kwargs):
+        raise AssertionError('a published roster must not be probed')
+    monkeypatch.setattr('urllib.request.urlopen', refuse)
+    config = load_config(tmp_path)
+    openai = {'reference': 'openai-codex', 'label': 'OpenAI Codex sign-in',
+              'provider': 'openai-codex', 'status': 'Signed in', 'connected': True,
+              'models': DUPLEX_PROVIDERS['openai-codex']['models']}
+    voices = probe_voices(config, openai)
+    assert voices == list(DUPLEX_PROVIDERS['openai-codex']['voices'])
+    assert voices[0] == 'marin'
+
+
+def test_the_openai_codex_sign_in_is_offered_as_a_duplex_account(tmp_path):
+    configured(tmp_path, 'https://api.openai.com/v1')
+    (tmp_path / 'oauth' / 'openai-codex.json').write_text(json.dumps(GRANT), encoding='utf-8')
+    config = load_config(tmp_path)
+    connections = duplex_connections(config)
+    references = [item['reference'] for item in connections]
+    assert 'openai-codex' in references
+    openai = next(item for item in connections if item['reference'] == 'openai-codex')
+    assert openai['provider'] == 'openai-codex'
+    assert openai['connected'] is True
+    assert openai['models'][0] == 'gpt-realtime-2.1'
+    assert provider_for_endpoint('wss://api.openai.com/v1/realtime') == 'openai-codex'

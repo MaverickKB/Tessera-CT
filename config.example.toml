@@ -100,7 +100,9 @@ models_url = "https://chatgpt.com/backend-api/codex/models"
 client_version = "99.0.0"
 
 # Settings, under Voice, edits these values. Duplex uses an account; local
-# speech uses the [voice.stt] and [voice.tts] endpoints below.
+# speech uses the [voice.stt] and [voice.tts] endpoints below. Choosing a duplex
+# account also writes the provider's protocol pair and session shape; those
+# three fields are provider detail, not something to type by hand.
 [voice]
 enabled = false
 pipe = ""
@@ -109,6 +111,9 @@ model = ""
 api_base_url = ""
 client_secret_path = ""
 client_protocol_prefix = ""
+client_protocol_extra = []
+session_shape = ""
+transcribe_model = ""
 credential_ref = ""
 api_key_env = ""
 max_session_seconds = 60

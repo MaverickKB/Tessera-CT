@@ -246,7 +246,7 @@ api_key_env="DESKTOP_VOICE_TEST_KEY"
                 assert lease['protocols'] == ['ephemeral-fixture.ephemeral-desktop-fixture']
                 mint = [row for row in received if row[0] == '/mint-fixture']
                 assert len(mint) == 1 and mint[0][1] == 'Bearer provider-key-canary'
-                assert mint[0][2] == {'expires_after': {'seconds': 60}}
+                assert mint[0][2] == {'expires_after': {'anchor': 'created_at', 'seconds': 60}}
                 assert request(url, 'POST', f'/api/sessions/{slug}/voice/stop', {'voice_id': lease['voice_id']}) == (200, {'stopped': True})
                 child.stdin.close()
                 child.stdin = None

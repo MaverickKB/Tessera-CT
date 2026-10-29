@@ -43,4 +43,3 @@ tessera/trial.py:RATE_MARGIN # module literal has no Config contract
 tessera/trial.py:SECONDS_MARGIN # module literal has no Config contract
 tessera/updates.py:apply.timeout # default used without a Config-supplied argument
 tessera/updates.py:check.timeout # default used without a Config-supplied argument
-tessera/voice.py:TRANSCRIBE_MODEL # module literal has no Config contract

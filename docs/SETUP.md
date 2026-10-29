@@ -387,7 +387,13 @@ Settings, under Voice, sets up both. Duplex needs an account: a sign-in under
 Providers, or a provider row pointed at the provider's endpoint. Choosing the
 account fills in the endpoint, the token service and the protocol prefix from the
 provider profile, so nobody types them. The model is a dropdown of the models
-that account offers. Local speech services are endpoints that speak the OpenAI
+that account offers. Two duplex providers are built in: xAI Grok and OpenAI
+Codex. The OpenAI path binds to the Codex sign-in the app already holds and uses
+the GA Realtime shape: the browser pairs the `realtime` subprotocol with the
+`openai-insecure-api-key.` token, voice sits under `audio.output`, and turn
+detection and transcription sit under `audio.input`. OpenAI publishes its voice
+roster rather than serving a voice-list endpoint; xAI's roster is probed from
+`GET /tts/voices`. Local speech services are endpoints that speak the OpenAI
 audio API; saving an endpoint lists the models it serves, and the model field is
 a dropdown of those names. A pipe choice appears only when both pipes are
 configured, and duplex is the default.
@@ -418,6 +424,9 @@ model = "<REALTIME_MODEL_ID>"
 api_base_url = "https://voice.example.com"
 client_secret_path = "/<CLIENT_SECRET_MINT_PATH>"
 client_protocol_prefix = "<EPHEMERAL_PROTOCOL_PREFIX>"
+client_protocol_extra = []
+session_shape = ""
+transcribe_model = ""
 credential_ref = "voice_api"
 max_session_seconds = 60
 secret_ttl_seconds = 60
@@ -441,9 +450,16 @@ voice = ""
 ```
 
 The protocol prefix must be a valid WebSocket subprotocol token; replace its
-placeholder before loading config. Optional `session_options` (including a
-vendor voice selector) and `turn_detection` are config tables. Input/output
-formats must match the configured mono PCM16 sample rate.
+placeholder before loading config. `client_protocol_extra` lists any companion
+protocols the browser must pair with that token; OpenAI needs `["realtime"]`.
+`session_shape` selects the provider's session layout: empty or `xai` keeps voice
+and turn detection at the session top level, `openai` moves them under
+`audio.input` and `audio.output`. `transcribe_model` names the input
+transcription model; empty falls back to `grok-transcribe`. Choosing an account
+under Settings writes all three, so they are provider detail rather than fields
+to type. Optional `session_options` (including a vendor voice selector) and
+`turn_detection` are config tables. Input/output formats must match the
+configured mono PCM16 sample rate.
 
 Supply the provider credential through your existing secure injector or OS-store
 reference, without placing values in shell history, TOML or command arguments.
@@ -463,8 +479,10 @@ expires at its configured deadline. Tools are absent unless explicitly allowed
 in `voice.tools` and still use normal server hooks/approval. Provider request
 timeouts and session/byte/event limits are configurable.
 
-See the official [ephemeral authentication guide](https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens)
-and [realtime protocol guide](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech).
+See the official xAI [ephemeral authentication guide](https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens)
+and [realtime protocol guide](https://docs.x.ai/developers/model-capabilities/audio/speech-to-speech),
+and OpenAI's [Realtime API reference](https://developers.openai.com/api/reference/resources/realtime/subresources/client_secrets/methods/create)
+for the Codex-bound path.
 A configured audio device name alone proves
 neither a working loopback route nor permission to record.
 

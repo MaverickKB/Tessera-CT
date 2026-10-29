@@ -101,11 +101,11 @@ enum VoiceStartValidator {
             throw VoiceProtocolError.invalidTransport
         }
 
-        if let turn = session["turn_detection"]?.objectValue {
-            if turn["type"]?.stringValue != "server_vad" {
-                throw VoiceProtocolError.unsupportedTurnDetection
-            }
-        } else {
+        let topLevelTurn = session["turn_detection"]?.objectValue
+        let nestedTurn = session["audio"]?.objectValue?["input"]?.objectValue?["turn_detection"]?.objectValue
+        let topLevelIsVad = topLevelTurn?["type"]?.stringValue == "server_vad"
+        let nestedIsVad = nestedTurn?["type"]?.stringValue == "server_vad"
+        if !topLevelIsVad && !nestedIsVad {
             throw VoiceProtocolError.unsupportedTurnDetection
         }
 

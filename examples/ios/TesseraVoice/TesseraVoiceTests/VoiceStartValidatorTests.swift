@@ -46,18 +46,35 @@ final class VoiceStartValidatorTests: XCTestCase {
         XCTAssertThrowsError(try VoiceStartValidator.validate(response, now: now))
     }
 
-    private func makeResponse(expiresAt: Double, sessionExpiresAt: Double, rate: Double) -> VoiceStartResponse {
-        let session: [String: JSONValue] = [
+    func testAcceptsNestedTurnDetection() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let response = makeResponse(
+            expiresAt: now.timeIntervalSince1970 + 60,
+            sessionExpiresAt: now.timeIntervalSince1970 + 300,
+            rate: 24_000,
+            nestedTurnDetection: true
+        )
+        let validated = try VoiceStartValidator.validate(response, now: now)
+        XCTAssertEqual(validated.voiceId, "abc123")
+        XCTAssertEqual(validated.audioSampleRate, 24_000)
+    }
+
+    private func makeResponse(expiresAt: Double, sessionExpiresAt: Double, rate: Double,
+                              nestedTurnDetection: Bool = false) -> VoiceStartResponse {
+        var input: [String: JSONValue] = [
+            "format": .object([
+                "type": .string("audio/pcm"),
+                "rate": .number(rate)
+            ]),
+            "transport": .string("json")
+        ]
+        if nestedTurnDetection {
+            input["turn_detection"] = .object(["type": .string("server_vad")])
+        }
+        var session: [String: JSONValue] = [
             "instructions": .string("hello instructions"),
-            "turn_detection": .object(["type": .string("server_vad")]),
             "audio": .object([
-                "input": .object([
-                    "format": .object([
-                        "type": .string("audio/pcm"),
-                        "rate": .number(rate)
-                    ]),
-                    "transport": .string("json")
-                ]),
+                "input": .object(input),
                 "output": .object([
                     "format": .object([
                         "type": .string("audio/pcm"),
@@ -67,6 +84,9 @@ final class VoiceStartValidatorTests: XCTestCase {
                 ])
             ])
         ]
+        if !nestedTurnDetection {
+            session["turn_detection"] = .object(["type": .string("server_vad")])
+        }
         let sessionUpdate: JSONValue = .object([
             "type": .string("session.update"),
             "session": .object(session)

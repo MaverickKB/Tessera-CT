@@ -172,9 +172,12 @@
         if (!["wss:", "ws:"].includes(address.protocol) || address.username || address.password || address.hash ||
             (window.location.protocol === "https:" && address.protocol !== "wss:")) throw new Error("Invalid voice transport");
       }
-      if (settings.session_update.session.turn_detection?.type !== "server_vad") throw new Error("Unsupported speech turn detection");
+      const session = settings.session_update.session;
+      const topLevelTurn = session.turn_detection;
+      const nestedTurn = session.audio?.input?.turn_detection;
+      if (topLevelTurn?.type !== "server_vad" && nestedTurn?.type !== "server_vad") throw new Error("Unsupported speech turn detection");
       for (const direction of ["input", "output"]) {
-        const audio = settings.session_update.session.audio?.[direction];
+        const audio = session.audio?.[direction];
         if (audio?.format?.type !== "audio/pcm" || audio.format.rate !== settings.audio_sample_rate ||
             (audio.transport && audio.transport !== "json")) throw new Error("Unsupported audio format");
       }

@@ -702,6 +702,42 @@ async function ready(){await voice.start('session-one');const socket=sockets.at(
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_browser_voice_accepts_openai_nested_turn_detection():
+    """The OpenAI lease nests turn detection under audio.input.
+
+    web/voice.js required a top-level session.turn_detection and threw
+    "Unsupported speech turn detection" before opening the socket, so an
+    OpenAI account made the Talk control inert. Accept either layout and
+    still refuse a lease that names no server VAD.
+    """
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node is optional for browser-free audio lifecycle checks")
+    script = r'''
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const window={isSecureContext:true,location:{protocol:'https:'},WebSocket:{OPEN:1}};
+const context={window,navigator:{mediaDevices:{}},URL,ArrayBuffer,DataView,Uint8Array,Float32Array,btoa,atob,
+ setTimeout:()=>0,clearTimeout:()=>{}};
+vm.createContext(context);vm.runInContext(fs.readFileSync('web/voice.js','utf8'),context);
+const voice=new window.TesseraVoice({workletUrl:'/static/voice-worklet.js',chunkFrames:4,maxBufferedBytes:4096,
+ maxPendingEvents:8,connectSeconds:10,maxPlaybackSeconds:5,onState:()=>{},onMessages:()=>{},
+ start:async()=>{},stop:async()=>{},events:async()=>({messages:[],send:[]})});
+const now=Date.now()/1000;
+const lease={voice_id:'lease',websocket_url:'wss://api.openai.com/v1/realtime',protocols:['realtime','openai-insecure-api-key.ek'],
+ expires_at:now+60,session_expires_at:now+120,max_session_seconds:90,audio_sample_rate:24000,
+ session_update:{type:'session.update',session:{type:'realtime',instructions:'ctx',tools:[],audio:{
+   input:{format:{type:'audio/pcm',rate:24000},turn_detection:{type:'server_vad'}},
+   output:{format:{type:'audio/pcm',rate:24000},voice:'marin'}}}}};
+voice.validate(lease);
+const broken=JSON.parse(JSON.stringify(lease));
+delete broken.session_update.session.audio.input.turn_detection;
+assert.throws(()=>voice.validate(broken),/Unsupported speech turn detection/);
+console.log('Nested OpenAI turn detection accepted; missing detection refused.');
+'''
+    result = subprocess.run([node, "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_voice_recovery_belongs_to_one_utterance():
     """A recovery timer and a reply are each owned by the utterance that caused them.
 

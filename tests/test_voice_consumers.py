@@ -89,7 +89,7 @@ def fake_mint(manager, monkeypatch, response=None):
         assert request.get_method() == "POST"
         assert request.get_header("Authorization") == "Bearer " + PROVIDER_KEY
         assert timeout == manager.config.voice.timeout
-        assert json.loads(request.data) == {"expires_after": {"seconds": manager.config.voice.secret_ttl_seconds}}
+        assert json.loads(request.data) == {"expires_after": {"anchor": "created_at", "seconds": manager.config.voice.secret_ttl_seconds}}
         return io.BytesIO(json.dumps(payload).encode())
 
     manager.voice.client.opener = send
