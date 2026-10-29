@@ -271,6 +271,70 @@ def test_a_real_write_failure_still_raises(tmp_path, monkeypatch):
         bundled_engine._seed_store(config)
 
 
+def test_a_bare_project_name_reaches_the_configured_store(tmp_path):
+    """A model that writes `default` must reach the default store, not a sibling.
+
+    This is the VM transcript: the model called memory_tree with project_id
+    `default`, the engine resolved it against its own runtime directory, and the
+    answer came back "no layers" while the store held 31.
+    """
+    from tessera.capture import Capture
+
+    class Client:
+        def __init__(self):
+            self.seen = []
+
+        def tree_view(self, project_id, budget_chars=2000):
+            self.seen.append(project_id)
+            return {'success': True, 'tree': ['a node']}
+
+        def read_layers(self, project_id, **filters):
+            self.seen.append(project_id)
+            return {'layers': []}
+
+    store = str(tmp_path / 'projects' / 'default')
+    personal = str(tmp_path / 'projects' / 'personal')
+    client = Client()
+    capture = Capture(client, tmp_path / 'outbox', store, personal, 'operator')
+
+    capture.memory_tree(project_id='default')
+    assert client.seen[-1] == store
+    capture.memory_tree(project_id='personal')
+    assert client.seen[-1] == personal
+    capture.memory_tree()
+    assert client.seen[-1] == store
+    capture.memory_tree(project_id=str(tmp_path / 'other'))
+    assert client.seen[-1] == str(tmp_path / 'other')
+
+    with pytest.raises(ValueError) as refused:
+        capture.memory_tree(project_id='somewhere-else')
+    assert 'not a configured store' in str(refused.value)
+    assert store in str(refused.value)
+
+
+def test_a_bare_project_name_in_recall_is_refused_before_it_dirty_health(tmp_path):
+    """A wrong name is a bad argument, not a memory service failure."""
+    from tessera.capture import Capture
+
+    class Client:
+        def read_layers(self, project_id, **filters):
+            raise AssertionError('a refused name must not reach the service')
+
+    capture = Capture(Client(), tmp_path / 'outbox', str(tmp_path / 'projects' / 'default'))
+    with pytest.raises(ValueError):
+        capture.memory_recall(query='anything', project_id='default-ish')
+    assert capture.service_error is None
+
+
+def test_the_prompt_names_the_store_path_and_never_a_bare_default(tmp_path):
+    """The guidance must not hand the model a name that cannot resolve."""
+    from tessera.config import PromptConfig
+
+    guidance = PromptConfig().memory_guidance
+    assert 'Pass project_id exactly as written above' in guidance
+    assert 'a bare name is not a store' in guidance
+
+
 def test_start_refuses_instead_of_serving_an_unseeded_store(tmp_path, monkeypatch, capsys):
     """start returns a failure, and says which store, instead of serving."""
     from tessera import cli, bundled_engine
