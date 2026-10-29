@@ -94,7 +94,7 @@
       const form = node("form", "shelf-add");
       const input = node("input", "");
       input.type = "text";
-      input.placeholder = "Absolute path to a skills directory";
+      input.placeholder = "Absolute skills path";
       input.setAttribute("aria-label", "Skills directory to add");
       input.value = view.directory;
       input.disabled = view.busy;

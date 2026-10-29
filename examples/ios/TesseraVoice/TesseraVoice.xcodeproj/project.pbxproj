@@ -667,7 +667,7 @@
 				<key>PRODUCT_BUNDLE_IDENTIFIER</key>
 				<string>$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).tessera.voice</string>
 				<key>CURRENT_PROJECT_VERSION</key>
-				<string>7</string>
+				<string>8</string>
 				<key>SUPPORTS_MACCATALYST</key>
 				<string>NO</string>
 			</dict>
@@ -911,7 +911,7 @@
 				<key>PRODUCT_BUNDLE_IDENTIFIER</key>
 				<string>$(PRODUCT_BUNDLE_IDENTIFIER_PREFIX).tessera.voice</string>
 				<key>CURRENT_PROJECT_VERSION</key>
-				<string>7</string>
+				<string>8</string>
 				<key>SUPPORTS_MACCATALYST</key>
 				<string>NO</string>
 			</dict>

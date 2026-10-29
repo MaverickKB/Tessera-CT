@@ -5865,7 +5865,17 @@
       if (!groups.has(row.group)) groups.set(row.group, []);
       groups.get(row.group).push(row);
     }
-    $("integrations-overview").textContent = integrations.rows.length + " connections · " + enabled + " enabled · " + passing + " passing checks · " + failed + " failed checks";
+    const overview = $("integrations-overview");
+    const stats = [integrations.rows.length + " connections", enabled + " enabled",
+                   passing + " passing checks", failed + " failed checks"];
+    overview.replaceChildren();
+    stats.forEach((text, index) => {
+      if (index) overview.append(document.createTextNode(" · "));
+      const part = document.createElement("span");
+      part.className = "integration-stat";
+      part.textContent = text;
+      overview.append(part);
+    });
     const nodes = [];
     for (const [group, rows] of groups) {
       const heading = element("li", "integ-group", group);
@@ -7204,6 +7214,10 @@
   if (readingButton) readingButton.addEventListener("click", () => {
     applyReadingFocus(!document.body.classList.contains("reading-focus"));
   });
+  const navDesk = $("nav-desk");
+  if (navDesk) navDesk.addEventListener("click", () => { closeNavigation(); $("desk-toggle").click(); });
+  const navTimers = $("nav-timers");
+  if (navTimers) navTimers.addEventListener("click", () => { closeNavigation(); $("timers-toggle").click(); });
   // The activity panel remembers being closed. renderActivity only reopens it when the
   // reader opens it themselves.
   const activityBox = $("session-activity");

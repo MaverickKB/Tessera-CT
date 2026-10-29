@@ -1298,6 +1298,7 @@ button:enabled:focus-visible, select:focus-visible { box-shadow: 0 0 0 5px var(-
 .voice-line > .data { color:var(--muted); font-size:.72rem; }
 .voice-text { white-space:pre-wrap; line-height:1.6; overflow-wrap:anywhere; }
 .integrations-overview { color:var(--muted); font-size:.8rem; margin:.4rem 0 0; }
+.integration-stat { white-space: nowrap; }
 @media(max-width:760px) {
  #page-voice .voice-console { grid-template-columns:1fr; gap:1.5rem; }
  .voice-presence { padding:.5rem 1rem 1rem; }
@@ -1358,3 +1359,27 @@ button:enabled:focus-visible, select:focus-visible { box-shadow: 0 0 0 5px var(-
   color: var(--muted);
 }
 .engine-pressure-card .board-card-heading { overflow-wrap: anywhere; }
+
+/* Phone navigation: the top bar keeps one row. Desk and Timers move into the
+   menu drawer, where they stay reachable without crowding the brand, Menu and
+   the approval control. */
+.navigation-tools { display: none; }
+.settings-section-label { display: none; }
+.settings-section-select { display: none; }
+.settings-back { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 0 0.6rem; padding: 0.35rem 0.6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--foreground); font-size: 0.85rem; }
+.settings-back::before { content: "←"; }
+@media (max-width: 480px) {
+  #desk-toggle, #timers-toggle { display: none; }
+  .navigation-tools { display: flex; gap: 0.5rem; padding-top: 0.6rem; }
+  .navigation-tools button { flex: 1; }
+}
+@media (max-width: 760px) {
+  .settings-nav-side { flex-direction: column; position: static; max-height: none; overflow: visible; gap: 0.5rem; }
+  .settings-nav-side .settings-nav-label,
+  .settings-nav-side button { display: none; }
+  .settings-nav { flex-wrap: wrap; overflow-x: visible; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.35rem; }
+  .settings-nav button { white-space: normal; }
+  .settings-section-label { display: block; grid-column: 1 / -1; font-size: 0.75rem; font-weight: 600; color: var(--muted); margin: 0 0 0.35rem 0.15rem; }
+  .settings-section-select { display: block; width: 100%; grid-column: 1 / -1; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--foreground); font-size: 1rem; }
+  .settings-search { width: 100%; }
+}
