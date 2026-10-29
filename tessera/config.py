@@ -1609,6 +1609,34 @@ def expand_config_path(value):
     return os.path.expanduser(re.sub(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)', replacer, value))
 
 
+# The example config's memory project names. They address nothing until `start`
+# heals them, so the loader leaves them verbatim for that check to find.
+PLACEHOLDER_PROJECTS = ('your-project-id', 'your-personal-project-id')
+
+
+def resolve_store_path(value, home):
+    """The absolute store address a configured project name means.
+
+    A project name is a store address, and it has to mean one thing to every
+    reader. The embedded engine runs with its own working directory, so a
+    relative name sent to it addresses `<runtime>/<name>` and not the store the
+    session wrote. Resolving here, once, keeps the writer and every reader on
+    the same directory.
+
+    A relative name is home-relative, which is how `tessera start` writes a
+    healed value and how an operator names a project inside their own home. The
+    example's placeholder names resolve too, so no reader ever gets a relative
+    address; `start` recognizes one by its name and heals it.
+    """
+    text = str(value or '').strip()
+    if not text:
+        return text
+    path = Path(expand_config_path(text)).expanduser()
+    if not path.is_absolute():
+        path = Path(home).expanduser() / path
+    return str(path)
+
+
 def _expand_mcp_server(server):
     server.command = [expand_config_path(part) for part in server.command]
     if server.cwd:
@@ -1794,6 +1822,13 @@ def load_config(home=None):
                 setattr(section, key, speech_class(**table))
         setattr(config, name, section)
     config.retired_settings = retired
+    # Every MCP tool takes `project_root`, and the embedded engine resolves a
+    # relative one against its own working directory, not this home. Resolve the
+    # configured project names here so the store a session writes is the store
+    # every reader opens.
+    for key in ('project', 'personal_project', 'note_project'):
+        setattr(config.aethermind, key,
+                resolve_store_path(getattr(config.aethermind, key, ''), config.home))
     config.computer_use.helper = expand_config_path(config.computer_use.helper)
     defaults = ToolsConfig()
     for key in ('approval_classes', 'approval_rules'):  # entries in config add to or override the defaults

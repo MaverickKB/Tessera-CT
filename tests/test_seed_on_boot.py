@@ -19,7 +19,7 @@ from types import SimpleNamespace
 import pytest
 
 from tessera import seeds as seed_pack
-from tessera.config import Config
+from tessera.config import Config, load_config
 
 # What a fresh install must never fall below. Additions are fine; a pack that
 # loses rules is the regression this file exists to catch.
@@ -70,6 +70,38 @@ def test_the_store_a_session_addresses_is_the_store_that_is_seeded(tmp_path):
 
     assert seed_pack.shelf_path(empty) == tmp_path / 'skills'
     assert seed_pack.shelf_path(_config(tmp_path, shelf=str(tmp_path / 'mine'))) == tmp_path / 'mine'
+
+
+def test_a_relative_project_is_resolved_before_any_reader_sees_it(tmp_path):
+    """A relative name must reach the engine absolute.
+
+    The embedded engine runs with its own working directory, so a bare
+    `projects/default` sent to it addresses `<runtime>/projects/default` and not
+    the store the seeder wrote. The loader resolves it once, for every reader.
+    """
+    relative_home = tmp_path / 'relative'
+    relative_home.mkdir()
+    (relative_home / 'config.toml').write_text(
+        '[aethermind]\nproject = "projects/default"\nnote_project = "notes"\n', encoding='utf-8')
+    config = load_config(relative_home)
+    home = relative_home.resolve()
+    assert config.aethermind.project == str(home / 'projects' / 'default')
+    assert config.aethermind.note_project == str(home / 'notes')
+    assert seed_pack.store_path(config) == home / 'projects' / 'default'
+
+    absolute = _config(tmp_path, project=str(tmp_path / 'store'))
+    assert seed_pack.store_path(absolute) == tmp_path / 'store'
+
+    example_home = tmp_path / 'example'
+    example_home.mkdir()
+    (example_home / 'config.toml').write_text(
+        '[aethermind]\nproject = "your-project-id"\n', encoding='utf-8')
+    example = load_config(example_home)
+    # Still resolved, so nothing downstream can see a relative address. `start`
+    # recognizes the name and heals it to the default store.
+    example_stem = example_home.resolve()
+    assert example.aethermind.project == str(example_stem / 'your-project-id')
+    assert seed_pack.store_path(example).is_absolute()
 
 
 def test_ensure_writes_the_pack_into_the_configured_store(tmp_path):
@@ -193,6 +225,50 @@ def test_the_engine_refuses_to_serve_an_empty_store(tmp_path, monkeypatch):
     assert 'could not be seeded' in message
     assert 'carries no AetherMind engine' in message
     assert launched == [], 'an engine was launched against a store with no seeds'
+
+
+class _NoLockBackend(Exception):
+    """Stands in for the engine's LockUnavailableError on a platform without fcntl."""
+
+
+def test_a_platform_without_file_locking_skips_the_seed_and_still_serves(tmp_path, monkeypatch):
+    """Native Windows refuses every store write, and that is not a launch failure.
+
+    Blocking the engine there would replace the product's own labeled lock
+    refusal with a seed error and stop a turn the harness can still run. The
+    seed reports itself unavailable, and the engine starts.
+    """
+    from tessera import bundled_engine
+
+    config = _config(tmp_path)
+
+    def write_that_cannot_lock(store_root, layers, textures, skills_dir, result):
+        raise _NoLockBackend('no safe local file locking backend is available; refusing to write')
+
+    monkeypatch.setattr(seed_pack, '_engine_error_types',
+                        lambda lib_dir: (ValueError, _NoLockBackend))
+    monkeypatch.setattr(seed_pack, '_write', write_that_cannot_lock)
+    result = seed_pack.ensure(config)
+    assert result['unavailable'] is True
+    assert 'no safe local file locking backend' in result['unavailable_reason']
+    assert 'not written here' in seed_pack.describe(result)
+
+    monkeypatch.setattr(seed_pack, 'ensure', lambda checked: {'unavailable': True})
+    assert bundled_engine._seed_store(config)['unavailable'] is True
+
+
+def test_a_real_write_failure_still_raises(tmp_path, monkeypatch):
+    """Only the platform lock state is tolerated. Anything else stops the launch."""
+    from tessera import bundled_engine
+
+    config = _config(tmp_path)
+
+    def boom(checked):
+        raise seed_pack.SeedUnavailable('disk is read-only')
+
+    monkeypatch.setattr(seed_pack, 'ensure', boom)
+    with pytest.raises(RuntimeError, match='could not be seeded'):
+        bundled_engine._seed_store(config)
 
 
 def test_start_refuses_instead_of_serving_an_unseeded_store(tmp_path, monkeypatch, capsys):

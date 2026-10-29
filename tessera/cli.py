@@ -9,17 +9,15 @@ import sys
 import socket
 from urllib.parse import urlsplit
 
-from .config import load_config
+from .config import PLACEHOLDER_PROJECTS, load_config
 from .assets import asset_path
 
 
 # Hosts the example config ships that can never answer. Kept as a literal list rather
 # than a heuristic so the message names the exact line a person has to change.
 PLACEHOLDER_HOSTS = ('models.example.com', 'api.example.com')
-# The example config's memory project names, in the same sense as the hosts:
-# a session that keeps one addresses a store that does not exist. start heals
-# the config in place; --check names the gap for whoever wants the diagnosis.
-PLACEHOLDER_PROJECTS = ('your-project-id', 'your-personal-project-id')
+# PLACEHOLDER_PROJECTS comes from the loader, which is the one place that decides
+# whether a project value is a store address or still the example's text.
 
 
 def _healed_project_value(home):
@@ -32,6 +30,19 @@ def _healed_personal_value(home):
     return str(Path(home).expanduser() / 'projects' / 'personal')
 
 
+def _is_placeholder_project(value):
+    """Whether a loaded project value still names the example's placeholder.
+
+    The loader resolves every non-empty project to an absolute path, so the
+    placeholder is recognized by its last component rather than by the whole
+    string.
+    """
+    text = str(value or '').strip()
+    if not text:
+        return False
+    return Path(text).name in PLACEHOLDER_PROJECTS
+
+
 def _placeholder_memory_projects(config):
     """The aethermind keys start must replace with a real store.
 
@@ -42,9 +53,9 @@ def _placeholder_memory_projects(config):
     memory = config.aethermind
     keys = []
     project = (getattr(memory, 'project', '') or '').strip()
-    if not project or project in PLACEHOLDER_PROJECTS:
+    if not project or _is_placeholder_project(project):
         keys.append(('project', _healed_project_value))
-    if (getattr(memory, 'personal_project', '') or '').strip() in PLACEHOLDER_PROJECTS:
+    if _is_placeholder_project(getattr(memory, 'personal_project', '')):
         keys.append(('personal_project', _healed_personal_value))
     return keys
 
@@ -57,12 +68,12 @@ def _placeholder_memory_project(config):
     one addresses a store that does not exist.
     """
     configured = (getattr(config.aethermind, 'project', '') or '').strip()
-    if configured and configured in PLACEHOLDER_PROJECTS:
-        return ('[aethermind] project is still the placeholder '
-                f'{configured!r}. Set it to a real project path '
-                '(for example a directory under your Tessera home) in config.toml or '
-                'Settings before the first turn; the session addresses the store '
-                'that name resolves to.')
+    if _is_placeholder_project(configured):
+        return ('[aethermind] project is still the example placeholder '
+                f'{Path(configured).name!r}, which resolves to {configured!r}. '
+                'Set it to a real project path (for example a directory under your '
+                'Tessera home) in config.toml or Settings before the first turn; '
+                'the session addresses the store that name resolves to.')
     return None
 
 
@@ -247,7 +258,12 @@ def _start(config, args):
               'memory read with nothing.', file=sys.stderr)
         print('tessera: ' + seed_pack.RECOVERY_HINT, file=sys.stderr)
         return 1
-    if result.get('layers_written') or result.get('skills_staged') or result.get('quarantined'):
+    if result.get('unavailable'):
+        # Native Windows refuses every store write. Say so, in the sentence the
+        # rest of the product uses, rather than starting quietly with no seeds.
+        print('tessera: the seed pack was not written: ' + seed_pack.lock_refusal_sentence(),
+              file=sys.stderr)
+    elif result.get('layers_written') or result.get('skills_staged') or result.get('quarantined'):
         print(seed_pack.describe(result))
     if getattr(args, 'install_launcher', False):
         from .launcher import install as install_launcher

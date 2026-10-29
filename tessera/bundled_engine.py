@@ -143,13 +143,18 @@ def _seed_store(config):
     from . import seeds as seed_pack
     store = seed_pack.store_path(config)
     try:
-        return seed_pack.ensure(config)
+        result = seed_pack.ensure(config)
     except Exception as error:
         reason = str(error).strip() or type(error).__name__
         raise RuntimeError(
             'the memory store at ' + str(store) + ' could not be seeded, so the '
             'engine was not started against an empty store: ' + reason
         ) from error
+    # A result marked unavailable means this platform has no file lock, so the
+    # engine refuses every write. Serving reads is still correct and the session
+    # reports the lock refusal in its own words; blocking the launch here would
+    # replace that sentence with a seed error and stop a turn that still runs.
+    return result
 
 
 def _runtime_root(config, root):

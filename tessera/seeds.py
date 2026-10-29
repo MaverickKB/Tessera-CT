@@ -45,6 +45,7 @@ except ImportError:  # pragma: no cover - Windows has no fcntl
     fcntl = None
 
 from .assets import asset_path
+from .config import resolve_store_path
 
 SEED_AUTHOR = 'seed'
 SEED_MARKERS = ['seed']
@@ -80,8 +81,9 @@ def store_path(config):
     configured = str(getattr(memory, 'project', '') or '').strip()
     if not configured:
         return home
-    path = Path(configured).expanduser()
-    return path if path.is_absolute() else home / path
+    # Same resolver the loader uses, so a config built by hand in a test and one
+    # loaded from config.toml seed the same directory.
+    return Path(resolve_store_path(configured, home))
 
 
 def shelf_path(config):
@@ -265,14 +267,24 @@ def _seed_lock(store_root):
             handle.close()
 
 
-def _parse_error_type(lib_dir):
-    """The engine's own corrupt-store exception, imported from its tree."""
+def _engine_error_types(lib_dir):
+    """The engine's own store exceptions, imported from its tree."""
     sys.path.insert(0, str(lib_dir))
     try:
-        from aethermind.core import AetherMindParseError
+        from aethermind.core import AetherMindParseError, LockUnavailableError
     finally:
         sys.path.pop(0)
-    return AetherMindParseError
+    return AetherMindParseError, LockUnavailableError
+
+
+def lock_refusal_sentence():
+    """The sentence this product uses when the platform cannot lock a store.
+
+    Imported lazily: the sentence lives with the client that reports the lock
+    backend, and that module should not be pulled in just to write a seed.
+    """
+    from .aethermind import EMBEDDED_LOCK_REFUSAL
+    return EMBEDDED_LOCK_REFUSAL
 
 
 def _quarantine(store_root):
@@ -343,10 +355,19 @@ def install(store_root, skills_dir=None, pack=None, dry_run=False):
             'tessera/_assets/aethermind-engine. A release wheel vendors that engine and '
             'refuses to build when it does not match the manifest in docs/packaging.')
 
-    corrupt = _parse_error_type(lib_dir)
+    corrupt, lock_unavailable = _engine_error_types(lib_dir)
     with _seed_lock(store_root):
         try:
             _write(store_root, layers, textures, skills_dir, result)
+        except lock_unavailable as error:
+            # Native Windows has no fcntl, so the engine refuses every write.
+            # Seeding is impossible there by design, and this is not the place
+            # to change that: the engine still serves reads and the session's
+            # own lock refusal is the sentence the operator already gets. Report
+            # it as a labeled state so the caller does not read it as success.
+            result['unavailable'] = True
+            result['unavailable_reason'] = str(error).strip() or type(error).__name__
+            return result
         except corrupt as error:
             # A store the engine cannot parse would leave every session
             # memoryless. Move it aside intact, then write the pack into a
@@ -406,6 +427,9 @@ def _write(store_root, layers, textures, skills_dir, result):
 
 
 def describe(result):
+    if result.get('unavailable'):
+        return ('seed pack: not written here: ' + lock_refusal_sentence()
+                + ' (' + result.get('unavailable_reason', '') + ')')
     if result['dry_run']:
         return ('seed pack (dry run): %d layers and %d textures would be written, '
                 '%d layers and %d textures already present; %d skills would be staged, '
