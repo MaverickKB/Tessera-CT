@@ -1129,7 +1129,7 @@ class Session:
                         # alone decides. Running either unconditionally made a fresh
                         # build fall back to the heuristic judge and record refusals
                         # the operator never asked for.
-                        judge_on = self.config.jev.enabled
+                        judge_on = self.router.configured()
                         gates_on = self.config.jev.session_gates_enabled
                         if judge_on or gates_on:
                             if tools_failed:
