@@ -9,6 +9,10 @@ The check touches the network only when asked, and only the repository:
 no telemetry, no version server, no download until the operator clicks
 update. What changed comes from the repository's own compare API, the same
 information `git log upstream` would show.
+
+A checkout resolves, fetches, and validates one update branch through a
+single resolver that Check and Apply both use, so Check cannot advertise a
+branch that Apply will not pull.
 """
 
 import json
@@ -112,63 +116,82 @@ def _git(root, *args, timeout):
     return subprocess.run(['git', '-C', root, *args], capture_output=True, text=True, timeout=timeout)
 
 
-def _tracked_branch(root, fallback, timeout):
-    """The branch this checkout moves along: its upstream, else the remote default.
+def _resolve_update_branch(root, fallback, timeout):
+    """Fetch and validate the same update branch for Check and Apply.
 
-    A work branch has no remote branch of its own, so its upstream is the line
-    it follows. Check and apply both resolve the branch here, or Check could
-    report commits from one branch while Update pulls another.
+    A deleted upstream can leave a stale origin ref in the checkout. Both
+    operations must fall back together, rather than Check advertising the
+    default branch while Apply still tries to pull the deleted upstream.
     """
-    tracking = _git(root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}', timeout=timeout)
-    name = (tracking.stdout or '').strip()
-    if tracking.returncode == 0 and name.startswith('origin/'):
-        return name[len('origin/'):]
-    head = _git(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD', timeout=timeout)
-    default = (head.stdout or '').strip()
-    if default.startswith('origin/'):
-        return default[len('origin/'):]
-    return fallback
+    if not root:
+        return None, 'The checkout has no root to resolve an update branch.'
+    try:
+        tracking = _git(root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name',
+                        '@{u}', timeout=timeout)
+        tracked_name = (tracking.stdout or '').strip()
+        head = _git(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD',
+                    timeout=timeout)
+        default_name = (head.stdout or '').strip()
+    except (OSError, subprocess.SubprocessError) as error:
+        return None, f'The checkout could not resolve an update branch: {type(error).__name__}.'
+
+    default_branch = None
+    if head.returncode == 0 and default_name.startswith('origin/'):
+        default_branch = default_name[len('origin/'):]
+    if tracking.returncode == 0 and tracked_name.startswith('origin/'):
+        branch = tracked_name[len('origin/'):]
+    elif default_branch:
+        branch = default_branch
+    else:
+        branch = fallback
+
+    candidates = [branch]
+    if default_branch and default_branch != branch:
+        candidates.append(default_branch)
+    reason = 'The checkout has no valid update branch on origin.'
+    for candidate in candidates:
+        remote_ref = 'refs/remotes/origin/' + candidate
+        # An explicit destination also updates the ref with a narrow fetch config.
+        refspec = '+refs/heads/' + candidate + ':' + remote_ref
+        try:
+            fetch = _git(root, 'fetch', '--quiet', 'origin', refspec, timeout=timeout)
+            if fetch.returncode != 0:
+                errors = (fetch.stderr or '').strip().splitlines()
+                detail = 'git fetch failed'
+                if errors:
+                    detail = errors[-1][:200]
+                reason = 'The checkout could not fetch an update branch from origin: ' + detail
+                continue
+            verified = _git(root, 'show-ref', '--verify', '--quiet', remote_ref,
+                            timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as error:
+            reason = f'The checkout could not validate an update branch: {type(error).__name__}.'
+            continue
+        if verified.returncode != 0:
+            reason = 'The checkout could not verify ' + remote_ref + ' after fetching.'
+            continue
+        return candidate, None
+    return None, reason
 
 
 def _checkout_check(origin, timeout):
     """Ask the checkout's own git, which already holds the credentials."""
     root = origin.get('root') or ''
-    branch = origin.get('branch') or 'main'
-    if not root:
-        return None
-    # Compare against the branch this checkout actually follows.
-    branch = _tracked_branch(root, branch, timeout)
-    try:
-        fetch = _git(root, 'fetch', '--quiet', 'origin', branch, timeout=timeout)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if fetch.returncode != 0:
-        # A local work branch has no remote branch of the same name. Compare it
-        # with the remote's default branch, which is what it was cut from, and
-        # say which branch the count is against.
-        head = _git(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD', timeout=timeout)
-        default = (head.stdout or '').strip().removeprefix('origin/')
-        if not default:
-            return {'available': False, 'origin': origin, 'slug': _repo_slug(origin['url']),
-                    'reason': 'The checkout could not reach origin: '
-                              + ((fetch.stderr or '').strip().splitlines()[-1:] or ['git fetch failed'])[0][:200]}
-        try:
-            retry = _git(root, 'fetch', '--quiet', 'origin', default, timeout=timeout)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        if retry.returncode != 0:
-            return {'available': False, 'origin': origin, 'slug': _repo_slug(origin['url']),
-                    'reason': 'The checkout could not reach origin: '
-                              + ((retry.stderr or '').strip().splitlines()[-1:] or ['git fetch failed'])[0][:200]}
-        branch = default
-    remote = 'origin/' + branch
+    fallback = origin.get('branch') or 'main'
+    branch, reason = _resolve_update_branch(root, fallback, timeout)
+    if branch is None:
+        return {'available': False, 'origin': origin, 'slug': _repo_slug(origin['url']),
+                'reason': reason}
+    remote = 'refs/remotes/origin/' + branch
     try:
         count = _git(root, 'rev-list', '--count', 'HEAD..' + remote, timeout=timeout)
         log = _git(root, 'log', '--oneline', '--no-decorate', '-n', '30', 'HEAD..' + remote, timeout=timeout)
     except (OSError, subprocess.SubprocessError):
-        return None
-    if count.returncode != 0:
-        return None
+        return {'available': False, 'origin': origin, 'slug': _repo_slug(origin['url']),
+                'reason': 'The checkout could not compare the validated update branch.'}
+    if count.returncode != 0 or log.returncode != 0:
+        return {'available': False, 'origin': origin, 'slug': _repo_slug(origin['url']),
+                'reason': 'The checkout could not compare the validated update branch.'}
     commits = []
     for line in (log.stdout or '').strip().splitlines():
         sha, _space, message = line.partition(' ')
@@ -196,9 +219,7 @@ def check(timeout=10):
         return {'available': False, 'reason': f'The install origin {origin["url"]!r} is not a GitHub repository.'}
     branch = origin.get('branch') or 'main'
     if origin.get('kind') == 'checkout':
-        report = _checkout_check(origin, timeout)
-        if report is not None:
-            return report
+        return _checkout_check(origin, timeout)
     api = f'https://api.github.com/repos/{slug}/compare/{origin["commit"]}...{branch}'
     headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'tessera-update-check'}
     token = _token()
@@ -244,20 +265,20 @@ def apply(timeout=600):
         return {'updated': False, 'reason': 'No install origin to update from.'}
     if origin.get('kind') == 'checkout':
         root = origin.get('root') or ''
-        branch = origin.get('branch') or 'main'
-        if root:
-            branch = _tracked_branch(root, branch, timeout)
-        if root:
-            try:
-                result = _git(root, 'pull', '--ff-only', 'origin', branch, timeout=timeout)
-            except (OSError, subprocess.SubprocessError) as error:
-                return {'updated': False, 'reason': f'The checkout could not update: {type(error).__name__}.'}
-            if result.returncode != 0:
-                tail = ((result.stderr or result.stdout or '').strip().splitlines()[-1:] or [''])[0]
-                return {'updated': False,
-                        'reason': 'git pull reported: ' + tail[:200]
-                                  + ' The checkout has local commits or changes; update it by hand.'}
-            return {'updated': True, 'reason': 'Fast-forwarded ' + root + ' to origin/' + branch}
+        fallback = origin.get('branch') or 'main'
+        branch, reason = _resolve_update_branch(root, fallback, timeout)
+        if branch is None:
+            return {'updated': False, 'reason': reason}
+        try:
+            result = _git(root, 'pull', '--ff-only', 'origin', branch, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as error:
+            return {'updated': False, 'reason': f'The checkout could not update: {type(error).__name__}.'}
+        if result.returncode != 0:
+            tail = ((result.stderr or result.stdout or '').strip().splitlines()[-1:] or [''])[0]
+            return {'updated': False,
+                    'reason': 'git pull reported: ' + tail[:200]
+                              + ' The checkout has local commits or changes; update it by hand.'}
+        return {'updated': True, 'reason': 'Fast-forwarded ' + root + ' to origin/' + branch}
     # Reinstall the same ref the user chose, not the repository default: an
     # install from a branch or tag keeps tracking that ref across updates.
     ref = origin.get('branch') or ''
