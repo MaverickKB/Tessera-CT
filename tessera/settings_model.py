@@ -1271,7 +1271,8 @@ def providers_field(config):
                         hint='A short name, used as the id. Spaces are saved as dashes.'), ''),
         dump_field(Spec('providers.new.kind', 'providers', 'enum', 'HTTP protocol', 'live',
                         options=(('openai_chat', 'OpenAI-compatible chat'),
-                                 ('openai_responses', 'OpenAI Responses')),
+                                 ('openai_responses', 'OpenAI Responses'),
+                                 ('anthropic_messages', 'Anthropic messages API')),
                         hint='For local servers, choose the protocol documented by your model server. Adding a model does not download or start it.',
                         key='kind'), 'openai_chat'),
         # Base URL before Model: discovery asks that endpoint what it serves, so the
@@ -2103,10 +2104,29 @@ def _provider_connected(config):
     return signed or any(backend.enabled for backend in config.backends.values())
 
 
-def _setup_steps(config):
+def chat_setup(config):
+    """Describe saved chat configuration, never claim a successful model request."""
     name = (config.roles.get('main') or '').strip()
     backend = config.backends.get(name)
-    picked = backend is not None and offered_for_chat(name, backend)
+    ready = backend is not None and offered_for_chat(name, backend)
+    if ready:
+        account = config.accounts.get(backend.account) if backend.account else None
+        kind = account.provider_kind if account else backend.provider_kind
+        if kind != 'cli_worker':
+            try:
+                host = (urlsplit(backend.base_url).hostname or '').lower()
+            except ValueError:
+                host = ''
+            ready = (bool(host) and bool(backend.model.strip())
+                     and host != 'example.com' and not host.endswith('.example.com')
+                     and host != 'example' and not host.endswith('.example')
+                     and backend.model not in ('your-main-model', 'your-small-model'))
+    return {'ready': bool(ready), 'backend': name if ready else '',
+            'model': backend.model if ready else ''}
+
+
+def _setup_steps(config):
+    picked = chat_setup(config)['ready']
     return [
         {'n': 1, 'text': 'Save a provider connection (required; this does not test connectivity).', 'done': _provider_connected(config)},
         {'n': 2, 'text': 'Pick an enabled chat model (required; send a message to test it).', 'done': picked},
@@ -2255,7 +2275,7 @@ def project(config, approval, manager=None, keychain=None):
             sections.append({'id': section, 'label': label, 'start_hint': SECTION_START[section], 'fields': fields})
     _annotate_memory_status(sections, manager)
     return {'sections': sections, 'file_only': file_only(config, approval), 'ladder': relationships,
-            'setup': _setup_line(config), 'setup_steps': _setup_steps(config),
+            'setup': _setup_line(config), 'setup_steps': _setup_steps(config), 'chat_setup': chat_setup(config),
             'provider_pages': provider_pages(config, keychain)}
 
 

@@ -1435,3 +1435,13 @@ button:enabled:focus-visible, select:focus-visible { box-shadow: 0 0 0 5px var(-
 
 /* Empty save announcements should not add space to every settings row. */
 #page-settings .settings-save-status:empty { display: none; }
+
+/* Guidance uses the existing settings layout and stacks on narrow screens. */
+.settings-first-use { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 0 0 1.25rem; }
+.settings-first-use h2 { margin-top: 0; }
+.settings-connection-choice { margin: 0.75rem 0; }
+.settings-connection-choice .set-hint { margin: 0.3rem 0; }
+.settings-first-use button { min-height: 2.75rem; white-space: normal; }
+.settings-first-use > button { margin: 0.3rem 0.5rem 0.3rem 0; }
+#page-settings .settings-model-simple .settings-model-head,
+#page-settings .settings-model-simple .settings-model-row { grid-template-columns: minmax(0, 1fr) 5rem; }
