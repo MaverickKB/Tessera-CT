@@ -7492,9 +7492,22 @@
   // First-use testing is an ordinary saved conversation, with the same runtime,
   // approvals and event stream as every other chat. Never run it on page load.
   let setupTest = null;
+  function setupRequestId() {
+    const random = typeof crypto === "undefined" ? null : crypto;
+    if (typeof random?.randomUUID === "function") return random.randomUUID();
+    // randomUUID requires a secure context; getRandomValues also works over
+    // LAN HTTP. These are retry identities, not authorization credentials.
+    const bytes = new Uint8Array(16);
+    if (typeof random?.getRandomValues === "function") random.getRandomValues(bytes);
+    else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+  }
   async function openSetupTest(backend) {
     if (!setupTest || setupTest.backend !== backend) {
-      setupTest = {backend, slug: null, requestId: crypto.randomUUID(), submitted: false};
+      setupTest = {backend, slug: null, requestId: setupRequestId(), submitted: false};
     }
     const test = setupTest;
     if (!test.slug) {
