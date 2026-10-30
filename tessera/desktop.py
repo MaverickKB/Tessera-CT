@@ -7,8 +7,10 @@ import os
 import select
 import signal
 import stat
+import subprocess
 import sys
 import threading
+from urllib.parse import urlsplit
 
 from .server import create_server
 
@@ -17,6 +19,73 @@ from .server import create_server
 # on its own output file.
 _fstat = os.fstat
 _close = os.close
+
+# Windows execv creates a new process rather than replacing the native shell's
+# monitored Child handle. A small owner stays alive and restarts only its worker.
+# The marker is private child environment, not a user setting or a credential.
+_WORKER_ENV = '_TESSERA_DESKTOP_WORKER'
+_RESTART_EXIT = 75
+_owned_worker = False
+
+
+def owned_worker():
+    return _owned_worker
+
+
+def claim_owned_worker():
+    global _owned_worker
+    # Child tools must not inherit a claim to the owner's restart protocol.
+    _owned_worker = os.environ.pop(_WORKER_ENV, '') == '1'
+    return _owned_worker
+
+
+def _run_owned(config, mode='desktop'):
+    """Keep the shell-owned process alive while fresh workers serve its origin.
+
+    This owner never creates a server, model thread, or memory manager. Desktop
+    workers inherit the shell's stdin lifetime; kept serve workers stay detached.
+    Worker EOF or actual failures exit the owner, while the explicit restart exit
+    code alone starts a new interpreter.
+    """
+    environment = dict(os.environ)
+    environment[_WORKER_ENV] = '1'
+    port = config.server.port
+    owner_stdin = sys.stdin.fileno()
+    # Only the worker reads this pipe. A simultaneous owner read can hold the
+    # Windows CRT descriptor lock while Popen duplicates fd 0, deadlocking before
+    # the first worker starts. Worker EOF exits normally and is never restarted.
+    # If EOF races a restart marker, the fresh worker inherits EOF and exits too.
+    while True:
+        command = [sys.executable, '-u', '-m', 'tessera', '--home', str(config.home),
+                   mode, '--host', config.server.host, '--port', str(port)]
+        with subprocess.Popen(command, env=environment, stdin=owner_stdin,
+                              stdout=subprocess.PIPE, stderr=sys.stderr) as worker:
+            ready = False
+            for line in worker.stdout:
+                if not ready:
+                    try:
+                        url = None
+                        if mode == 'desktop':
+                            record = json.loads(line)
+                            if record.get('type') == 'tessera.ready' and record.get('version') == 1:
+                                url = record['url']
+                        elif line.startswith(b'Serving Tessera at '):
+                            url = line.decode().split()[-1]
+                        if url is not None:
+                            address = urlsplit(url)
+                            if address.port:
+                                port = address.port
+                                ready = True
+                    except (ValueError, TypeError, KeyError, AttributeError):
+                        pass
+                # Preserve the existing readiness protocol and keep draining logs
+                # so a worker cannot be stranded on a full stdout pipe.
+                sys.stdout.buffer.write(line)
+                sys.stdout.buffer.flush()
+            status = worker.wait()
+        if status != _RESTART_EXIT or not ready:
+            # All owned worker resources are reaped; preserve its actual status.
+            os._exit(status)
 
 
 def _terminate(signum, frame):
@@ -218,10 +287,23 @@ def _wait_for_stdin_eof():
 
 
 def run(config):
+    claim_owned_worker()
+    if os.name == 'nt' and not owned_worker():
+        return _run_owned(config)
     _drop_leaked_stdin_writer()
     previous = signal.signal(signal.SIGTERM, _terminate)
+    restart = None
     try:
         with create_server(config) as server:
+            server.self_supervised = True
+            owner_closed = threading.Event()
+
+            def watch_owner():
+                try:
+                    _wait_for_stdin_eof()
+                finally:
+                    owner_closed.set()
+
             worker = threading.Thread(target=server.serve_forever, name='desktop-core', daemon=True)
             worker.start()
             try:
@@ -229,12 +311,19 @@ def run(config):
                           'url': server.url, 'pid': os.getpid()}
                 print(json.dumps(record), flush=True)
                 # The desktop shell owns this pipe. EOF also handles an unexpected parent exit.
-                _wait_for_stdin_eof()
+                threading.Thread(target=watch_owner, name='desktop-owner', daemon=True).start()
+                while worker.is_alive() and not owner_closed.wait(0.1):
+                    pass
+                if server._restarting and not owner_closed.is_set():
+                    restart = (server.config, server.server_address[1])
             finally:
                 # shutdown must run outside the serve_forever thread.
                 server.shutdown()
                 worker.join()
     except KeyboardInterrupt:
-        pass
+        restart = None
     finally:
         signal.signal(signal.SIGTERM, previous)
+    if restart is not None:
+        from .updates import restart_process
+        restart_process(restart[0], 'desktop', restart[1])

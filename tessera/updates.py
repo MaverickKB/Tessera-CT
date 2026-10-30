@@ -58,11 +58,11 @@ def _checkout_origin():
         if (root / '.git').exists():
             try:
                 remote = subprocess.run(['git', '-C', str(root), 'remote', 'get-url', 'origin'],
-                                        capture_output=True, text=True, timeout=10)
+                                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
                 commit = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'],
-                                        capture_output=True, text=True, timeout=10)
+                                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
                 branch = subprocess.run(['git', '-C', str(root), 'rev-parse', '--abbrev-ref', 'HEAD'],
-                                         capture_output=True, text=True, timeout=10)
+                                         stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
                 url = (remote.stdout or '').strip()
                 if url.endswith('.git'):
                     url = url[:-4]
@@ -79,6 +79,21 @@ def _checkout_origin():
 def install_report():
     """Where this install came from, or None when it cannot be updated in place."""
     return _direct_url() or _checkout_origin()
+
+
+def restart_process(config, command, port):
+    """Replace an owned core with fresh imports, retaining its home and origin."""
+    if command in ('desktop', 'serve'):
+        from .desktop import owned_worker, _RESTART_EXIT
+        if owned_worker():
+            # The persistent owner retains the native shell's monitored handle.
+            # Exit all worker threads after the bounded drain; the owner then
+            # launches fresh imports at the original ready-record address.
+            os._exit(_RESTART_EXIT)
+    os.execv(sys.executable, [
+        sys.executable, '-m', 'tessera', '--home', str(config.home), command,
+        '--host', config.server.host, '--port', str(port),
+    ])
 
 
 def _repo_slug(url):
@@ -106,14 +121,18 @@ def _token():
         if value:
             return value
     try:
-        result = subprocess.run(['gh', 'auth', 'token'], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(['gh', 'auth', 'token'], stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
         return ''
     return (result.stdout or '').strip() if result.returncode == 0 else ''
 
 
 def _git(root, *args, timeout):
-    return subprocess.run(['git', '-C', root, *args], capture_output=True, text=True, timeout=timeout)
+    # A desktop core's stdin is its native owner's lifetime pipe. Updates are
+    # HTTP transactions and cannot answer prompts or borrow that shared handle.
+    return subprocess.run(['git', '-C', root, *args], stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=timeout)
 
 
 def _resolve_update_branch(root, fallback, timeout):
@@ -215,11 +234,11 @@ def check(timeout=10):
         return {'available': False,
                 'reason': 'This install did not come from a git URL or a checkout, so upstream cannot be compared. Reinstall with pip from the repository to enable updates.'}
     slug = _repo_slug(origin['url'])
+    if origin.get('kind') == 'checkout':
+        return _checkout_check(origin, timeout)
     if slug is None:
         return {'available': False, 'reason': f'The install origin {origin["url"]!r} is not a GitHub repository.'}
     branch = origin.get('branch') or 'main'
-    if origin.get('kind') == 'checkout':
-        return _checkout_check(origin, timeout)
     api = f'https://api.github.com/repos/{slug}/compare/{origin["commit"]}...{branch}'
     headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'tessera-update-check'}
     token = _token()
@@ -287,7 +306,8 @@ def apply(timeout=600):
     env = dict(os.environ)
     env['GIT_TERMINAL_PROMPT'] = '0'
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=env)
+        result = subprocess.run(command, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=timeout, env=env)
     except (OSError, subprocess.SubprocessError) as error:
         return {'updated': False, 'reason': f'The reinstall could not run: {type(error).__name__}.'}
     if result.returncode != 0:

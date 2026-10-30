@@ -151,7 +151,16 @@ impl Core {
 
     /// The window monitor and lifecycle tests use the same stop/crash decision.
     pub fn monitor_action(&mut self) -> MonitorAction {
-        if self.paused || self.running() { MonitorAction::Idle }
+        if self.paused { return MonitorAction::Idle; }
+        #[cfg(windows)]
+        if self.keep {
+            if let Some(child) = self.child.as_mut() {
+                // A live owner can be replacing its worker while HTTP is down.
+                // Starting another owner here would race its same-origin restart.
+                if matches!(child.try_wait(), Ok(None)) { return MonitorAction::Idle; }
+            }
+        }
+        if self.running() { MonitorAction::Idle }
         else if self.keep { MonitorAction::Restart }
         else { MonitorAction::Exit }
     }
@@ -304,12 +313,23 @@ impl Core {
         same.attach_url = self.origin.to_string();
         let home = self.home.clone().ok_or("No Tessera home configured for a restarted core")?;
         let env = self.env.clone();
-        let mut fresh = Core::spawn_detached(&same, &home, &env)?;
+        let mut fresh = if self.keep {
+            Core::spawn_detached(&same, &home, &env)?
+        } else {
+            // An app-owned core must keep its stdin lifetime and, on Windows,
+            // the persistent owner that retains the shell's monitored handle.
+            // Detached `serve` is only for a core meant to outlive the window.
+            same.core_host = self.origin.host_str().ok_or("Core origin has no host")?
+                .trim_start_matches('[').trim_end_matches(']').to_string();
+            same.core_port = self.origin.port().ok_or("Core origin has no port")?;
+            Core::launch_with_home(&same, Some(&home), &env)?
+        };
         self.pid = fresh.pid;
         if let Some(mut dead) = self.child.take() {
             let _ = dead.wait();
         }
         self.child = fresh.child.take();
+        self.stdin = fresh.stdin.take();
         self.origin = fresh.origin.clone();
         self.paused = false;
         Ok(())
@@ -345,8 +365,18 @@ impl Core {
     fn wait_for(&mut self, limit: Duration) -> bool {
         let deadline = Instant::now() + limit;
         while Instant::now() < deadline {
-            if !self.running() { return true; }
+            if self.stop_complete() { return true; }
             std::thread::sleep(Duration::from_millis(25));
+        }
+        self.stop_complete()
+    }
+
+    fn stop_complete(&mut self) -> bool {
+        #[cfg(windows)]
+        if let Some(child) = self.child.as_mut() {
+            // HTTP disappearing during an owned restart is not process exit.
+            // Wait for this handle before declaring an explicit Stop complete.
+            return !matches!(child.try_wait(), Ok(None));
         }
         !self.running()
     }
@@ -471,6 +501,7 @@ mod tests {
         core.shutdown(&settings);
         core.restart(&settings).expect("restart fallback core");
         assert_eq!(core.origin, origin, "the window and IPC retain the original origin");
+        assert!(core.stdin.is_some(), "restarting an app-owned core must preserve its parent-pipe lifetime");
         core.shutdown(&settings);
         std::fs::remove_dir_all(home).ok();
     }
@@ -776,5 +807,98 @@ mod auth_end_to_end_tests {
             })
         }).collect();
         for handle in handles { handle.join().unwrap(); }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod update_end_to_end_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn request(origin: &Url, method: &str, path: &str) -> Option<serde_json::Value> {
+        let address = format!("{}:{}", origin.host_str()?, origin.port()?);
+        let mut stream = std::net::TcpStream::connect(address.as_str()).ok()?;
+        stream.set_read_timeout(Some(Duration::from_millis(600))).ok()?;
+        stream.set_write_timeout(Some(Duration::from_millis(600))).ok()?;
+        let body = if method == "POST" { "{}" } else { "" };
+        write!(stream, "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).ok()?;
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).ok()?;
+        serde_json::from_str(reply.split_once("\r\n\r\n")?.1).ok()
+    }
+
+    #[test]
+    fn an_owned_windows_core_keeps_its_monitored_handle_across_updates() {
+        owned_restart(false);
+    }
+
+    #[test]
+    fn a_kept_windows_core_can_be_stopped_after_updates_without_resurrection() {
+        owned_restart(true);
+    }
+
+    fn owned_restart(keep: bool) {
+        let home = std::env::temp_dir().join(format!("tessera-windows-update-{}-{keep}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        let mut settings = Settings::default();
+        settings.home = home.to_str().unwrap().to_string();
+        if keep {
+            let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+            settings.attach_url = format!("http://127.0.0.1:{port}/");
+            settings.keep_core = true;
+            settings.shutdown_seconds = 1.0;
+            settings.terminate_seconds = 1.0;
+        }
+        let mut core = Core::connect(&settings, &std::collections::HashMap::new()).expect("owned core starts");
+        let origin = core.origin.clone();
+        core.set_paused(true);
+        core.shutdown(&settings);
+        assert!(!core.running());
+        core.restart(&settings).expect("Start after an explicit Stop");
+        assert_eq!(core.origin, origin);
+        assert_eq!(core.stdin.is_some(), !keep,
+                   "Start must preserve desktop-pipe or kept-serve ownership as configured");
+        let owner_pid = core.pid;
+        for _ in 0..2 {
+            let before = request(&origin, "GET", "/api/status?shape=connection").unwrap()["generation"].clone();
+            let restart = request(&origin, "POST", "/api/core/restart").expect("restart accepted");
+            assert_eq!(restart["restarting"], true);
+            let deadline = Instant::now() + settings.startup();
+            loop {
+                assert!(matches!(core.child.as_mut().unwrap().try_wait(), Ok(None)),
+                        "the native shell's original Child handle must stay alive during an update");
+                assert_eq!(core.monitor_action(), MonitorAction::Idle,
+                           "an owned restart must not cause a second owner or close the window");
+                assert_eq!(core.pid, owner_pid);
+                if let Some(status) = request(&origin, "GET", "/api/status?shape=connection") {
+                    if status["generation"].is_string() && status["generation"] != before { break; }
+                }
+                assert!(Instant::now() < deadline, "fresh core did not return at the window's original origin");
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        let stopping = Instant::now();
+        if keep {
+            core.stop(&settings);
+            assert!(probe(&origin, Duration::from_millis(600), ""), "closing a kept window must leave its updated core serving");
+            assert!(matches!(core.child.as_mut().unwrap().try_wait(), Ok(None)));
+            core.set_paused(true);
+            core.shutdown(&settings);
+            assert_eq!(core.monitor_action(), MonitorAction::Idle,
+                       "an explicit Stop must suppress monitor recovery after updates");
+        } else {
+            core.stop(&settings);
+        }
+        assert!(!core.running());
+        assert!(matches!(core.child.as_mut().unwrap().try_wait(), Ok(Some(_))), "the owned process must actually exit");
+        assert!(!probe(&origin, Duration::from_millis(600), ""), "the updated worker must stop too");
+        if keep {
+            std::thread::sleep(Duration::from_millis(700));
+            assert!(!probe(&origin, Duration::from_millis(600), ""), "a stopped owner must not resurrect a worker");
+        } else {
+            assert!(stopping.elapsed() < settings.shutdown(), "closing the shell pipe must gracefully stop the owner and worker");
+        }
+        std::fs::remove_dir_all(home).ok();
     }
 }

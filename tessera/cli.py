@@ -322,7 +322,6 @@ def _start(config, args):
             server.serve_forever()
         except KeyboardInterrupt:
             server.server_close()
-            server.manager.close()
             from .server import _release_embedded_engine
             _release_embedded_engine(config)
             return 0
@@ -332,7 +331,6 @@ def _start(config, args):
         # behind the new static assets. execv replaces this process image with
         # a new Python at the same address, holding the listener gap shut.
         server.server_close()
-        server.manager.close()
         from .server import _release_embedded_engine
         _release_embedded_engine(config)
         if terminating:

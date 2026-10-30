@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import socket
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,22 +22,34 @@ def test_loopback_forward_and_reverse_lookups_need_no_os_dns():
     assert socket.getnameinfo(("127.0.0.1", 0), socket.NI_NUMERICSERV) == ("127.0.0.1", "0")
 
 
+def test_inet_loopback_guard_does_not_require_unix_socket_support(monkeypatch):
+    import conftest
+    monkeypatch.delattr(socket, 'AF_UNIX', raising=False)
+    conftest.check_address(SimpleNamespace(family=socket.AF_INET), ('127.0.0.1', 80), 'connect')
+    conftest.check_address(SimpleNamespace(family=socket.AF_INET6), ('::1', 80, 0, 0), 'connect')
+
+
+@pytest.mark.parametrize('missing_unix', [False, True])
 @pytest.mark.parametrize("operation, host", [
     ("getaddrinfo", "blocked.example.com"), ("connect", "blocked.example.com"),
     ("connect_ex", "blocked.example.com"), ("sendto", "blocked.example.com"),
     ("connect", "0.0.0.0"),
+    ("connect", "203.0.113.1"), ("connect", "2001:db8::1"),
     ("gethostbyname", "blocked.example.com"), ("gethostbyname_ex", "blocked.example.com"),
     ("gethostbyaddr", "blocked.example.com"), ("getnameinfo", "blocked.example.com"),
     pytest.param("sendmsg", "blocked.example.com", marks=pytest.mark.skipif(
         not hasattr(socket.socket, "sendmsg"), reason="sendmsg is platform dependent")),
     ("native_getaddrinfo", "blocked.example.com"),
 ])
-def test_caught_external_attempt_still_fails_the_offline_session(tmp_path, operation, host):
+def test_caught_external_attempt_still_fails_the_offline_session(tmp_path, operation, host, missing_unix):
     test = tmp_path / "test_blocked_fixture.py"
     test.write_text('''import socket
 import _socket
 from unittest.mock import Mock
 import conftest
+
+if ''' + repr(missing_unix) + ''' and hasattr(socket, 'AF_UNIX'):
+    del socket.AF_UNIX
 
 def test_caught_attempt():
     operation = ''' + repr(operation) + '''

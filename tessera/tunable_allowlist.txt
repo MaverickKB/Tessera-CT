@@ -3,5 +3,6 @@ tessera/board.py:SAFE_INTEGER  # JavaScript exact integer representation boundar
 tessera/identities.py:SAFE_INTEGER  # JavaScript exact integer representation boundary
 tessera/passive_status.py:MAX_SAFE_INTEGER  # JavaScript exact integer representation boundary
 tessera/inspector.py:PROTOCOL_VERSION  # Version of the inspector wire protocol
+tessera/desktop.py:_RESTART_EXIT  # Fixed worker-to-owner restart protocol exit code; not an operator behavior setting
 tessera/native/desk_input.py:ABS_MAX  # uinput coordinate scale used identically in axis declaration and pixel normalization
 tessera/systems.py:DEFAULT_ENDPOINT_POLL_SECONDS  # fallback for [autonomy] endpoint_poll_seconds when a systems record declares no poll_seconds; the operator sets the real default

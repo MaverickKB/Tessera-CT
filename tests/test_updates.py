@@ -116,3 +116,103 @@ def test_deleted_upstream_without_default_fails_closed(checkout):
     assert 'branch' not in report
     assert 'branch' not in result
     assert git(clone, 'rev-parse', 'HEAD') == before
+
+
+def test_diverged_checkout_preserves_local_work_and_reports_failure(checkout):
+    origin, source, clone = checkout
+    before = commit(clone, 'local work')
+    commit(source, 'upstream work')
+    git(source, 'push', 'origin', 'main')
+
+    assert updates.check()['behind'] == 1
+    result = updates.apply()
+
+    assert result['updated'] is False
+    assert 'by hand' in result['reason']
+    assert git(clone, 'rev-parse', 'HEAD') == before
+    assert (clone / 'history.txt').read_text() == 'local work\n'
+
+
+@pytest.mark.parametrize('code', [0, 1])
+def test_git_install_reinstalls_with_its_own_interpreter_and_ref(monkeypatch, code):
+    from types import SimpleNamespace
+    import sys
+
+    monkeypatch.setattr(updates, 'install_report', lambda: {
+        'kind': 'git-install', 'url': 'https://github.com/example/repo',
+        'branch': 'release', 'commit': 'old',
+    })
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append(command)
+        assert kwargs['stdin'] == subprocess.DEVNULL
+        assert kwargs['env']['GIT_TERMINAL_PROMPT'] == '0'
+        return SimpleNamespace(returncode=code, stderr='installation refused', stdout='')
+
+    monkeypatch.setattr(updates.subprocess, 'run', run)
+    result = updates.apply()
+    assert calls == [[sys.executable, '-m', 'pip', 'install', '--force-reinstall',
+                      '--no-deps', 'git+https://github.com/example/repo@release']]
+    assert result['updated'] is (code == 0)
+    if code:
+        assert 'installation refused' in result['reason']
+
+
+def test_checkout_origin_subprocesses_do_not_borrow_the_owner_lifetime_pipe(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    (tmp_path / '.git').mkdir()
+    package = tmp_path / 'tessera'
+    package.mkdir()
+    monkeypatch.setattr(updates, '__file__', str(package / 'updates.py'))
+    replies = iter(['https://github.com/example/repo.git', 'fixture-commit', 'main'])
+    calls = []
+    def run(command, **kwargs):
+        assert kwargs['stdin'] == subprocess.DEVNULL
+        calls.append(command)
+        return SimpleNamespace(stdout=next(replies), returncode=0)
+    monkeypatch.setattr(updates.subprocess, 'run', run)
+    report = updates._checkout_origin()
+    assert report['commit'] == 'fixture-commit'
+    assert report['branch'] == 'main'
+    assert len(calls) == 3
+
+
+def test_git_and_github_auth_subprocesses_use_no_interactive_stdin(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.delenv('GH_TOKEN', raising=False)
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    calls = []
+    def run(command, **kwargs):
+        assert kwargs['stdin'] == subprocess.DEVNULL
+        calls.append(command)
+        return SimpleNamespace(stdout='fixture-token', returncode=0)
+    monkeypatch.setattr(updates.subprocess, 'run', run)
+    updates._git('fixture-root', 'fetch', 'origin', timeout=10)
+    assert updates._token() == 'fixture-token'
+    assert calls == [['git', '-C', 'fixture-root', 'fetch', 'origin'], ['gh', 'auth', 'token']]
+
+
+def test_git_install_check_compares_the_installed_commit_to_its_requested_ref(monkeypatch):
+    import io
+    import json
+
+    monkeypatch.setattr(updates, 'install_report', lambda: {
+        'kind': 'git-install', 'url': 'https://github.com/example/repo',
+        'branch': 'release', 'commit': 'installed-commit',
+    })
+    monkeypatch.setattr(updates, '_token', lambda: '')
+    requests = []
+
+    def compare(request, **kwargs):
+        requests.append(request.full_url)
+        return io.BytesIO(json.dumps({
+            'ahead_by': 3, 'behind_by': 9,
+            'commits': [{'sha': '123456789', 'commit': {'message': 'A fix\nDetails'}}],
+        }).encode())
+
+    monkeypatch.setattr(updates.urllib.request, 'urlopen', compare)
+    result = updates.check()
+    assert requests == ['https://api.github.com/repos/example/repo/compare/installed-commit...release']
+    assert result['available'] is True and result['behind'] == 3
+    assert result['commits'] == [{'sha': '1234567', 'message': 'A fix'}]

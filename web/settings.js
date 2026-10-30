@@ -1502,10 +1502,30 @@
         applyButton.disabled = true;
         checkButton.disabled = true;
         report.replaceChildren(checkButton, applyButton, line("Updating. The core restarts when the reinstall finishes…"));
+        let before = null;
+        try { before = (await api("/api/status?shape=connection"))?.generation ?? null; } catch (_) {}
         try {
           const result = await api("/api/update/apply", "POST", {});
           if (result?.updated) {
-            report.replaceChildren(checkButton, applyButton, line(result.reason || "Updated. Waiting for the core to come back…"));
+            if (!result.restarting) {
+              report.replaceChildren(checkButton, applyButton, line("Update installed. Restart the core where it was launched to load the new code."));
+              checkButton.disabled = false;
+              return;
+            }
+            report.replaceChildren(checkButton, applyButton, line("Update installed. Waiting for the updated core…"));
+            for (let attempt = 0; attempt < 60; attempt += 1) {
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              try {
+                const live = await api("/api/status?shape=connection");
+                if (!live?.generation || before === null || live.generation === before) continue;
+                status.textContent = "Core updated and restarted";
+                await load();
+                if (onRestarted) onRestarted();
+                return;
+              } catch (_) { /* The core can be unavailable while it restarts. */ }
+            }
+            report.replaceChildren(checkButton, applyButton, line("Update installed, but its restart could not be verified. Check the core before updating again."));
+            checkButton.disabled = false;
           } else {
             report.replaceChildren(checkButton, applyButton, line(result?.reason || "The update did not complete."));
             checkButton.disabled = false;

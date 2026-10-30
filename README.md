@@ -73,6 +73,22 @@ there are no third-party runtime dependencies. To install offline, supply the
 build dependency from a trusted local wheelhouse with pip's `--no-index` and
 `--find-links` options. Keep private configuration outside the checkout.
 
+### Updating the harness
+
+Open **Settings → Update**, choose **Check upstream**, then **Update now**.
+A checkout fast-forwards from its tracked origin branch; a Git-installed
+package reinstalls from its original URL and ref using the same Python
+interpreter. Local divergent commits or conflicting edits are preserved and
+reported as an update refusal. Installs without a recorded Git source explain
+why automatic updates are unavailable.
+
+`start`, an unsupervised `serve`, and an app-owned desktop core reload in a
+fresh interpreter at the same address. Externally supervised cores hand the
+restart to their supervisor. The page verifies a new core generation before
+reporting success. Running work gets the configured drain period; queued work
+remains stored for recovery. This updates the Python harness and web UI;
+updating the native desktop shell itself requires its platform installer.
+
 ## iOS example
 
 [`examples/ios/TesseraVoice`](examples/ios/TesseraVoice) is an example iPhone

@@ -3169,9 +3169,10 @@ def _env_var_name(value, label):
 
 
 class SettingsService:
-    def __init__(self, manager, *, keychain=None):
+    def __init__(self, manager, *, keychain=None, restart_capable=None):
         self.manager = manager
         self.keychain = keychain or KeychainStore()
+        self.restart_capable = restart_capable
 
     def view(self):
         """The settings projection, with every config-file read failure named.
@@ -3188,7 +3189,8 @@ class SettingsService:
             except OSError as error:
                 problems.append(type(error).__name__ + ': ' + str(error))
         body = project(self.manager.config, self.manager.approval_status(), self.manager)
-        body['supervised'] = bool(self.manager.config.server.supervised)
+        body['supervised'] = (bool(self.restart_capable()) if self.restart_capable is not None
+                              else bool(self.manager.config.server.supervised))
         if editor is not None:
             try:
                 body['config_backups'] = editor.backups()

@@ -39,7 +39,8 @@ def reject(operation):
 
 
 def check_address(sock, address, operation):
-    if sock.family == socket.AF_UNIX:
+    unix_family = getattr(socket, 'AF_UNIX', None)
+    if unix_family is not None and sock.family == unix_family:
         return
     if not isinstance(address, tuple) or not address or not local_host(address[0]):
         reject(operation)

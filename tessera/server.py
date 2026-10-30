@@ -143,10 +143,14 @@ class TesseraServer(ThreadingHTTPServer):
     def __init__(self, config, manager, web_root, family, address):
         self.address_family = family
         self.manager = manager
+        settings = getattr(self.manager, 'settings', None)
+        if settings is not None:
+            settings.restart_capable = self.restart_capable
         self.web_root = Path(web_root).resolve()
         self.oauth_login = LoginDesk(Path(config.home) / 'oauth-login')
         self.stopping = threading.Event()
         self._restart_lock = threading.Lock()
+        self._update_lock = threading.Lock()
         self._restarting = False
         self._restart_drained = True
         self._ui_build = (None, None)
@@ -176,6 +180,9 @@ class TesseraServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
         self.server_name = host
         self.server_port = port
+
+    def restart_capable(self):
+        return bool(self.config.server.supervised or self.self_supervised)
 
     def ui_build(self):
         # Assets are read from disk per request, so a pull changes the UI without a restart.
@@ -226,7 +233,11 @@ class TesseraServer(ThreadingHTTPServer):
     def server_close(self):
         self.stopping.set()
         super().server_close()
-        self.manager.close()
+        # An owned process is about to exec after a bounded drain. Waiting
+        # again here for a model that ignored interruption defeats that bound
+        # and strands the update indefinitely. Fresh startup recovers its queue.
+        if not (self.self_supervised and self._restarting and not self._restart_drained):
+            self.manager.close()
         _release_embedded_engine(self.config)
 
     def handle_error(self, request, client_address):
@@ -725,7 +736,7 @@ class Handler(BaseHTTPRequestHandler):
             editor = manager.config_editor
             if method == 'GET':
                 self._json(200, {'config': editor.read(), 'file': editor.config_path.name,
-                                 'supervised': self.server.config.server.supervised})
+                                 'supervised': self.server.restart_capable()})
             elif method == 'POST':
                 body = self._body(('edits', 'adopt'))
                 if 'edits' in body:
@@ -743,11 +754,12 @@ class Handler(BaseHTTPRequestHandler):
             when = body.get('when', 'now')
             if when not in ('now', 'idle'):
                 raise ApiError(400, "when must be 'now' or 'idle'")
-            if not self.server.config.server.supervised:
+            if not self.server.restart_capable():
                 raise ApiError(409, 'Core is not supervised; restart it where it was started')
             self._json(202, {'restarting': True, 'deferred': when == 'idle',
                              'drain_seconds': self.server.config.server.drain_seconds})
-            # A supervisor (launchd KeepAlive) starts the core again after a clean exit.
+            # Either an external supervisor or this core's own launcher starts
+            # fresh code after the existing drain completes.
             self.server.restart(when)
             return
         if path == '/api/update/check' and method == 'GET':
@@ -759,12 +771,23 @@ class Handler(BaseHTTPRequestHandler):
             # is either the supervisor's or, for `tessera start`, the process's
             # own respawn loop. Either way the answer is sent before draining.
             from . import updates
-            result = updates.apply()
-            restarting = bool(result.get('updated')) and (
-                self.server.config.server.supervised or getattr(self.server, 'self_supervised', False))
-            self._json(202, {**result, 'restarting': restarting})
-            if result.get('updated'):
-                self.server.restart('now')
+            if not self.server._update_lock.acquire(blocking=False):
+                raise ApiError(409, 'An update is already in progress')
+            try:
+                if self.server._restarting:
+                    raise ApiError(409, 'The core is already restarting')
+                result = updates.apply()
+                restarting = bool(result.get('updated')) and (
+                    self.server.config.server.supervised or getattr(self.server, 'self_supervised', False))
+                try:
+                    self._json(202, {**result, 'restarting': restarting})
+                finally:
+                    # Installation already changed the code. A disconnected
+                    # browser must not leave the old interpreter serving it.
+                    if restarting:
+                        self.server.restart('now')
+            finally:
+                self.server._update_lock.release()
             return
         if path == '/api/infrastructure/targets' and method == 'GET':
             self._json(200, manager.infrastructure_targets())
@@ -1609,16 +1632,25 @@ def create_server(config, manager=None, web_root=None, backend_factory=None):
 
 
 def serve(config):
+    from .desktop import claim_owned_worker, _run_owned
+    worker = claim_owned_worker()
+    if os.name == 'nt' and not config.server.supervised and not worker:
+        return _run_owned(config, 'serve')
     from .bundled_engine import ensure_local_engine_bundle
     ensure_local_engine_bundle(config)
+    terminating = []
     with create_server(config) as server:
+        server.self_supervised = not config.server.supervised
         # A supervisor's SIGTERM drains like /api/core/restart instead of killing running turns.
-        signal.signal(signal.SIGTERM, lambda *args: server.restart())
+        def terminate(*args):
+            terminating.append(True)
+            server.restart()
+        signal.signal(signal.SIGTERM, terminate)
         print(f'Serving Tessera at {server.url}', flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            pass
+            terminating.append(True)
         if config.server.supervised:
             # The listener has stopped, so this process has to actually end or the
             # supervisor never sees it exit and never starts the new build. Whether
@@ -1637,6 +1669,9 @@ def serve(config):
             # os._exit skips server_close, which is the other place the engine stops.
             _release_embedded_engine(config)
             os._exit(0)
+    if server._restarting and not terminating:
+        from .updates import restart_process
+        restart_process(server.config, 'serve', server.server_address[1])
 
 
 def _release_embedded_engine(config):
