@@ -7,8 +7,10 @@ import os
 import select
 import signal
 import stat
+import subprocess
 import sys
 import threading
+from urllib.parse import urlsplit
 
 from .server import create_server
 
@@ -17,6 +19,67 @@ from .server import create_server
 # on its own output file.
 _fstat = os.fstat
 _close = os.close
+
+# Windows execv creates a new process rather than replacing the native shell's
+# monitored Child handle. A small owner stays alive and restarts only its worker.
+# The marker is private child environment, not a user setting or a credential.
+_WORKER_ENV = '_TESSERA_DESKTOP_WORKER'
+_RESTART_EXIT = 75
+_owned_worker = False
+
+
+def owned_worker():
+    return _owned_worker
+
+
+def _run_owned(config):
+    """Keep the shell-owned process alive while fresh workers serve its origin.
+
+    This owner never creates a server, model thread, or memory manager. Its child
+    inherits the shell's stdin lifetime; EOF and actual failures exit the owner,
+    while the explicit restart exit code alone starts a new interpreter.
+    """
+    environment = dict(os.environ)
+    environment[_WORKER_ENV] = '1'
+    port = config.server.port
+    owner_closed = threading.Event()
+    owner_stdin = sys.stdin.fileno()
+
+    def watch_owner():
+        try:
+            _wait_for_stdin_eof()
+        finally:
+            owner_closed.set()
+
+    threading.Thread(target=watch_owner, name='desktop-owner', daemon=True).start()
+    while True:
+        if owner_closed.is_set():
+            return
+        command = [sys.executable, '-u', '-m', 'tessera', '--home', str(config.home),
+                   'desktop', '--host', config.server.host, '--port', str(port)]
+        with subprocess.Popen(command, env=environment, stdin=owner_stdin,
+                              stdout=subprocess.PIPE, stderr=sys.stderr) as worker:
+            ready = False
+            for line in worker.stdout:
+                if not ready:
+                    try:
+                        record = json.loads(line)
+                        if record.get('type') == 'tessera.ready' and record.get('version') == 1:
+                            address = urlsplit(record['url'])
+                            if address.port:
+                                port = address.port
+                                ready = True
+                    except (ValueError, TypeError, KeyError, AttributeError):
+                        pass
+                # Preserve the existing readiness protocol and keep draining logs
+                # so a worker cannot be stranded on a full stdout pipe.
+                sys.stdout.buffer.write(line)
+                sys.stdout.buffer.flush()
+            status = worker.wait()
+        if status != _RESTART_EXIT or not ready:
+            # A blocked stdin watcher must not delay process exit or contend with
+            # interpreter teardown. All owned worker resources are already reaped.
+            os._exit(status)
 
 
 def _terminate(signum, frame):
@@ -218,6 +281,12 @@ def _wait_for_stdin_eof():
 
 
 def run(config):
+    global _owned_worker
+    # Consume the launch marker so tools and other subprocesses started by this
+    # worker cannot accidentally inherit a claim to the owner's restart protocol.
+    _owned_worker = os.environ.pop(_WORKER_ENV, '') == '1'
+    if os.name == 'nt' and not owned_worker():
+        return _run_owned(config)
     _drop_leaked_stdin_writer()
     previous = signal.signal(signal.SIGTERM, _terminate)
     restart = None

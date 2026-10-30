@@ -1,14 +1,16 @@
 """A running core must install an update and serve fresh imports at the same URL."""
 
 import json
+from importlib import metadata
 import os
 from pathlib import Path
-import selectors
+from queue import Empty, Queue
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import tomllib
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -110,6 +112,35 @@ def commit_all(root, message):
     return git(root, 'rev-parse', 'HEAD')
 
 
+def provision_local_build_tools(python, source):
+    """Populate a test venv from trusted installed distributions, without an index.
+
+    ensurepip may bundle setuptools too old for this project's PEP 639 metadata.
+    A nested venv also does not inherit its invoking venv's site-packages, so
+    --system-site-packages alone cannot supply the already-installed build tools.
+    """
+    from packaging.requirements import Requirement
+    required = tomllib.loads((source / 'pyproject.toml').read_text())['build-system']['requires']
+    specifications = [Requirement('pip'), *(Requirement(item) for item in required)]
+    destination = Path(subprocess.check_output(
+        [str(python), '-c', "import sysconfig; print(sysconfig.get_path('purelib'))"], text=True).strip())
+    for specification in specifications:
+        distribution = metadata.distribution(specification.name)
+        assert distribution.version in specification.specifier, specification
+        assert distribution.files, 'The installed build distribution must have a file manifest'
+        for entry in distribution.files:
+            # Console scripts outside site-packages are unnecessary: this fixture
+            # invokes `python -m pip`. Keep every copy within the isolated venv.
+            if '..' in entry.parts or entry.is_absolute():
+                continue
+            installed = distribution.locate_file(entry)
+            if not installed.is_file():
+                continue
+            target = destination / entry
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(installed, target)
+
+
 def request(url, path, body=None, timeout=5):
     req = Request(url + path, data=None if body is None else json.dumps(body).encode(),
                   headers={'Content-Type': 'application/json'})
@@ -118,22 +149,47 @@ def request(url, path, body=None, timeout=5):
 
 
 def ready_url(process, mode):
-    pending = b''
+    lines = Queue()
+    def read():
+        for line in iter(process.stdout.readline, b''):
+            lines.put(line)
+        lines.put(None)
+    threading.Thread(target=read, daemon=True).start()
     deadline = time.monotonic() + 30
-    with selectors.DefaultSelector() as selector:
-        selector.register(process.stdout, selectors.EVENT_READ)
-        while time.monotonic() < deadline:
+    while time.monotonic() < deadline:
+        try:
+            line = lines.get(timeout=0.2)
+        except Empty:
             assert process.poll() is None, 'core exited before readiness'
-            if not selector.select(0.2):
-                continue
-            pending += os.read(process.stdout.fileno(), 65536)
-            while b'\n' in pending:
-                line, pending = pending.split(b'\n', 1)
-                if mode == 'desktop' and line.startswith(b'{'):
-                    return json.loads(line)['url']
-                if line.startswith(b'Serving Tessera at '):
-                    return line.decode().split()[-1]
+            continue
+        assert line is not None, 'core exited before readiness'
+        if mode.startswith('desktop') and line.startswith(b'{'):
+            return json.loads(line)['url']
+        if line.startswith(b'Serving Tessera at '):
+            return line.decode().split()[-1]
     pytest.fail('core did not report readiness')
+
+
+def test_owned_desktop_propagates_worker_startup_failure(tmp_path):
+    home = tmp_path / 'home'
+    home.mkdir()
+    (home / 'config.toml').write_text('this is not valid TOML = [')
+    script = ('from tessera.config import Config; from tessera.desktop import _run_owned; '
+              'from pathlib import Path; import sys; '
+              '_run_owned(Config(home=Path(sys.argv[1]), cwd=Path.cwd()))')
+    env = {name: value for name, value in os.environ.items() if not name.startswith('TESSERA_')}
+    env['PYTHONPATH'] = str(ROOT)
+    process = subprocess.Popen([sys.executable, '-u', '-c', script, str(home)], cwd=ROOT, env=env,
+                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        # Keep owner stdin open: a real startup failure must exit, not wait for
+        # the native shell to close its pipe or retry forever behind its back.
+        assert process.wait(timeout=15) == 1
+        assert process.stdout.read() == b''
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=5)
 
 
 @pytest.mark.skipif(os.name == 'nt', reason='POSIX subprocess pipe readiness and exec lifecycle')
@@ -225,9 +281,10 @@ def test_git_installed_harness_reinstalls_itself_and_loads_new_code(tmp_path, mo
     env.update(GIT_CONFIG_GLOBAL=str(git_config), GIT_CONFIG_NOSYSTEM='1',
                PIP_CONFIG_FILE=os.devnull, PIP_NO_INDEX='1', PIP_NO_BUILD_ISOLATION='0')
     venv = tmp_path / 'venv'
-    subprocess.run([sys.executable, '-m', 'venv', '--system-site-packages', str(venv)],
+    subprocess.run([sys.executable, '-m', 'venv', '--system-site-packages', '--without-pip', str(venv)],
                    check=True, capture_output=True, env=env)
     python = venv / 'bin/python'
+    provision_local_build_tools(python, source)
     installed = subprocess.run(
         [str(python), '-m', 'pip', 'install', '--no-deps', '--no-build-isolation', 'git+' + remote + '@main'],
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
@@ -277,8 +334,12 @@ def test_git_installed_harness_reinstalls_itself_and_loads_new_code(tmp_path, mo
         process.communicate(timeout=5)
 
 
-@pytest.mark.skipif(os.name == 'nt', reason='POSIX subprocess pipe readiness and exec lifecycle')
-@pytest.mark.parametrize('mode', ['start', 'serve', 'desktop'])
+@pytest.mark.parametrize('mode', [
+    pytest.param('start', marks=pytest.mark.skipif(os.name == 'nt', reason='POSIX exec lifecycle')),
+    pytest.param('serve', marks=pytest.mark.skipif(os.name == 'nt', reason='POSIX exec lifecycle')),
+    'desktop',
+    pytest.param('desktop-owner', marks=pytest.mark.skipif(os.name == 'nt', reason='Owner is already used by native Windows desktop')),
+])
 def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch, mode):
     monkeypatch.setenv('GIT_CONFIG_GLOBAL', os.devnull)
     monkeypatch.setenv('GIT_CONFIG_NOSYSTEM', '1')
@@ -305,6 +366,11 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
     env = {key: value for key, value in os.environ.items() if not key.startswith('TESSERA_')}
     env['PYTHONPATH'] = str(clone)
     command = [sys.executable, '-u', '-m', 'tessera', '--home', str(home), mode, '--port', '0']
+    if mode == 'desktop-owner':
+        # Exercise the Windows owner strategy with real subprocesses on POSIX too.
+        script = ('from tessera.config import load_config; from tessera.desktop import _run_owned; '
+                  'import sys; config=load_config(sys.argv[1]); config.server.port=0; _run_owned(config)')
+        command = [sys.executable, '-u', '-c', script, str(home)]
     if mode == 'start':
         command.append('--no-browser')
     process = subprocess.Popen(command, cwd=clone, env=env, stdin=subprocess.PIPE,
@@ -341,7 +407,7 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
         assert git(clone, 'rev-parse', 'HEAD') == latest
         assert request(url, '/api/update/check')['behind'] == 0
         assert sentinel.read_text() == 'operator data'
-        if mode == 'desktop':
+        if mode.startswith('desktop'):
             process.stdin.close()
             process.stdin = None
         else:

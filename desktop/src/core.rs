@@ -778,3 +778,53 @@ mod auth_end_to_end_tests {
         for handle in handles { handle.join().unwrap(); }
     }
 }
+
+#[cfg(all(test, windows))]
+mod update_end_to_end_tests {
+    use super::*;
+    use std::io::Write;
+
+    fn request(origin: &Url, method: &str, path: &str) -> Option<serde_json::Value> {
+        let address = format!("{}:{}", origin.host_str()?, origin.port()?);
+        let mut stream = std::net::TcpStream::connect(address.as_str()).ok()?;
+        stream.set_read_timeout(Some(Duration::from_millis(600))).ok()?;
+        stream.set_write_timeout(Some(Duration::from_millis(600))).ok()?;
+        let body = if method == "POST" { "{}" } else { "" };
+        write!(stream, "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).ok()?;
+        let mut reply = String::new();
+        stream.read_to_string(&mut reply).ok()?;
+        serde_json::from_str(reply.split_once("\r\n\r\n")?.1).ok()
+    }
+
+    #[test]
+    fn an_owned_windows_core_keeps_its_monitored_handle_across_updates() {
+        let home = std::env::temp_dir().join(format!("tessera-windows-update-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(&home).unwrap();
+        let mut settings = Settings::default();
+        settings.home = home.to_str().unwrap().to_string();
+        let mut core = Core::connect(&settings, &std::collections::HashMap::new()).expect("owned core starts");
+        let origin = core.origin.clone();
+        let owner_pid = core.pid;
+        for _ in 0..2 {
+            let before = request(&origin, "GET", "/api/status?shape=connection").unwrap()["generation"].clone();
+            let restart = request(&origin, "POST", "/api/core/restart").expect("restart accepted");
+            assert_eq!(restart["restarting"], true);
+            let deadline = Instant::now() + settings.startup();
+            loop {
+                assert!(core.running(), "the native shell's original Child handle must stay alive during an update");
+                assert_eq!(core.pid, owner_pid);
+                if let Some(status) = request(&origin, "GET", "/api/status?shape=connection") {
+                    if status["generation"].is_string() && status["generation"] != before { break; }
+                }
+                assert!(Instant::now() < deadline, "fresh core did not return at the window's original origin");
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+        let stopping = Instant::now();
+        core.stop(&settings);
+        assert!(!core.running());
+        assert!(stopping.elapsed() < settings.shutdown(), "closing the shell pipe must gracefully stop the owner and worker");
+        std::fs::remove_dir_all(home).ok();
+    }
+}

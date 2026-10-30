@@ -83,6 +83,13 @@ def install_report():
 
 def restart_process(config, command, port):
     """Replace an owned core with fresh imports, retaining its home and origin."""
+    if command == 'desktop':
+        from .desktop import owned_worker, _RESTART_EXIT
+        if owned_worker():
+            # The persistent owner retains the native shell's monitored handle.
+            # Exit all worker threads after the bounded drain; the owner then
+            # launches fresh imports at the original ready-record address.
+            os._exit(_RESTART_EXIT)
     os.execv(sys.executable, [
         sys.executable, '-m', 'tessera', '--home', str(config.home), command,
         '--host', config.server.host, '--port', str(port),
