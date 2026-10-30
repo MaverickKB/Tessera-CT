@@ -182,13 +182,76 @@ fn home_dir(env: &HashMap<String, String>) -> Option<PathBuf> {
     env.get("HOME").or_else(|| env.get("USERPROFILE")).map(|h| Path::new(h).join(".tessera"))
 }
 
+/// Persistent nonsecret selection written by the public Python launcher.
+/// Keep this separate from desktop.toml so installation never rewrites an
+/// operator's window, attach, service, or lifecycle settings.
+fn bootstrap_path(env: &HashMap<String, String>) -> Option<PathBuf> {
+    let profile = env.get("USERPROFILE").filter(|value| !value.is_empty())
+        .or_else(|| env.get("HOME").filter(|value| !value.is_empty()));
+    #[cfg(windows)]
+    {
+        let directory = env.get("APPDATA").filter(|value| !value.is_empty()).map(PathBuf::from)
+            .or_else(|| profile.map(|value| Path::new(value).join("AppData").join("Roaming")))?;
+        Some(directory.join("tessera").join("desktop-bootstrap.json"))
+    }
+    #[cfg(not(windows))]
+    {
+        let home = env.get("HOME").filter(|value| !value.is_empty()).or(profile)?;
+        Some(Path::new(home).join(".config").join("tessera").join("desktop-bootstrap.json"))
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Bootstrap { home: String, python: String, core_root: String }
+
+fn read_bootstrap(env: &HashMap<String, String>) -> Result<Option<Bootstrap>, String> {
+    let Some(path) = bootstrap_path(env).filter(|path| path.exists()) else { return Ok(None); };
+    let data = std::fs::read_to_string(path)
+        .map_err(|_| "Native menu launch selection is unreadable; run tessera start to repair it".to_string())?;
+    let record: Bootstrap = serde_json::from_str(&data)
+        .map_err(|_| "Native menu launch selection is invalid; run tessera --home <home> start to repair it".to_string())?;
+    if record.home.is_empty() || record.python.is_empty() || record.core_root.is_empty() {
+        return Err("Native menu launch selection is empty; run tessera --home <home> start to repair it".into());
+    }
+    Ok(Some(record))
+}
+
+fn missing_bootstrap_fields(table: &toml::Table, env: &HashMap<String, String>) -> Vec<&'static str> {
+    ["home", "python", "core_root"].into_iter().filter(|field| {
+        let name = format!("TESSERA_DESKTOP_{}", field.to_uppercase());
+        // Plain TESSERA_HOME is also an explicit native core selection.
+        let explicit_home = *field == "home" && env.get("TESSERA_HOME").is_some_and(|value| !value.is_empty());
+        !env.contains_key(&name) && !explicit_home && match table.get(*field) {
+            None => true,
+            Some(value) => value.as_str() == Some(""),
+        }
+    }).collect()
+}
+
 /// Load settings from `env` (a snapshot of the process environment).
 pub fn load(env: &HashMap<String, String>) -> Result<Settings, String> {
     let explicit = env.get("TESSERA_DESKTOP_CONFIG").filter(|v| !v.is_empty()).map(PathBuf::from);
     let user_config = config_candidates(env).into_iter().find(|p| p.exists());
-    let path = explicit.clone()
-        .or(user_config)
-        .or_else(|| home_dir(env).map(|h| h.join("desktop.toml")));
+    let explicit_home = env.get("TESSERA_DESKTOP_HOME").filter(|value| !value.is_empty())
+        .or_else(|| env.get("TESSERA_HOME").filter(|value| !value.is_empty()));
+    let mut bootstrap = None;
+    let mut bootstrap_read = false;
+    let path = if let Some(path) = explicit.clone().or(user_config) {
+        Some(path)
+    } else {
+        // A menu launch has no transient CLI environment. Select the remembered
+        // home's desktop.toml before applying fallback fields, so its operator
+        // lifecycle, authentication and window settings are preserved too.
+        if explicit_home.is_none() {
+            bootstrap = read_bootstrap(env)?;
+            bootstrap_read = true;
+        }
+        explicit_home.map(PathBuf::from)
+            .or_else(|| bootstrap.as_ref().map(|record| PathBuf::from(&record.home)))
+            .or_else(|| home_dir(env))
+            .map(|home| home.join("desktop.toml"))
+    };
     let mut table: toml::Table = match path {
         Some(ref p) if p.exists() => std::fs::read_to_string(p)
             .map_err(|_| "desktop settings file is unreadable".to_string())?
@@ -197,6 +260,18 @@ pub fn load(env: &HashMap<String, String>) -> Result<Settings, String> {
         Some(_) if explicit.is_some() => return Err("TESSERA_DESKTOP_CONFIG names a missing file".into()),
         _ => toml::Table::new(),
     };
+    let missing = missing_bootstrap_fields(&table, env);
+    if !missing.is_empty() && !bootstrap_read {
+        bootstrap = read_bootstrap(env)?;
+    }
+    if let Some(record) = bootstrap {
+        for field in missing {
+            let value = match field {
+                "home" => &record.home, "python" => &record.python, _ => &record.core_root,
+            };
+            table.insert(field.into(), toml::Value::String(value.clone()));
+        }
+    }
     let defaults = toml::Table::try_from(Settings::default()).expect("serializable defaults");
     for (key, default) in defaults.iter() {
         let name = format!("TESSERA_DESKTOP_{}", key.to_uppercase());
@@ -261,6 +336,96 @@ mod tests {
 
     fn env(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    fn bootstrap_fixture(label: &str) -> (PathBuf, HashMap<String, String>) {
+        let root = std::env::temp_dir().join(format!("tessera-bootstrap-{label}-{}", std::process::id()));
+        let home = root.join("profile");
+        let appdata = root.join("appdata");
+        let selected = root.join("selected-home");
+        std::fs::create_dir_all(&selected).unwrap();
+        let environment = env(&[("HOME", home.to_str().unwrap()),
+                                ("USERPROFILE", home.to_str().unwrap()),
+                                ("APPDATA", appdata.to_str().unwrap())]);
+        let path = bootstrap_path(&environment).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, serde_json::json!({
+            "home": selected.to_str().unwrap(),
+            "python": root.join("venv-python").to_str().unwrap(),
+            "core_root": root.join("workspace").to_str().unwrap(),
+        }).to_string()).unwrap();
+        (root, environment)
+    }
+
+    #[test]
+    fn remembered_home_loads_its_operator_desktop_settings() {
+        let (root, environment) = bootstrap_fixture("operator-settings");
+        let selected = root.join("selected-home");
+        std::fs::write(selected.join("desktop.toml"),
+            "width = 1111\nattach_url = 'http://127.0.0.1:8740'\nkeep_core = true\nauth_token = 'fixture-token'\n").unwrap();
+        let loaded = load(&environment).unwrap();
+        assert_eq!(PathBuf::from(&loaded.home), selected);
+        assert_eq!(PathBuf::from(&loaded.python), root.join("venv-python"));
+        assert_eq!(PathBuf::from(&loaded.core_root), root.join("workspace"));
+        assert_eq!(loaded.width, 1111.0);
+        assert_eq!(loaded.attach_url, "http://127.0.0.1:8740");
+        assert!(loaded.keep_core);
+        assert_eq!(loaded.auth_token, "fixture-token");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn plain_explicit_home_selects_its_file_and_never_uses_remembered_home() {
+        let (root, mut environment) = bootstrap_fixture("explicit-home");
+        let selected = root.join("explicit-home");
+        std::fs::create_dir_all(&selected).unwrap();
+        std::fs::write(selected.join("desktop.toml"), "width = 1001\n").unwrap();
+        environment.insert("TESSERA_HOME".into(), selected.to_str().unwrap().into());
+        let loaded = load(&environment).unwrap();
+        // Core::connect uses TESSERA_HOME when the settings home is empty.
+        assert!(loaded.home.is_empty());
+        assert_eq!(loaded.width, 1001.0);
+        assert_eq!(PathBuf::from(&loaded.python), root.join("venv-python"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn explicit_home_interpreter_and_root_ignore_a_malformed_bootstrap() {
+        let (root, mut environment) = bootstrap_fixture("explicit-all");
+        std::fs::write(bootstrap_path(&environment).unwrap(), "not JSON").unwrap();
+        environment.insert("TESSERA_HOME".into(), root.join("selected-home").to_str().unwrap().into());
+        environment.insert("TESSERA_DESKTOP_PYTHON".into(), "chosen-python".into());
+        environment.insert("TESSERA_DESKTOP_CORE_ROOT".into(), "chosen-root".into());
+        let loaded = load(&environment).unwrap();
+        assert!(loaded.home.is_empty());
+        assert_eq!(loaded.python, "chosen-python");
+        assert_eq!(loaded.core_root, "chosen-root");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn explicit_settings_fields_win_without_rewriting_the_operator_file() {
+        let (root, mut environment) = bootstrap_fixture("settings-win");
+        let file = root.join("operator.toml");
+        let text = "home = 'file-home'\npython = 'file-python'\ncore_root = 'file-root'\nwidth = 1099\n";
+        std::fs::write(&file, text).unwrap();
+        std::fs::write(bootstrap_path(&environment).unwrap(), "not JSON").unwrap();
+        environment.insert("TESSERA_DESKTOP_CONFIG".into(), file.to_str().unwrap().into());
+        let loaded = load(&environment).unwrap();
+        assert_eq!(loaded.home, "file-home");
+        assert_eq!(loaded.python, "file-python");
+        assert_eq!(loaded.core_root, "file-root");
+        assert_eq!(loaded.width, 1099.0);
+        assert_eq!(std::fs::read_to_string(file).unwrap(), text);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn malformed_remembered_selection_reports_repair_instead_of_wrong_home() {
+        let (root, environment) = bootstrap_fixture("invalid");
+        std::fs::write(bootstrap_path(&environment).unwrap(), "not JSON").unwrap();
+        assert!(load(&environment).unwrap_err().contains("run tessera --home <home> start to repair"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

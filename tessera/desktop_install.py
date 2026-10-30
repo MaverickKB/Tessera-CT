@@ -70,6 +70,50 @@ def find_binary() -> Path | None:
     return None
 
 
+def bootstrap_path(environment=None) -> Path:
+    """Per-user native-menu handoff, separate from operator desktop settings."""
+    environment = os.environ if environment is None else environment
+    if sys.platform.startswith('win'):
+        profile = Path(environment.get('USERPROFILE') or environment.get('HOME') or Path.home())
+        directory = Path(environment.get('APPDATA') or profile / 'AppData' / 'Roaming')
+    else:
+        profile = Path(environment.get('HOME') or environment.get('USERPROFILE') or Path.home())
+        directory = profile / '.config'
+    return directory / 'tessera' / 'desktop-bootstrap.json'
+
+
+def remember_install(home: Path, python: str, core_root: str) -> Path:
+    """Remember nonsecret launch selection for later Finder/menu launches.
+
+    Do not edit desktop.toml or resolve an interpreter symlink: resolving a
+    venv interpreter would lose the installed package on the next launch.
+    """
+    import json
+    path = bootstrap_path()
+    temporary = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        record = {'home': str(Path(home).expanduser().resolve()),
+                  'python': str(python), 'core_root': str(core_root)}
+        if any(not value for value in record.values()):
+            raise NativeShellNotFound('Cannot remember an empty native launch selection')
+        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                         prefix='.desktop-bootstrap-', delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(record, stream)
+            stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.chmod(0o600)
+        os.replace(temporary, path)
+    except OSError as error:
+        raise NativeShellNotFound('Could not remember the native menu launch selection: ' + str(error)) from error
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+    return path
+
+
 def launch(home: Path, *, port: int | None = None, startup_timeout: float | None = None) -> None:
     """Open and acknowledge the actual native window on every platform.
 
@@ -86,7 +130,8 @@ def launch(home: Path, *, port: int | None = None, startup_timeout: float | None
     env['TESSERA_HOME'] = str(home)
     env['TESSERA_DESKTOP_HOME'] = str(home)
     env.setdefault('TESSERA_DESKTOP_PYTHON', sys.executable)
-    env.setdefault('TESSERA_DESKTOP_CORE_ROOT', str(home))
+    env.setdefault('TESSERA_DESKTOP_CORE_ROOT', str(Path.cwd()))
+    remember_install(home, env['TESSERA_DESKTOP_PYTHON'], env['TESSERA_DESKTOP_CORE_ROOT'])
     if port is not None:
         env['TESSERA_DESKTOP_CORE_PORT'] = str(port)
     if startup_timeout is None:

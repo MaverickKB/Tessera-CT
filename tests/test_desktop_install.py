@@ -14,6 +14,11 @@ from tessera.desktop_install import NativeShellNotFound, find_binary, install, l
 
 
 @pytest.fixture(autouse=True)
+def _bootstrap_isolation(tmp_path, monkeypatch):
+    monkeypatch.setattr(native, 'bootstrap_path', lambda: tmp_path / 'desktop-bootstrap.json')
+
+
+@pytest.fixture(autouse=True)
 def _linux_platform_and_clean_env(monkeypatch):
     # The locate/install tests below assert the per-user Linux install layout
     # (~/.local/bin AppImage). Pin the platform so they run identically on the

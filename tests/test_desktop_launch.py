@@ -11,6 +11,11 @@ import pytest
 from tessera import cli, desktop_install as desktop, terminal
 from tessera.config import load_config
 
+@pytest.fixture(autouse=True)
+def _bootstrap_isolation(tmp_path, monkeypatch):
+    monkeypatch.setattr(desktop, 'bootstrap_path', lambda: tmp_path / 'desktop-bootstrap.json')
+
+
 
 @pytest.mark.parametrize('platform', ['linux', 'darwin'])
 def test_posix_launch_preserves_selected_home_interpreter_and_port(tmp_path, monkeypatch, platform):
@@ -21,6 +26,9 @@ def test_posix_launch_preserves_selected_home_interpreter_and_port(tmp_path, mon
     monkeypatch.delenv('TESSERA_DESKTOP_PYTHON', raising=False)
     monkeypatch.delenv('TESSERA_DESKTOP_CORE_ROOT', raising=False)
     selected = tmp_path / 'private-home'
+    workspace = tmp_path / 'caller-workspace'
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
     calls = []
     def execute(binary, env, timeout):
         calls.append((binary, env, timeout))
@@ -31,7 +39,7 @@ def test_posix_launch_preserves_selected_home_interpreter_and_port(tmp_path, mon
     assert env['TESSERA_HOME'] == str(selected)
     assert env['TESSERA_DESKTOP_HOME'] == str(selected)
     assert env['TESSERA_DESKTOP_PYTHON'] == sys.executable
-    assert env['TESSERA_DESKTOP_CORE_ROOT'] == str(selected)
+    assert env['TESSERA_DESKTOP_CORE_ROOT'] == str(workspace)
     assert env['TESSERA_DESKTOP_CORE_PORT'] == '9145'
 
 
