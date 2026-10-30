@@ -89,7 +89,7 @@
     if (focus && wasOpen) $("navigation-toggle").focus();
   }
 
-  function setPage(name, focus = true, write = true) {
+  function setPage(name, focus = true, write = true, reloadSettings = true) {
     if (!pages.includes(name)) name = "chat";
     const changed = state.pageShown && state.page !== name;
     state.pageShown = true;
@@ -108,7 +108,7 @@
     }
     $("skip-link").href = "#page-" + name;
     if (name === "integrations") refreshIntegrations();
-    if (name === "settings" && configView && !configView.hasEdits()) configView.load();
+    if (name === "settings" && reloadSettings && configView && !configView.hasEdits()) configView.load();
     if (name === "shelf" && shelfView) shelfView.load();
     syncProjectArena(name === "wip" ? projectById(state.openProject) : null);
     if (name === "infrastructure") {
@@ -7489,6 +7489,43 @@
     if (state.page === "wip") refreshBoardView();
   }, refreshInterval);
   autonomy = window.TesseraAutonomy ? window.TesseraAutonomy.mount({ api, element, getSlug: () => state.slug, agentName }) : null;
+  // First-use testing is an ordinary saved conversation, with the same runtime,
+  // approvals and event stream as every other chat. Never run it on page load.
+  let setupTest = null;
+  function setupRequestId() {
+    const random = typeof crypto === "undefined" ? null : crypto;
+    if (typeof random?.randomUUID === "function") return random.randomUUID();
+    // randomUUID requires a secure context; getRandomValues also works over
+    // LAN HTTP. These are retry identities, not authorization credentials.
+    const bytes = new Uint8Array(16);
+    if (typeof random?.getRandomValues === "function") random.getRandomValues(bytes);
+    else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+  }
+  async function openSetupTest(backend) {
+    if (!setupTest || setupTest.backend !== backend) {
+      setupTest = {backend, slug: null, requestId: setupRequestId(), submitted: false};
+    }
+    const test = setupTest;
+    if (!test.slug) {
+      const session = await api("/api/sessions", "POST", {title: "Getting started", backend});
+      test.slug = session.slug;
+    }
+    if (!test.submitted) {
+      await api(sessionPath(test.slug, "/messages"), "POST", {
+        text: "This is my first Tessera connection test. Reply with a brief greeting without using tools.",
+        client_request_id: test.requestId,
+      });
+      test.submitted = true;
+    }
+    await refreshSessions();
+    await selectSession(test.slug);
+    setPage("chat");
+  }
+
   configView = window.TesseraSettings ? window.TesseraSettings.mount({
     api, element, root: $("settings-root"), status: $("config-status"), restartButton: $("core-restart"),
     onRestarted: () => Promise.all([refreshSessions(), refreshStatus()]).catch(showError),
@@ -7507,7 +7544,12 @@
       }
     },
     onApproval: (approval) => { state.approvalEpoch += 1; renderApproval(approval); },
-    onChanged: () => refreshStatus().catch(showError),
+    onChanged: () => { setupTest = null; return refreshStatus().catch(showError); },
+    onTestChat: openSetupTest,
+    onSetupNeeded: () => {
+      // Respect explicit deep links; only a fresh landing is guided automatically.
+      if (!location.hash && !state.slug) setPage("settings", false, true, false);
+    },
   }) : null;
   if (configView) configView.load().catch((error) => { $("config-status").textContent = error.message || "Settings unavailable"; });
   shelfView = window.TesseraShelf ? window.TesseraShelf.mount({

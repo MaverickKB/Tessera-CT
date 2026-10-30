@@ -21,9 +21,11 @@ python3 -m venv .venv
 ```
 
 `start` creates what is missing (config, engine bundle, seed pack), starts the
-core with AetherMind, and opens the app in a browser. The first launch opens on
-the settings page, which asks for the two required things in order: connect a
-provider, pick a chat model. Everything else is optional. `start` reruns
+core with AetherMind, and opens the app in a browser. A fresh landing with no
+configured chat model opens Getting started in Settings: choose sign-in, an API
+key, or an already running local model server, select a model, then explicitly
+send a test message through a normal saved chat. Example endpoints in the starter
+config do not count as configured models. Everything else is optional. `start` reruns
 cleanly; it only creates what is missing.
 
 To put Tessera in the app menu (Linux), Applications (macOS) or the Start Menu

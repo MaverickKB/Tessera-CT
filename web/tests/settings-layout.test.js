@@ -198,7 +198,7 @@ const settingsData = {
   ],
 };
 
-function mount(overrides = {}) {
+function mount(overrides = {}, callbacks = {}) {
   if (typeof overrides === "function") overrides = {api: overrides};
   const source = fs.readFileSync(path.join(__dirname, "..", "settings.js"), "utf8");
   const root = new El("div");
@@ -240,6 +240,7 @@ function mount(overrides = {}) {
     onAppearance() {},
     onApproval() {},
     onChanged() {},
+    ...callbacks,
   });
   return {root, view, status, document};
 }
@@ -556,4 +557,258 @@ test("search reveals matching advanced controls in the current settings shell", 
   const section = all(root).find(n => n.dataset.section === "voice" && n.classNames().includes("settings-block"));
   assert.equal(section.hidden, false);
   assert.equal(section.querySelector(".settings-advanced").open, true);
+});
+
+
+function setupData() {
+  const data = structuredClone(settingsData);
+  data.chat_setup = {ready: false, backend: "", model: ""};
+  const keyList = data.sections.find(s => s.id === "credentials").fields[0];
+  keyList.blank = [
+    ["name", "string", "Name"], ["keychain_service", "string", "Keychain service"],
+    ["keychain_account", "string", "Keychain account"], ["env", "string", "Env var"], ["secret", "secret", "Key"],
+  ].map(([key, type, label]) => ({id: "credentials.new." + key, key, type, label, value: ""}));
+  return data;
+}
+
+function formInput(root, key) {
+  const form = all(root).find(n => n.tag === "form");
+  return all(form).find(n => n.dataset.key === key);
+}
+
+function submitForm(root) {
+  const form = all(root).find(n => n.tag === "form");
+  for (const fn of form.listeners.submit || []) fn({preventDefault() {}});
+}
+
+test("first-use guide is passive and offers three connection paths", async () => {
+  const data = setupData();
+  const calls = [];
+  let needed = 0;
+  const {root, view} = mount(async (url, method) => { calls.push([url, method]); return data; }, {onSetupNeeded() { needed++; }});
+  await view.load();
+  assert.equal(needed, 1);
+  for (const label of ["Sign in", "Use an API key", "Use a local model"]) {
+    assert.ok(all(root).some(n => n.tag === "button" && n.textContent === label));
+  }
+  assert.deepEqual(calls, [["/api/settings", undefined]], "opening guidance must not sign in, discover models, or send a turn");
+  clickText(root, "Sign in");
+  assert.ok(all(root).some(n => n.textContent === "Next: choose a model"));
+  assert.equal(calls.length, 1);
+});
+
+test("guided API-key setup saves securely then binds the key to the new default model", async () => {
+  const data = setupData();
+  const writes = [];
+  let tested = "";
+  const {root, view, document} = mount(async (url, method, body) => {
+    if (method === "POST") {
+      writes.push(JSON.parse(JSON.stringify(body)));
+      if (body.id === "roles.main") data.chat_setup = {ready: true, backend: body.value, model: "my-model"};
+      return {settings: data, changed: true};
+    }
+    return data;
+  }, {onTestChat: async backend => { tested = backend; }});
+  await view.load();
+  clickText(root, "Use an API key");
+  assert.equal(formInput(root, "name"), undefined, "internal identifiers are generated");
+  assert.equal(formInput(root, "keychain_service"), undefined);
+  assert.equal(document.activeElement, formInput(root, "secret"));
+  change(formInput(root, "secret"), "synthetic-key");
+  submitForm(root);
+  await settle();
+  assert.equal(writes[0].record.secret, "synthetic-key");
+  assert.equal(writes[0].record.keychain_service, "tessera");
+  assert.match(writes[0].record.keychain_account, /^model-key-.+/);
+  assert.equal(formInput(root, "secret"), undefined, "the secret does not follow the model form");
+  assert.equal(document.activeElement, formInput(root, "base_url"));
+  assert.equal(formInput(root, "credential"), undefined, "models do not ask for credentials; the connection carries its binding");
+  change(formInput(root, "base_url"), "https://models.example.com/v1");
+  change(formInput(root, "model"), "my-model");
+  submitForm(root);
+  await settle();
+  assert.equal(writes[1].record.name, "my-model");
+  assert.equal(writes[1].record.credential, "model-key");
+  assert.equal(writes[1].record.secret, undefined);
+  assert.deepEqual(writes[2], {id: "roles.main", value: "my-model"});
+  assert.equal(tested, "");
+  clickText(root, "Send test message");
+  await settle();
+  assert.equal(tested, "my-model");
+});
+
+test("guided local setup needs neither a credential nor an internal backend name", async () => {
+  const data = setupData();
+  const writes = [];
+  const {root, view} = mount(async (url, method, body) => {
+    if (method === "POST") { writes.push(JSON.parse(JSON.stringify(body))); return {settings: data}; }
+    return data;
+  });
+  await view.load();
+  clickText(root, "Use a local model");
+  for (const key of ["name", "account", "credential", "api_key_env"]) assert.equal(formInput(root, key), undefined, key);
+  change(formInput(root, "base_url"), "http://127.0.0.1:8080/v1");
+  change(formInput(root, "model"), "local-test");
+  submitForm(root);
+  await settle();
+  assert.equal(writes[0].record.name, "local-test-2", "generated names do not overwrite existing models");
+  assert.equal(writes[0].record.account, "other");
+  assert.equal(writes[0].record.credential, undefined);
+});
+
+test("a refused key save keeps the draft and does not advance or send a test", async () => {
+  const data = setupData();
+  const {root, view} = mount(async (url, method) => {
+    if (method === "POST") throw new Error("Credential store unavailable");
+    return data;
+  });
+  await view.load();
+  clickText(root, "Use an API key");
+  change(formInput(root, "secret"), "synthetic-key");
+  submitForm(root);
+  await settle();
+  assert.equal(formInput(root, "secret").value, "synthetic-key", "the user's unsaved key survives a failed save");
+  assert.equal(formInput(root, "secret").type, "password");
+  assert.ok(all(root).some(n => n.textContent === "Credential store unavailable"));
+  assert.equal(formInput(root, "base_url"), undefined);
+  assert.equal(view.hasEdits(), true);
+});
+
+test("a saved model is not added twice when selecting it as default fails", async () => {
+  const data = setupData();
+  const writes = [];
+  const {root, view} = mount(async (url, method, body) => {
+    if (method === "POST") {
+      writes.push(body);
+      if (body.id === "roles.main") throw new Error("Default could not be updated");
+      return {settings: data};
+    }
+    return data;
+  });
+  await view.load();
+  clickText(root, "Use a local model");
+  change(formInput(root, "base_url"), "http://127.0.0.1:8080/v1");
+  change(formInput(root, "model"), "chosen-model");
+  submitForm(root);
+  await settle();
+  assert.equal(writes.filter(body => body.id === "providers").length, 1);
+  assert.equal(all(root).some(n => n.tag === "form"), false, "retrying must not add a duplicate model");
+  assert.ok(all(root).some(n => n.textContent.includes("The model was saved, but could not be selected")));
+});
+
+test("a configured install keeps the regular settings landing", async () => {
+  const data = setupData();
+  data.chat_setup = {ready: true, backend: "local-test", model: "configured-model"};
+  let needed = false;
+  const {root, view} = mount(async () => data, {onSetupNeeded() { needed = true; }});
+  await view.load();
+  assert.equal(needed, false);
+  assert.ok(all(root).some(n => n.tag === "h2" && n.textContent === "Connect an account"));
+  assert.equal(all(root).some(n => n.tag === "h2" && n.textContent === "Get your first answer"), false);
+  clickText(root, "Getting started");
+  assert.ok(all(root).some(n => n.tag === "h2" && n.textContent === "Get your first answer"));
+  clickText(root, "Choose your chat model");
+  assert.ok(all(root).some(n => n.tag === "h2" && n.textContent === "Get your first answer"), "reopened guidance stays present through the next step");
+});
+
+test("guided sign-in model choice uses the existing default-model action without extra switches", async () => {
+  const data = setupData();
+  const calls = [];
+  const accounts = [{id: "openai-codex", label: "ChatGPT or Codex", models: [{id: "provider-model", role: "", chat: false}]}];
+  const {root, view} = mount(async (url, method, body) => {
+    calls.push([url, method, body]);
+    if (url === "/api/models/accounts") return {accounts};
+    if (url === "/api/models/state") {
+      data.chat_setup = {ready: true, backend: "selected-provider-model", model: "provider-model"};
+      return {settings: data};
+    }
+    return data;
+  }, {onTestChat: async () => {}});
+  await view.load();
+  clickText(root, "Sign in");
+  clickText(root, "Next: choose a model");
+  await settle();
+  const table = all(root).find(n => n.classNames().includes("settings-model-table"));
+  assert.ok(table);
+  assert.equal(all(table).filter(n => n.type === "checkbox").length, 0);
+  const radio = all(table).find(n => n.type === "radio");
+  assert.ok(radio);
+  radio.listeners.change[0]();
+  await settle();
+  const writes = calls.filter(call => call[1] === "POST");
+  assert.deepEqual(JSON.parse(JSON.stringify(writes)), [["/api/models/state", "POST", {account: "openai-codex", model: "provider-model", default: true}]]);
+  assert.ok(all(root).some(n => n.tag === "button" && n.textContent === "Send test message" && !n.disabled));
+});
+
+
+test("generated key slots do not collide across independent Tessera homes", async () => {
+  const accounts = [];
+  for (let home = 0; home < 2; home++) {
+    const data = setupData();
+    const {root, view} = mount(async (url, method, body) => {
+      if (method === "POST") { accounts.push(body.record.keychain_account); return {settings: data}; }
+      return data;
+    });
+    await view.load();
+    clickText(root, "Use an API key");
+    change(formInput(root, "secret"), "synthetic-key");
+    submitForm(root);
+    await settle();
+  }
+  assert.notEqual(accounts[0], accounts[1]);
+});
+
+test("an existing saved key is chosen at the connection step and bound without a model credential picker", async () => {
+  const data = setupData();
+  data.sections.find(s => s.id === "credentials").fields[0].records[0].source_kind = "env";
+  const writes = [];
+  const {root, view} = mount(async (url, method, body) => {
+    if (method === "POST") { writes.push(JSON.parse(JSON.stringify(body))); return {settings: data}; }
+    return data;
+  });
+  await view.load();
+  clickText(root, "Use an API key");
+  clickText(root, "Use saved key: slot");
+  assert.equal(formInput(root, "credential"), undefined);
+  assert.equal(formInput(root, "secret"), undefined);
+  change(formInput(root, "base_url"), "https://models.example.com/v1");
+  change(formInput(root, "model"), "chosen-model");
+  submitForm(root);
+  await settle();
+  assert.equal(writes[0].id, "providers");
+  assert.equal(writes[0].record.credential, "slot");
+  assert.equal(writes[0].record.secret, undefined);
+});
+
+
+test("finishing a guided key save does not pull the reader away from a different settings section", async () => {
+  const data = setupData();
+  let finish;
+  const {root, view} = mount(async (url, method) => {
+    if (method === "POST") return new Promise(resolve => { finish = resolve; });
+    return data;
+  });
+  await view.load();
+  clickText(root, "Use an API key");
+  change(formInput(root, "secret"), "synthetic-key");
+  submitForm(root);
+  clickText(root, "Voice");
+  finish({settings: data});
+  await settle();
+  assert.ok(all(root).some(n => n.tag === "h2" && n.textContent === "Voice"));
+  assert.equal(all(root).some(n => n.tag === "form"), false);
+  assert.equal(view.hasEdits(), false, "the saved key draft is cleared even when it is offscreen");
+});
+
+
+test("the existing Run models locally entry opens the local path rather than a cloud-account form", async () => {
+  const calls = [];
+  const {root, view} = mount(async (url, method) => { calls.push([url, method]); return settingsData; });
+  await view.load();
+  const local = all(root).find(n => n.attributes["aria-label"] === "Details for Run models locally");
+  assert.ok(local);
+  local.click();
+  assert.ok(formInput(root, "base_url"));
+  for (const key of ["account", "name", "credential", "api_key_env"]) assert.equal(formInput(root, key), undefined);
+  assert.equal(calls.filter(call => call[1] === "POST").length, 0);
 });

@@ -22,9 +22,134 @@
   const FORM_ADVANCED = new Set(["kind", "api_key_env", "chat", "max_concurrent_requests", "throttle_requests_per_minute", "throttle_tokens_per_minute"]);
   const NAME_OK = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
-  function mount({api, element, root, status, restartButton, onRestarted, onAppearance, onApproval, onChanged}) {
+  function mount({api, element, root, status, restartButton, onRestarted, onAppearance, onApproval, onChanged, onSetupNeeded, onTestChat}) {
     const view = {data: null, form: null, confirm: "", login: null, section: "all", search: "", detail: "", restoreName: "", accounts: null};
     let sectionChosen = false;
+    const guide = {method: "", open: false, busy: false, error: "", testOpened: false};
+
+    function uniqueName(stem, listId) {
+      const names = new Set((fieldById(listId)?.records || []).map((row) => row.name));
+      const base = String(stem || "model").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 54) || "model";
+      let name = base;
+      for (let n = 2; names.has(name); n += 1) name = base + "-" + n;
+      return name;
+    }
+
+    function focusSetupField(key) {
+      const input = Array.from(root.querySelectorAll("input")).find(node => node.dataset.key === key);
+      if (input) input.focus();
+    }
+
+    function beginSetup(method) {
+      guide.open = true;
+      guide.method = method;
+      guide.error = "";
+      if (method === "signin") navigate("provider-accounts");
+      else if (method === "key") {
+        navigate("credentials");
+        const name = uniqueName("model-key", "credentials");
+        if (view.form?.guided && view.form.id === "credentials") { focusSetupField("secret"); return; }
+        // Separate Tessera homes share the OS store. A globally unique slot
+        // prevents a second home's generated name from replacing the first key.
+        const slot = window.crypto?.randomUUID ? window.crypto.randomUUID()
+          : Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+        view.form = {id: "credentials", mode: "add", guided: true,
+          draft: {name, keychain_service: "tessera", keychain_account: name + "-" + slot}};
+        paint();
+        focusSetupField("secret");
+      } else {
+        navigate("models");
+        if (view.form?.guided && view.form.flavor === "local") { focusSetupField("base_url"); return; }
+        view.form = {id: "providers", mode: "add", guided: true, flavor: "local",
+          draft: {account: "other", kind: "openai_chat"}};
+        paint();
+        focusSetupField("base_url");
+      }
+    }
+
+    function modelWithKey(name) {
+      guide.method = "key";
+      view.section = "models";
+      view.form = {id: "providers", mode: "add", guided: true, flavor: "custom",
+        draft: {account: "other", kind: "openai_chat", credential: name}};
+    }
+
+    function paintGuide(main) {
+      const panel = element("section", "settings-first-use");
+      panel.setAttribute("aria-label", "Getting started");
+      panel.append(element("h2", "", "Get your first answer"));
+      panel.append(element("p", "set-hint", "Connect a model, choose it for chat, then try one message. Voice, background work, and other settings can wait."));
+      const steps = element("ol", "settings-setup");
+      const ready = view.data.chat_setup?.ready === true;
+      for (const [label, target] of [["Connect a model", "getting-started"], ["Choose your chat model", "models"]]) {
+        const item = element("li");
+        const button = element("button", "settings-text-link", label);
+        button.type = "button";
+        button.addEventListener("click", () => navigate(target));
+        item.append(button);
+        steps.append(item);
+      }
+      steps.append(element("li", "", "Send a test message and read the reply"));
+      panel.append(steps);
+      if (view.section === "getting-started") {
+        for (const [method, label, hint] of [
+          ["signin", "Sign in", "Use a supported provider account you already have."],
+          ["key", "Use an API key", "Save your provider key, then enter its server address and model."],
+          ["local", "Use a local model", "Connect a model server you have already started. Tessera does not download or start it."],
+        ]) {
+          const card = element("div", "settings-connection-choice");
+          const button = element("button", "", label);
+          button.type = "button";
+          button.addEventListener("click", () => beginSetup(method));
+          card.append(button, element("p", "set-hint", hint));
+          panel.append(card);
+        }
+      } else if (guide.method === "signin" && view.section === "provider-accounts") {
+        const next = element("button", "", "Next: choose a model");
+        next.type = "button";
+        next.addEventListener("click", () => navigate("models"));
+        panel.append(element("p", "set-hint", "Sign in below. Then choose a model from that account using its Chat model option."), next);
+      }
+      if (guide.method === "key" && view.section === "credentials") {
+        for (const key of fieldById("credentials")?.records || []) {
+          if (!["env", "keychain"].includes(key.source_kind)) continue;
+          const use = element("button", "", "Use saved key: " + key.name);
+          use.type = "button";
+          use.addEventListener("click", () => { navigate("models"); modelWithKey(key.name); paint(); });
+          panel.append(use);
+        }
+      }
+      if (ready) {
+        panel.append(element("p", "set-hint", "Selected: " + (view.data.chat_setup.model || view.data.chat_setup.backend) + ". Saved configuration is not a connection test."));
+        const test = element("button", "primary", guide.busy ? "Opening test chat…" : (guide.testOpened ? "Open test chat" : "Send test message"));
+        test.type = "button";
+        test.id = "setup-test-chat";
+        test.disabled = guide.busy || typeof onTestChat !== "function";
+        test.addEventListener("click", async () => {
+          if (guide.busy) return;
+          guide.busy = true;
+          guide.error = "";
+          paint();
+          try {
+            await onTestChat(view.data.chat_setup.backend);
+            guide.testOpened = true;
+          } catch (error) {
+            guide.error = (error.message || "Could not open the test chat.") + " Your settings are saved. Check the connection and selected model below, then try again.";
+          } finally { guide.busy = false; paint(); }
+        });
+        panel.append(element("p", "set-hint", "This sends one short message through your normal harness and opens its chat. Read the actual reply there; if it fails, return to Settings → Models to correct the setup."), test);
+      } else panel.append(element("p", "set-hint", "No chat model is ready to try yet. Connect a provider and choose an enabled model. Example endpoints from the starter config do not count."));
+      if (guide.error) {
+        const error = element("p", "settings-field-error", guide.error);
+        error.setAttribute("role", "alert");
+        panel.append(error);
+      }
+      const close = element("button", "", "Use settings without the guide");
+      close.type = "button";
+      close.addEventListener("click", () => { guide.open = false; navigate("provider-accounts"); });
+      panel.append(close);
+      main.append(panel);
+    }
 
     const advancedOpen = new Map();
     const drafts = new Map();
@@ -38,6 +163,7 @@
     }
 
     function navigate(section) {
+      if (section === "getting-started") guide.open = true;
       if (view.form) drafts.set(view.section, {form: view.form, detail: view.detail, discovery: view.discovery});
       const saved = drafts.get(section);
       drafts.delete(section);
@@ -90,6 +216,8 @@
     }
 
     function applyResult(result) {
+      guide.testOpened = false;
+      guide.error = "";
       // Any settings change can change an account's grant or a model's state,
       // so the roster is re-read rather than kept for the life of the page.
       view.accounts = null;
@@ -130,14 +258,26 @@
       if (record) body.record = record;
       status.textContent = action === "check" ? "Checking…" : "Saving…";
       try {
-        const result = await api("/api/settings", "POST", body);
+        let result = await api("/api/settings", "POST", body);
+        let selectionError = "";
+        if (submittedForm?.guided && id === "providers") {
+          // The button explicitly says this model will be used for chat.
+          try { result = await api("/api/settings", "POST", {id: "roles.main", value: record.name}); }
+          catch (error) { selectionError = "The model was saved, but could not be selected for chat. Choose it in Chat model below. " + (error.message || ""); }
+        }
+        const advanceGuide = view.form === submittedForm && view.section === submittedSection;
         if (view.form === submittedForm) {
           view.form = null;
           view.discovery = null;
           view.confirm = "";
         }
         if (drafts.get(submittedSection)?.form === submittedForm) drafts.delete(submittedSection);
+        if (advanceGuide && submittedForm?.guided && id === "credentials") {
+          modelWithKey(record.name);
+        }
         applyResult(result);
+        if (advanceGuide && submittedForm?.guided && id === "credentials") focusSetupField("base_url");
+        if (selectionError) { guide.error = selectionError; paint(); }
       } catch (error) {
         const message = error.message || "Not saved";
         // A switch that the core refused must not stay looking on. An open form
@@ -470,12 +610,14 @@
       // A CLI login holds its own grant; a credential beside it is refused on save, so
       // do not ask for one. The page must not offer a choice that cannot be stored.
       if (listId === "named_accounts" && key === "credential_ref") return kind !== "cli_worker";
+      if (view.form?.guided && listId === "credentials") return key === "secret" || key === "env";
       if (listId !== "providers" || view.form?.mode !== "add") return true;
+      if (view.form?.guided && key === "name") return false;
       if (key === "credential") return false;
       // The account picker is the first question on Add model. A row that adds a
       // model to a known account already answered it, so the picker stays hidden
       // there and the endpoint and credential fields stay hidden with it.
-      if (key === "account") return view.form?.flavor !== "signin";
+      if (key === "account") return !view.form?.guided && view.form?.flavor !== "signin";
       const flavor = view.form?.flavor || "";
       if (flavor === "local" && key === "api_key_env") return false;
       if (view.form?.presetLocked && (key === "base_url" || key === "kind")) return false;
@@ -508,6 +650,9 @@
         if (!Object.prototype.hasOwnProperty.call(record, key) && hidden[key] != null && hidden[key] !== "") {
           record[key] = hidden[key];
         }
+      }
+      if (view.form?.guided && listId === "credentials") {
+        for (const key of ["name", "keychain_service", "keychain_account"]) record[key] = hidden[key];
       }
       return record;
     }
@@ -614,7 +759,11 @@
       for (const field of fields) {
         if (!showKey(list.id, field.key, kind, account, fields)) continue;
         const drafted = view.form?.draft && Object.prototype.hasOwnProperty.call(view.form.draft, field.key);
-        const shown = drafted ? {...field, value: view.form.draft[field.key]} : field;
+        let shown = drafted ? {...field, value: view.form.draft[field.key]} : field;
+        if (view.form?.guided && list.id === "credentials") {
+          if (field.key === "secret") shown = {...shown, label: "API key", hint: "Stored in the credential store on the computer running Tessera. The saved key is never displayed."};
+          if (field.key === "env") shown = {...shown, label: "Environment variable name (optional)", hint: "If you already supplied the key in the core’s environment, enter the variable name instead of pasting a key. This is a name, not the key value."};
+        }
         if (name && field.inline) continue;
         // The value the server sent, before anything was typed. hasEdits compares
         // against this so navigating away only reloads a form nobody touched. A
@@ -623,6 +772,9 @@
         baseline[field.key] = field.type === "secret" ? "" : field.value;
         const row = element("div", "set-row");
         const input = inputFor(shown, domId(field) + (name ? "-" + name : "-new"));
+        // Only the person's own unsaved draft may refill a masked field. Server
+        // projections never provide a stored secret value.
+        if (field.type === "secret" && drafted) input.value = view.form.draft[field.key] || "";
         if (field.key === "kind" || field.key === "account") {
           input.addEventListener("change", () => {
             view.form.draft = readForm(form, fields, list.id);
@@ -673,7 +825,7 @@
         }
         if (field.inert) addClass(row, "set-row-inert");
         attachStatus(row, field);
-        if (foldAdvanced && FORM_ADVANCED.has(field.key)) advancedRows.push(row);
+        if ((foldAdvanced && FORM_ADVANCED.has(field.key)) || (view.form?.guided && list.id === "credentials" && field.key === "env")) advancedRows.push(row);
         else primary.push(row);
       }
       const errorOnEnv = formError && /environment variable/i.test(formError);
@@ -688,7 +840,7 @@
         const fold = element("details", "settings-advanced");
         fold.open = view.form?.advancedOpen === true || Boolean(envRow);
         fold.addEventListener("toggle", () => { if (view.form) view.form.advancedOpen = fold.open; });
-        fold.append(element("summary", "", "Advanced"));
+        fold.append(element("summary", "", view.form?.guided && list.id === "credentials" ? "Use an environment variable instead" : "Advanced"));
         for (const row of advancedRows) fold.append(row);
         form.append(fold);
       }
@@ -713,7 +865,7 @@
       const cancel = element("button", "", "Cancel");
       cancel.type = "button";
       cancel.addEventListener("click", () => { view.form = null; drafts.delete(view.section); view.discovery = null; paint(); });
-      const saveLabel = view.form.mode !== "add" ? "Save"
+      const saveLabel = view.form.guided ? (list.id === "credentials" ? "Save key and continue" : "Save and use for chat") : view.form.mode !== "add" ? "Save"
         : (view.form.flavor === "endpoint" ? "Add endpoint" : (ADD[list.id] || "Add"));
       const save = element("button", "primary", saveLabel);
       save.type = "submit";
@@ -722,6 +874,7 @@
       form.addEventListener("submit", (event) => {
         event.preventDefault();
         const record = readForm(form, fields, list.id);
+        if (view.form.guided && list.id === "providers") record.name = uniqueName(record.model, "providers");
         if (list.id === "providers" && view.form.mode === "add" && Object.prototype.hasOwnProperty.call(record, "name")) {
           const raw = String(record.name || "").trim();
           if (!raw) {
@@ -1195,18 +1348,10 @@
     }
 
     function openAdd() {
-      // Adding a model starts here now. The old target was an Endpoints page that
-      // listed the same backends this page lists, and the form that opened there
-      // never asked which account it belonged to.
-      view.section = "models";
-      view.discovery = null;
-      view.form = {
-        id: "providers", mode: "add", flavor: "custom",
-        draft: {}, presetLocked: false, anchor: "", error: "",
-      };
-      view.detail = "";
-      paint();
-      root.querySelector('[data-form="providers"] select[data-key="account"]')?.focus();
+      // This entry point belongs to the Run models locally row. It must not
+      // inherit a signed-in cloud account from the generic Add model default.
+      beginSetup("local");
+      focusSetupField("base_url");
     }
 
     function connectRow(row) {
@@ -1441,18 +1586,20 @@
     // chat. Only the Default column does that, and it says so.
     function modelTable(account) {
       const table = element("div", "settings-model-table");
+      const guided = guide.open && guide.method === "signin";
+      if (guided) addClass(table, "settings-model-simple");
       const head = element("div", "settings-model-head");
-      head.append(element("span", "settings-model-id", "Model"),
-                  element("span", "settings-model-col", "In chat"),
-                  element("span", "settings-model-col", "Default"));
+      head.append(element("span", "settings-model-id", "Model"));
+      if (!guided) head.append(element("span", "settings-model-col", "In chat"));
+      head.append(element("span", "settings-model-col", guided ? "Chat model" : "Default"));
       table.append(head);
       for (const model of account.models) {
         const row = element("div", "settings-model-row");
         const name = element("code", "settings-model-id", model.id);
         if (model.role === "main") name.append(element("span", "settings-model-current", "default"));
-        row.append(name,
-                   modelToggle(account, model, model.chat === true, "chat"),
-                   modelToggle(account, model, model.role === "main", "default"));
+        row.append(name);
+        if (!guided) row.append(modelToggle(account, model, model.chat === true, "chat"));
+        row.append(modelToggle(account, model, model.role === "main", "default"));
         table.append(row);
       }
       return table;
@@ -1545,10 +1692,21 @@
       main.append(element("h2", "", "Models"));
       const section = (view.data.sections || []).find((item) => item.id === "models");
       if (section?.start_hint) main.append(element("p", "set-hint", section.start_hint));
+      if (view.form?.guided && view.form.id === "providers") {
+        const models = fieldById("providers");
+        main.append(element("p", "set-hint", "The server address is reached by the computer running Tessera, not by your phone or browser. Find models reads the server’s catalog; if it has no catalog, type the model ID supplied by that server. If your provider uses Responses or Anthropic, choose its HTTP protocol under Advanced first."));
+        if (models) main.append(renderForm(models, models.blank || [], ""));
+        return;
+      }
+      if (guide.open && guide.method === "signin") {
+        main.append(element("p", "set-hint", "Choose the Chat model option beside the model you want to try. You can change this later."));
+        paintAccountModels(main);
+        return;
+      }
       const mainRole = fieldById("roles.main");
       const failover = fieldById("roles.failover");
       if (mainRole) main.append(renderScalar(mainRole, "Required"));
-      if (failover) main.append(renderScalar(failover, "Optional"));
+      if (failover && !guide.open) main.append(renderScalar(failover, "Optional"));
       paintAccountModels(main);
       const models = fieldById("providers");
       if (models) main.append(renderRecords(models, {hint: false}));
@@ -1566,7 +1724,8 @@
       const shell = element("div", "settings-shell");
       const navigation = element("nav", "settings-nav settings-nav-side");
       navigation.setAttribute("aria-label", "Settings sections");
-      navigation.append(element("div", "settings-nav-label", "Required"));
+      navigation.append(navButton("getting-started", "Getting started"));
+      navigation.append(element("div", "settings-nav-label", "Models and connections"));
       navigation.append(element("div", "settings-nav-label settings-nav-sub", "Providers"));
       navigation.append(navButton("provider-accounts", "Accounts", "settings-nav-sub"));
       navigation.append(navButton("models", "Models", "settings-nav-sub"));
@@ -1599,6 +1758,7 @@
         option.textContent = label;
         parent.append(option);
       };
+      addOption(sectionSelect, "getting-started", "Getting started");
       addOption(sectionSelect, "all", "All settings");
       const groups = [
         ["Required", [["provider-accounts", "Accounts"], ["models", "Models"],
@@ -1612,7 +1772,7 @@
                       ["judge", "Session judge (Jev)"], ["update", "Update"],
                       ["file-only", "Set in config.toml"], ["floor", "Floor definition"]]],
       ];
-      const known = new Set(["all"]);
+      const known = new Set(["all", "getting-started"]);
       for (const [label, items] of groups) {
         const group = document.createElement("optgroup");
         group.label = label;
@@ -1658,7 +1818,8 @@
         });
         main.append(back);
       }
-      if (Array.isArray(view.data.setup_steps) && view.data.setup_steps.length) {
+      if (guide.open || view.section === "getting-started") paintGuide(main);
+      if (!guide.open && view.section !== "getting-started" && Array.isArray(view.data.setup_steps) && view.data.setup_steps.length) {
         const steps = element("ol", "settings-setup");
         for (const step of view.data.setup_steps) {
           const item = element("li", step.done ? "settings-setup-done" : "");
@@ -1675,12 +1836,16 @@
           chat.href = "#view=chat";
           main.append(chat);
         }
-      } else if (view.data.setup) main.append(element("p", "settings-setup", view.data.setup));
+      } else if (!guide.open && view.section !== "getting-started" && view.data.setup) main.append(element("p", "settings-setup", view.data.setup));
       const page = view.section;
       if (page === "provider-accounts") {
         paintProvider(main);
       } else if (page === "models") {
         paintModels(main);
+      } else if (page === "credentials" && view.form?.guided && view.form.id === "credentials") {
+        main.append(element("h2", "", "Save your API key"));
+        const saved = fieldById("credentials");
+        if (saved) main.append(renderForm(saved, saved.blank || [], ""));
       } else if (page === "credentials") {
         main.append(crumbBar(["Settings", "Saved credentials"]));
         main.append(element("h2", "", "Saved credentials"));
@@ -2074,8 +2239,11 @@
       view.form = null;
       view.confirm = "";
       if (!sectionChosen) {
-        view.section = data.provider_pages ? "provider-accounts" : "all";
+        const needsSetup = data.chat_setup?.ready === false;
+        view.section = data.provider_pages ? (needsSetup ? "getting-started" : "provider-accounts") : "all";
+        guide.open = needsSetup;
         sectionChosen = true;
+        if (needsSetup && onSetupNeeded) onSetupNeeded();
       }
       restartButton.disabled = data.supervised !== true;
       restartButton.title = data.supervised === true ? "" : "Core is not supervised";
