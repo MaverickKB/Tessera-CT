@@ -69,7 +69,8 @@ class El {
     const event = {preventDefault() {}, stopPropagation() {}};
     for (const fn of this.listeners.click || []) fn(event);
   }
-  focus() {}
+  focus() { if (this.document) this.document.activeElement = this; }
+  setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
   classNames() {
     return String(this.className || "").split(/\s+/).filter(Boolean);
   }
@@ -196,11 +197,11 @@ const settingsData = {
   ],
 };
 
-function mount() {
+function mount(api) {
   const source = fs.readFileSync(path.join(__dirname, "..", "settings.js"), "utf8");
   const root = new El("div");
   const document = {
-    createElement: (tag) => new El(tag),
+    createElement: (tag) => { const node = new El(tag); node.document = document; return node; },
     createTextNode: (text) => {
       const node = new El("#text");
       node.textContent = String(text);
@@ -221,9 +222,10 @@ function mount() {
   });
   vm.runInContext(source, context);
   const view = context.window.TesseraSettings.mount({
-    api: async () => settingsData,
+    api: api || (async () => settingsData),
     element: (tag, cls, text) => {
       const node = new El(tag);
+      node.document = document;
       if (cls) node.className = cls;
       if (text !== undefined) node.textContent = String(text);
       return node;
@@ -236,7 +238,7 @@ function mount() {
     onApproval() {},
     onChanged() {},
   });
-  return {root, view};
+  return {root, view, document};
 }
 
 test("model fields put the tier and disclosure on the label line", async () => {
@@ -378,4 +380,129 @@ test("a duplex control hides itself under the local speech pipe", async () => {
   assert.equal(account.row.hidden, true, "the duplex account does not apply to the local pipe");
   const endpoint = rowFor(root, "Speech-to-text endpoint");
   assert.equal(endpoint.row.hidden, false, "the local endpoint is the point of that pipe");
+});
+
+
+function change(input, value) {
+  input.value = value;
+  for (const fn of input.listeners.input || []) fn();
+}
+
+const settle = () => new Promise(resolve => setImmediate(resolve));
+
+test("search filters sections, retains focus and reports no matches", async () => {
+  const {root, view, document} = mount();
+  await view.load();
+  let search = all(root).find(n => n.type === "search");
+  search.focus();
+  search.selectionStart = search.selectionEnd = 5;
+  change(search, "Voice");
+  search = all(root).find(n => n.type === "search");
+  assert.equal(document.activeElement, search);
+  assert.equal(search.selectionStart, 5);
+  const sections = () => all(root).filter(n => n.classNames().includes("settings-block") && !n.hidden);
+  assert.deepEqual(sections().map(n => n.dataset.section), ["voice"]);
+  change(search, "zzzz-no-match-zzzz");
+  assert.equal(sections().length, 0);
+  assert.equal(root.querySelector(".settings-empty").hidden, false);
+  assert.equal(all(root).find(n => n.type === "search"), search, "subsequent keystrokes retain the node");
+  change(search, "");
+  assert.ok(sections().length > 1);
+});
+
+test("credential removal offers cancel and submits only after confirmation", async () => {
+  const writes = [];
+  const {root, view} = mount(async (url, method, body) => {
+    if (method === "POST") writes.push(body);
+    return method === "POST" ? {settings: settingsData} : settingsData;
+  });
+  await view.load();
+  clickText(root, "Saved credentials");
+  const remove = () => all(root).find(n => n.attributes["aria-label"] === "Remove slot").click();
+  remove();
+  assert.equal(writes.length, 0);
+  clickText(root, "Cancel");
+  assert.equal(all(root).some(n => n.tag === "button" && n.textContent === "Remove now"), false);
+  remove();
+  clickText(root, "Remove now");
+  await settle();
+  assert.deepEqual(JSON.parse(JSON.stringify(writes)), [{id: "credentials", action: "remove", name: "slot"}]);
+});
+
+test("sidebar and mobile section changes keep drafts until explicit Cancel", async () => {
+  const {root, view} = mount();
+  await view.load();
+  clickText(root, "Models");
+  clickText(root, "Edit");
+  let input = all(root).find(n => n.dataset.key === "model");
+  change(input, "unfinished-model");
+  assert.equal(view.hasEdits(), true);
+  clickText(root, "Voice");
+  assert.equal(view.hasEdits(), true, "hidden drafts also block background reloads");
+  const section = all(root).find(n => n.id === "settings-section-select");
+  section.value = "models";
+  section.listeners.change[0]();
+  input = all(root).find(n => n.dataset.key === "model");
+  assert.equal(input.value, "unfinished-model");
+  clickText(root, "Cancel");
+  clickText(root, "Voice");
+  clickText(root, "Models");
+  assert.equal(all(root).some(n => n.tag === "form"), false);
+  assert.equal(view.hasEdits(), false);
+});
+
+test("autosave restores the focused control after dependent settings render", async () => {
+  const {root, view, document} = mount(async (url, method) => method === "POST" ? {settings: settingsData, changed: true} : settingsData);
+  await view.load();
+  clickText(root, "Models");
+  const input = all(root).find(n => n.id === "setting-roles_main");
+  input.focus();
+  input.value = "local-test";
+  for (const fn of input.listeners.change) fn();
+  await settle();
+  const current = all(root).find(n => n.id === "setting-roles_main");
+  assert.notEqual(current, input);
+  assert.equal(document.activeElement, current);
+});
+
+test("a delayed autosave preserves newer typing and reports errors beside the field", async () => {
+  let finish;
+  let fail = false;
+  const {root, view, document} = mount(async (url, method) => {
+    if (method !== "POST") return settingsData;
+    if (fail) throw new Error("Server refused the value");
+    return new Promise(resolve => { finish = resolve; });
+  });
+  await view.load();
+  clickText(root, "Voice");
+  const field = () => all(root).find(n => n.id === "setting-voice_stt_base_url");
+  const input = field();
+  input.focus();
+  change(input, "http://first.example");
+  for (const fn of input.listeners.change) fn();
+  assert.equal(all(root).find(n => n.id === input.id + "-notice").textContent, "Saving…");
+  change(input, "http://newer.example");
+  input.selectionStart = input.selectionEnd = 12;
+  finish({settings: settingsData, changed: true});
+  await settle();
+  assert.equal(field().value, "http://newer.example");
+  assert.equal(document.activeElement, field());
+  assert.equal(field().selectionStart, 12);
+  fail = true;
+  for (const fn of field().listeners.change) fn();
+  await settle();
+  assert.equal(all(root).find(n => n.id === input.id + "-notice").textContent, "Server refused the value");
+});
+
+test("search reveals matching advanced controls in the current settings shell", async () => {
+  const data = structuredClone(settingsData);
+  data.sections.find(s => s.id === "voice").fields.push({
+    id: "voice.advanced", type: "string", label: "Advanced speech tuning", value: "", tier: "advanced",
+  });
+  const {root, view} = mount(async () => data);
+  await view.load();
+  change(all(root).find(n => n.type === "search"), "Advanced speech tuning");
+  const section = all(root).find(n => n.dataset.section === "voice" && n.classNames().includes("settings-block"));
+  assert.equal(section.hidden, false);
+  assert.equal(section.querySelector(".settings-advanced").open, true);
 });

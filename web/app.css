@@ -1432,3 +1432,6 @@ button:enabled:focus-visible, select:focus-visible { box-shadow: 0 0 0 5px var(-
      more row of chrome on a phone. */
   #page-settings .settings-back { display: none; }
 }
+
+/* Empty save announcements should not add space to every settings row. */
+#page-settings .settings-save-status:empty { display: none; }

@@ -35,7 +35,7 @@ final class AppSettingsStore: ObservableObject {
         static let preferSpeaker = "settings.preferSpeaker"
     }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, loadToken: () -> String? = KeychainStore.loadToken) {
         self.defaults = defaults
         self.serverURLText = defaults.string(forKey: Keys.serverURL) ?? ""
         self.selectedSlug = defaults.string(forKey: Keys.selectedSlug) ?? ""
@@ -45,7 +45,7 @@ final class AppSettingsStore: ObservableObject {
         } else {
             self.preferSpeaker = defaults.bool(forKey: Keys.preferSpeaker)
         }
-        self.accessTokenText = KeychainStore.loadToken() ?? ""
+        self.accessTokenText = loadToken() ?? ""
         defaults.set(serverURLText, forKey: Keys.serverURL)
         defaults.set(selectedSlug, forKey: Keys.selectedSlug)
         defaults.set(selectedVoice, forKey: Keys.selectedVoice)
@@ -58,8 +58,22 @@ final class AppSettingsStore: ObservableObject {
         accessTokenText = trimmed
     }
 
+    func saveConnection(serverURL: String, token: String,
+                        storeToken: (String?) throws -> Void = KeychainStore.saveToken) throws {
+        let url = try Self.validateServerURL(serverURL)
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Validate and store securely before changing any saved connection setting.
+        try storeToken(trimmedToken.isEmpty ? nil : trimmedToken)
+        accessTokenText = trimmedToken
+        serverURLText = url.absoluteString
+    }
+
     func resolvedServerURL() throws -> URL {
-        let trimmed = serverURLText.trimmingCharacters(in: .whitespacesAndNewlines)
+        try Self.validateServerURL(serverURLText)
+    }
+
+    static func validateServerURL(_ text: String) throws -> URL {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             throw SettingsError.missingServerURL
         }
@@ -72,7 +86,8 @@ final class AppSettingsStore: ObservableObject {
         if scheme != "http" && scheme != "https" {
             throw SettingsError.invalidServerURL
         }
-        if url.host == nil || url.host?.isEmpty == true {
+        if url.host == nil || url.host?.isEmpty == true || url.user != nil || url.password != nil
+            || url.query != nil || url.fragment != nil {
             throw SettingsError.invalidServerURL
         }
         return url
@@ -94,9 +109,9 @@ enum SettingsError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingServerURL:
-            return "Set a Tessera server URL in Settings before starting a call."
+            return "Enter your Tessera server address before connecting."
         case .invalidServerURL:
-            return "Server URL must be http or https with a host."
+            return "Enter an http or https server address without a username, password, query, or fragment."
         }
     }
 }

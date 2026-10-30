@@ -27,6 +27,28 @@
     let sectionChosen = false;
 
     const advancedOpen = new Map();
+    const drafts = new Map();
+    const scalarNotices = new Map();
+
+    function scalarNotice(field, message) {
+      scalarNotices.set(field.id, message);
+      for (const node of root.querySelectorAll("p")) {
+        if (node.id === domId(field) + "-notice") node.textContent = message;
+      }
+    }
+
+    function navigate(section) {
+      if (view.form) drafts.set(view.section, {form: view.form, detail: view.detail, discovery: view.discovery});
+      const saved = drafts.get(section);
+      drafts.delete(section);
+      view.section = section;
+      view.search = "";
+      view.form = saved?.form || null;
+      view.detail = saved?.detail || "";
+      view.discovery = saved?.discovery || null;
+      view.confirm = "";
+      paint();
+    }
 
     function addClass(node, name) {
       if (node && node.classList && typeof node.classList.add === "function") node.classList.add(name);
@@ -87,34 +109,44 @@
       const patch = appearanceOf(field, value);
       if (patch && onAppearance) onAppearance(patch);
       status.textContent = "Saving…";
+      scalarNotice(field, "Saving…");
       try {
-        applyResult(await api("/api/settings", "POST", {id: field.id, value}));
+        const result = await api("/api/settings", "POST", {id: field.id, value});
+        scalarNotice(field, result.restart_required ? "Saved. Restart the core to apply." : "Saved.");
+        applyResult(result);
       } catch (error) {
         const message = error.message || "Not saved";
         try { await load(); } catch (_) { /* Keep the write error when the reload also fails. */ }
+        scalarNotice(field, message);
         status.textContent = message;
       }
     }
 
     async function commitRecord(id, action, name, record) {
+      const submittedSection = view.section;
+      const submittedForm = view.form;
       const body = {id, action};
       if (name) body.name = name;
       if (record) body.record = record;
       status.textContent = action === "check" ? "Checking…" : "Saving…";
       try {
         const result = await api("/api/settings", "POST", body);
-        view.form = null;
-        view.discovery = null;
-        view.confirm = "";
+        if (view.form === submittedForm) {
+          view.form = null;
+          view.discovery = null;
+          view.confirm = "";
+        }
+        if (drafts.get(submittedSection)?.form === submittedForm) drafts.delete(submittedSection);
         applyResult(result);
       } catch (error) {
         const message = error.message || "Not saved";
         // A switch that the core refused must not stay looking on. An open form
         // keeps what was typed so the person can correct it, with the error on
         // the form rather than in the page header.
-        if (view.form) {
-          view.form.error = message;
+        if (submittedForm) {
+          submittedForm.error = message;
           paint();
+          status.textContent = message;
           return;
         }
         try { await load(); } catch (_) { /* The error below is the one to show. */ }
@@ -173,6 +205,8 @@
         input.autocomplete = "off";
       }
       input.id = id;
+      input.addEventListener("input", () => { input.dataset.dirty = "true"; });
+      input.addEventListener("change", () => { delete input.dataset.dirty; });
       input.dataset.key = field.key || "";
       // A field the core will refuse is disabled. The disabled state comes from
       // the structured `inert` flag, not from the prose in `status`.
@@ -391,6 +425,11 @@
       if (field.inert) addClass(row, "set-row-inert");
       if (hiddenByState(field)) row.hidden = true;
       attachStatus(row, field);
+      const saved = element("p", "set-hint settings-save-status", scalarNotices.get(field.id) || "");
+      saved.id = id + "-notice";
+      saved.setAttribute("role", "status");
+      input.setAttribute("aria-describedby", saved.id);
+      row.append(saved);
       return row;
     }
 
@@ -673,7 +712,7 @@
       addClass(actions, "settings-form-actions");
       const cancel = element("button", "", "Cancel");
       cancel.type = "button";
-      cancel.addEventListener("click", () => { view.form = null; view.discovery = null; paint(); });
+      cancel.addEventListener("click", () => { view.form = null; drafts.delete(view.section); view.discovery = null; paint(); });
       const saveLabel = view.form.mode !== "add" ? "Save"
         : (view.form.flavor === "endpoint" ? "Add endpoint" : (ADD[list.id] || "Add"));
       const save = element("button", "primary", saveLabel);
@@ -1118,7 +1157,8 @@
         if (!block.hidden) visible += 1;
       }
       for (const button of root.querySelectorAll(".settings-nav button")) button.setAttribute("aria-pressed", String(button.dataset.section === view.section));
-      root.querySelector(".settings-empty").hidden = visible > 0;
+      const empty = root.querySelector(".settings-empty");
+      if (empty) empty.hidden = visible > 0;
     }
 
     function fieldById(id) {
@@ -1134,12 +1174,9 @@
       const button = element("button", extra || "", label);
       button.type = "button";
       button.dataset.section = id;
+      button.id = "settings-nav-" + id;
       button.addEventListener("click", () => {
-        view.section = id;
-        view.search = "";
-        view.form = null;
-        view.detail = "";
-        paint();
+        navigate(id);
       });
       return button;
     }
@@ -1151,7 +1188,7 @@
         const target = index === 0 ? "provider-accounts" : (index === 1 ? "provider-accounts" : view.section);
         const button = element("button", "settings-crumb", part);
         button.type = "button";
-        button.addEventListener("click", () => { view.section = target; paint(); });
+        button.addEventListener("click", () => navigate(target));
         line.append(button);
       });
       return line;
@@ -1212,6 +1249,19 @@
         remove.setAttribute("aria-label", "Remove " + row.name);
         remove.addEventListener("click", () => onAction({id: row.kind === "key" ? "credentials" : "providers"}, row, "remove"));
         aside.append(remove);
+      }
+      const listId = row.kind === "key" ? "credentials" : "providers";
+      if (view.confirm === listId + ":" + row.name) {
+        const confirm = element("div", "record-actions");
+        confirm.append(element("span", "", "Remove " + row.name + "?"));
+        const now = element("button", "danger", "Remove now");
+        now.type = "button";
+        now.addEventListener("click", () => commitRecord(listId, "remove", row.name));
+        const cancel = element("button", "", "Cancel");
+        cancel.type = "button";
+        cancel.addEventListener("click", () => { view.confirm = ""; paint(); });
+        confirm.append(now, cancel);
+        wrap.append(confirm);
       }
       line.append(mainCol, aside);
       wrap.append(line);
@@ -1335,7 +1385,7 @@
         link.type = "button";
         // One place holds keys. This link goes there instead of opening a second
         // page that lists the same credentials under another name.
-        link.addEventListener("click", () => { view.section = "credentials"; paint(); });
+        link.addEventListener("click", () => navigate("credentials"));
         main.append(link);
       }
       if (page.local_row) {
@@ -1518,7 +1568,7 @@
       const floorButton = element("button", "", "Floor definition");
       floorButton.type = "button";
       floorButton.dataset.section = "floor";
-      floorButton.addEventListener("click", () => { view.section = "floor"; paint(); });
+      floorButton.addEventListener("click", () => navigate("floor"));
       navigation.append(floorButton);
       const sectionSelect = element("select", "settings-section-select");
       sectionSelect.id = "settings-section-select";
@@ -1554,11 +1604,7 @@
       }
       sectionSelect.value = known.has(view.section) ? view.section : "all";
       sectionSelect.addEventListener("change", () => {
-        view.section = sectionSelect.value;
-        view.search = "";
-        view.form = null;
-        view.detail = "";
-        paint();
+        navigate(sectionSelect.value);
       });
       const sectionLabel = element("label", "settings-section-label", "Settings section");
       sectionLabel.setAttribute("for", "settings-section-select");
@@ -1566,13 +1612,21 @@
       navigation.insertBefore(sectionSelect, sectionLabel.nextSibling);
       const search = element("input", "settings-search");
       search.type = "search";
+      search.id = "settings-search";
       search.placeholder = "Find a setting";
       search.setAttribute("aria-label", "Find a setting");
       search.value = view.search;
       search.addEventListener("input", () => {
+        const wasSearching = Boolean(view.search.trim());
         view.search = search.value;
-        if (view.search.trim()) view.section = "all";
-        paint();
+        if (!wasSearching && view.search.trim()) {
+          // Build the searchable sections once; subsequent keystrokes keep this input.
+          if (view.form) drafts.set(view.section, {form: view.form, detail: view.detail, discovery: view.discovery});
+          view.section = "all";
+          view.form = null;
+          view.detail = "";
+          paint();
+        } else filterSections();
       });
       const main = element("div", "settings-main");
       main.append(search);
@@ -1580,21 +1634,27 @@
         const back = element("button", "settings-back", "All settings");
         back.type = "button";
         back.addEventListener("click", () => {
-          view.section = "all";
-          view.search = "";
-          view.form = null;
-          view.detail = "";
-          paint();
+          navigate("all");
         });
         main.append(back);
       }
       if (Array.isArray(view.data.setup_steps) && view.data.setup_steps.length) {
         const steps = element("ol", "settings-setup");
         for (const step of view.data.setup_steps) {
-          steps.append(element("li", step.done ? "settings-setup-done" : "", (step.done ? "✓ " : "") + step.text));
+          const item = element("li", step.done ? "settings-setup-done" : "");
+          const next = element("button", "settings-text-link", (step.done ? "✓ " : "") + step.text);
+          next.type = "button";
+          next.addEventListener("click", () => navigate(step.n === 1 ? "provider-accounts" : "models"));
+          item.append(next);
+          steps.append(item);
         }
         steps.append(element("li", "", "Everything else is optional."));
         main.append(steps);
+        if (view.data.setup_steps.every((step) => step.done)) {
+          const chat = element("a", "settings-back", "Start chatting");
+          chat.href = "#view=chat";
+          main.append(chat);
+        }
       } else if (view.data.setup) main.append(element("p", "settings-setup", view.data.setup));
       const page = view.section;
       if (page === "provider-accounts") {
@@ -1604,7 +1664,11 @@
       } else if (page === "credentials") {
         main.append(crumbBar(["Settings", "Saved credentials"]));
         main.append(element("h2", "", "Saved credentials"));
-        main.append(element("p", "set-hint", "A model uses its provider connection and does not ask you to pick one. The value is never shown."));
+        main.append(element("p", "set-hint", "Save an API key here, then open Models to add your provider’s endpoint and model. The key value is never shown."));
+        const next = element("button", "", "Next: configure a model");
+        next.type = "button";
+        next.addEventListener("click", () => navigate("models"));
+        main.append(next);
         const saved = fieldById("credentials");
         for (const record of saved?.records || []) {
           main.append(connectRow({
@@ -1661,19 +1725,24 @@
       }
       shell.append(navigation, main);
       root.append(shell, hidden);
-      const floor = element("section", "settings-block");
-      floor.dataset.section = "floor";
-      floor.hidden = page !== "floor";
-      floor.append(element("h2", "", "Floor definition"));
-      floor.append(element("p", "settings-start set-hint",
-        "What a floor wake says, and the rules that decide when one is worth sending. " +
-        "Each value below is saved to the floor definition file, not to config.toml."));
-      const floorHost = element("div", "floor-editor");
-      floor.append(floorHost);
-      // The editor belongs in the page body. As a sibling of the shell it
-      // rendered under an empty main column, which read as a broken page.
-      main.append(floor);
-      if (window.TesseraFloor) window.TesseraFloor.mount(floorHost, {api, element, status});
+      if (page === "floor") {
+        const floor = element("section", "settings-block");
+        floor.dataset.section = "floor";
+        floor.append(element("h2", "", "Floor definition"));
+        floor.append(element("p", "settings-start set-hint",
+          "What a floor wake says, and the rules that decide when one is worth sending. " +
+          "Each value below is saved to the floor definition file, not to config.toml."));
+        const floorHost = element("div", "floor-editor");
+        floor.append(floorHost);
+        // The editor belongs in the page body. As a sibling of the shell it
+        // rendered under an empty main column, which read as a broken page.
+        main.append(floor);
+        if (window.TesseraFloor) window.TesseraFloor.mount(floorHost, {api, element, status});
+      }
+      if (page === "all") {
+        main.append(element("p", "settings-empty", "No matching settings. Clear your search or try another word."));
+        filterSections();
+      }
       for (const button of navigation.querySelectorAll("button")) {
         button.setAttribute("aria-pressed", String(button.dataset.section === page));
       }
@@ -1716,11 +1785,26 @@
     }
 
     function paint() {
-      if (view.data?.provider_pages) {
-        paintShell();
-        return;
+      const active = document.activeElement;
+      const focusId = active?.id;
+      const unsavedValue = active?.dataset?.dirty === "true" ? active.value : undefined;
+      const selection = typeof active?.selectionStart === "number"
+        ? [active.selectionStart, active.selectionEnd] : null;
+      if (view.data?.provider_pages) paintShell();
+      else paintClassic();
+      // Saves can change dependent controls. Restore the user's place after rendering.
+      const replacement = focusId && ["input", "select", "textarea", "button"].flatMap((tag) => Array.from(root.querySelectorAll(tag)));
+      const target = replacement && Array.from(replacement).find((node) => node.id === focusId);
+      if (target && !target.disabled) {
+        if (unsavedValue !== undefined) {
+          target.value = unsavedValue;
+          target.dataset.dirty = "true";
+        }
+        target.focus({preventScroll: true});
+        if (selection && typeof target.setSelectionRange === "function") {
+          try { target.setSelectionRange(...selection); } catch (_) { /* Number/select controls have no text selection. */ }
+        }
       }
-      paintClassic();
     }
 
     function paintClassic() {
@@ -1821,6 +1905,11 @@
       block.append(element("p", "settings-start set-hint",
         fileOnly.reachable + " top-level settings are on this page. The " + fileOnly.count +
         " below have no control here; each says why."));
+      block.append(element("p", "set-hint",
+        "Edit config.toml in the Tessera home on the computer running the core, not on a connected phone. " +
+        "Stop the core, back up the file, edit the existing table (do not duplicate it), then start Tessera again. " +
+        "Desktop lifecycle options belong in desktop.toml on the computer running the desktop app. " +
+        "For phone access, first make that core reachable through your private network; localhost on a phone refers to the phone."));
       const fold = element("details", "settings-advanced");
       // Open by default. The answer to "where do I change worker concurrency"
       // is only useful when the list is on screen, not behind a summary line.
@@ -2032,10 +2121,12 @@
     // before reloading settings on navigation, so answering honestly is what keeps
     // a half-filled form alive across a page change instead of discarding it.
     function hasEdits() {
-      if (!view.form) return false;
-      const draft = view.form.draft || {};
-      const baseline = view.form.baseline || {};
-      return Object.keys(draft).some((key) => draft[key] !== baseline[key]);
+      return [view.form, ...Array.from(drafts.values(), (saved) => saved.form)].some((form) => {
+        if (!form) return false;
+        const draft = form.draft || {};
+        const baseline = form.baseline || {};
+        return Object.keys(draft).some((key) => draft[key] !== baseline[key]);
+      });
     }
 
     return {load, show, noteApproval, hasEdits};
