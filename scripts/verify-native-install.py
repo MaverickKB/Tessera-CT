@@ -37,30 +37,62 @@ def unused_port():
 
 
 def stop(process, ready, port):
-    if os.name == 'nt':
-        for pid in {ready.get('shell_pid'), ready.get('core_pid')} - {None}:
-            subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if process.poll() is None:
-            process.terminate()
-    else:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+    shell_pid = ready.get('shell_pid', process.pid)
     try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=5)
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
+        if os.name == 'nt' and ready:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+            closed = []
+            callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+            user32.IsWindowVisible.argtypes = [wintypes.HWND]
+            user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
+            user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+
+            def close_window(window, _):
+                owner = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
+                if owner.value == shell_pid and user32.IsWindowVisible(window):
+                    user32.PostMessageW(window, 0x0010, 0, 0)  # WM_CLOSE
+                    closed.append(window)
+                return True
+
+            callback = callback_type(close_window)
+            user32.EnumWindows(callback, 0)
+            assert closed, 'The ready native process had no visible window to close'
+        else:
+            try:
+                os.kill(shell_pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        # Do not kill the core here: disappearance must follow native ownership.
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            try:
+                request(port, '/api/status?shape=connection')
+            except (OSError, ValueError):
+                return
+            time.sleep(0.1)
+        raise AssertionError('Native app exit left its owned core running')
+    finally:
+        # Forced process-tree cleanup is separate from the lifecycle assertion.
+        if os.name == 'nt':
+            for pid in {ready.get('shell_pid'), ready.get('core_pid')} - {None}:
+                subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if process.poll() is None:
+                process.terminate()
+        else:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         try:
-            request(port, '/api/status?shape=connection')
-        except (OSError, ValueError):
-            return
-        time.sleep(0.1)
-    raise AssertionError('Closing the native app left its owned core running')
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
 
 
 def exercise(command, home, work, browser_marker, env, port):
