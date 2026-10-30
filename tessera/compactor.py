@@ -62,10 +62,17 @@ class Compactor:
             for thread in self.threads:
                 thread.join()
 
-    def _next_job(self):
-        # Prefer recent leaves; parents enter the second queue exactly when
-        # both children finish. No runtime walk of the log or tree is needed.
-        for queue in (self.tree.ready_leaves(), self.tree.ready_merges()):
+    def _next_job(self, merge_first=False):
+        # Parents enter the second queue exactly when both children finish. A view
+        # over its watermark needs merges first: another leaf summary only adds
+        # detail to a view that is already too large, so a busy session never
+        # catches up while new messages keep arriving. Below the watermark the
+        # leaves lead, which keeps the tree detailed.
+        if merge_first:
+            queues = (self.tree.ready_merges(), self.tree.ready_leaves())
+        else:
+            queues = (self.tree.ready_leaves(), self.tree.ready_merges())
+        for queue in queues:
             try:
                 return queue, queue.get_nowait()
             except Empty:
@@ -74,8 +81,11 @@ class Compactor:
 
     def _worker(self):
         while not self._stop.is_set():
+            # Read the watermark before taking the tree lock: the flag is owned by the
+            # view, and the log callback takes the view lock and then asks the tree.
+            merge_first = self.view.over_budget
             with self.tree.changed:
-                queue, key = self._next_job()
+                queue, key = self._next_job(merge_first)
                 if key is None:
                     self.tree.changed.wait(timeout=.25)
                     continue
