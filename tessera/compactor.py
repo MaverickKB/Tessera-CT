@@ -11,6 +11,14 @@ from .prompts import (COMPACTION_FAITHFULNESS_RETRY_TEMPLATE,
 from .tree import utf8_prefix
 
 
+COMPACTOR_SYSTEM_PROMPT = (
+    'You summarize a span of a conversation for a durable history. '
+    'Keep facts, decisions, names, paths, numbers and outcomes. '
+    'Drop chatter, restated instructions and anything the span does not say. '
+    'Write plain prose in the same voice as the span. Never invent detail.'
+)
+
+
 class Compactor:
     def __init__(self, tree, view, backend, system_prompt, tools_schema, workers=4,
                  *, retries=2, context_bytes=16000, judge=None, judge_threshold=.8,

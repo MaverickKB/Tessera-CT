@@ -17,7 +17,7 @@ from dataclasses import replace
 
 from .backend import Backend, BackendError
 from .capture import Capture
-from .compactor import Compactor
+from .compactor import COMPACTOR_SYSTEM_PROMPT, Compactor
 from .config import load_config
 from .hooks import HookBus
 from .jev import JevRouter
@@ -211,7 +211,10 @@ class Session:
             if compactor_backend is None and not injected_backend and 'compactor' in self.config.roles:
                 compactor_backend = self._backend('compactor')
             settings = self.config.compactor
-            self.compactor = Compactor(self.tree, self.view, compactor_backend, self.system_prompt, self.tools.schemas(),
+            # The compactor gets a short summarizer instruction, not the session
+            # prompt: a goblin's persona, roster and rules add tens of kilobytes to
+            # every summary and none of it helps.
+            self.compactor = Compactor(self.tree, self.view, compactor_backend, COMPACTOR_SYSTEM_PROMPT, self.tools.schemas(),
                                        workers=settings.workers, retries=settings.retries, context_bytes=settings.context_bytes,
                                        judge_threshold=settings.judge_threshold,
                                        judge=self.router.compaction_judge if settings.judge_enabled else None,
