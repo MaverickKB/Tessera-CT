@@ -42,6 +42,9 @@ unavailable or installation fails, `start` reports the failure before recovering
 to the browser; this recovery does not mean the native app installed successfully.
 `install-desktop` reports a failed installation and exits without substituting a
 browser. Existing native installations continue to work without downloading.
+The public launcher remembers the selected home, exact Python interpreter, and
+working directory for later app-menu launches in a separate nonsecret bootstrap
+record. Existing desktop settings and explicit overrides retain precedence.
 
 The web UI and a headless core remain available as explicit options:
 

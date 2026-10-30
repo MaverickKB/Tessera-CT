@@ -162,3 +162,14 @@ Explicit desktop environment overrides and existing `desktop.toml` fields retain
 precedence; installation does not rewrite the operator's desktop settings.
 Malformed records report a repair instruction: run `tessera --home <home> start`
 to write a complete record atomically. The record contains no account credentials.
+
+
+The Python `start` and `install-desktop` commands remember the selected home,
+interpreter, and working directory for subsequent native menu/Finder launches.
+This nonsecret record is stored at `~/.config/tessera/desktop-bootstrap.json`
+on Linux/macOS or `%APPDATA%\tessera\desktop-bootstrap.json` on Windows.
+The remembered home selects its own `desktop.toml`; explicit environment and
+operator desktop settings retain their existing precedence. Installation leaves
+`desktop.toml` intact. If the remembered selection is damaged or its Python
+installation moved, run `tessera --home <home> start` from the desired Python
+installation and working directory to repair it.
