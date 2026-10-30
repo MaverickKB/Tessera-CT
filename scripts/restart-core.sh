@@ -9,7 +9,15 @@ if [ "$os_name" != "Darwin" ]; then
   exit 2
 fi
 PORT="${TESSERA_PORT:-8740}"
-LABEL="${TESSERA_CORE_LABEL:-app.tessera.core}"
+# The label belongs to the plist the desktop shell points at. A hardcoded
+# default named a job that does not exist on this machine, so a correct
+# restart was refused as "not loaded".
+CORE_PLIST="$HOME/Library/LaunchAgents/com.maverickkb.tessera.core.plist"
+LABEL="${TESSERA_CORE_LABEL:-}"
+if [ -z "$LABEL" ] && [ -f "$CORE_PLIST" ]; then
+  LABEL=$(/usr/libexec/PlistBuddy -c "Print :Label" "$CORE_PLIST" 2>/dev/null || true)
+fi
+LABEL="${LABEL:-app.tessera.core}"
 TIMEOUT="${TESSERA_RESTART_TIMEOUT:-300}"
 BASE="http://127.0.0.1:$PORT"
 AUTH=()

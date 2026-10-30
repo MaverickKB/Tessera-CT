@@ -91,10 +91,11 @@ def test_projection_describes_every_control(tmp_path):
     assert code == 200
     sections = {item['id']: item for item in body['sections']}
     assert list(sections) == ['providers', 'models', 'credentials', 'identity', 'accounts', 'integrations', 'hosts',
-                              'systems', 'plugins', 'computer', 'voice', 'appearance', 'permissions', 'autonomy', 'judge',
-                              'update']
+                              'systems', 'plugins', 'computer', 'voice', 'appearance', 'goblin', 'permissions',
+                              'autonomy', 'judge', 'update']
     identity = {field['id']: field for field in sections['identity']['fields']}
-    assert list(identity) == ['agent_name', 'operator_name', 'identity.enabled', 'autonomy.floor_name']
+    # Identity records are required: they are the layer ownership resolves through.
+    assert list(identity) == ['identity.enabled', 'agent_name', 'operator_name', 'autonomy.floor_name']
     # A fresh install must not be pre-named as someone else's companion.
     assert identity['agent_name']['value'] == 'Tessera'
     assert identity['operator_name']['value'] == ''
@@ -273,9 +274,12 @@ def test_required_fields_come_before_optional_before_advanced(tmp_path):
     # The two switches that make the judge exist at all, and the key that makes it
     # work, come first.
     assert order[:2] == ['jev.enabled', 'jev.action_gate_enabled']
-    assert order[2] == 'jev.api_key_env'
-    # The optional URL is ranked advanced and sits below the key.
-    assert order.index('jev.url') > order.index('jev.api_key_env')
+    # The credential is the visible choice; the environment variable is the
+    # advanced fallback below it.
+    assert order[2] == 'jev.credential_ref'
+    assert order.index('jev.api_key_env') > order.index('jev.credential_ref')
+    # The optional URL is ranked advanced and sits below the credential.
+    assert order.index('jev.url') > order.index('jev.credential_ref')
     assert order[-1] in ('jev.loop_window', 'jev.batch_items')
 
 
@@ -361,7 +365,7 @@ project = "/synthetic-project"
     assert 'Clear that list' in url['status']
     # Only the superseded field carries the flag; the field that supersedes it stays
     # editable and the key is absent rather than false.
-    assert 'inert' not in fields['aethermind.endpoints']
+    assert 'inert' not in fields['aethermind_endpoints']
 
 
 def test_the_url_is_not_marked_inert_when_no_endpoint_supersedes_it(tmp_path):
@@ -926,13 +930,13 @@ def test_identity_defaults_precede_advanced_session_naming(tmp_path):
     assert config.operator_label() == 'the operator'
     assert config.floor_label() == 'Autonomy'
     assert {f['id']: f.get('tier', 'required') for f in fields} == {
+        'identity.enabled': 'required',
         'agent_name': 'optional',
         'operator_name': 'optional',
-        'autonomy.floor_name': 'advanced',
-        'identity.enabled': 'optional',
+        'autonomy.floor_name': 'optional',
     }
     assert [f['id'] for f in fields] == [
-        'agent_name', 'operator_name', 'identity.enabled', 'autonomy.floor_name']
+        'identity.enabled', 'agent_name', 'operator_name', 'autonomy.floor_name']
 
 
 def test_floor_display_name_and_session_slug_have_distinct_guidance(tmp_path):
@@ -966,10 +970,12 @@ def test_appearance_controls_are_optional_preferences(tmp_path):
         'ui.accent_color': 'optional',
         'ui.show_thoughts': 'optional',
         'ui.yolo_banner': 'optional',
-        'ui.easter_egg_f_it': 'optional',
         'ui.send_shortcut': 'optional',
         'ui.config_journal_entries': 'advanced',
     }
+    # F-it lives in Goblin Mode now, not Appearance. The button keeps its cartoon.
+    goblin = next(s for s in project(load_config(tmp_path), {})['sections'] if s['id'] == 'goblin')
+    assert [f['id'] for f in goblin['fields']] == ['ui.easter_egg_f_it']
 
 
 def test_models_keep_chat_prerequisites_before_optional_failover(tmp_path):
@@ -1004,14 +1010,14 @@ def test_taxonomy_preserves_empty_accounts_and_record_tiers(tmp_path):
     sections = {s['id']: s for s in project(load_config(tmp_path), {})['sections']}
     accounts = sections['accounts']['fields']
     assert len(accounts) == 1
-    assert accounts[0]['id'] == 'service_accounts'
-    assert accounts[0]['records'] == [] and accounts[0]['actions'] == []
-    assert 'not model hosts' in accounts[0]['hint']
+    # The service-account page is the accounts registry, not a placeholder.
+    assert accounts[0]['id'] == 'named_accounts'
+    assert accounts[0]['records'] == [] and accounts[0]['actions'] == ['add', 'edit', 'remove']
+    assert accounts[0]['blank'], 'an empty page still needs a form to add one'
+    assert 'sign-in' in accounts[0]['hint']
     assert [f['id'] for f in sections['providers']['fields']] == ['providers', 'oauth_accounts']
     assert sections['providers']['fields'][0]['tier'] == 'required'
     assert sections['providers']['fields'][1]['tier'] == 'optional'
-    pools = next(f for f in sections['integrations']['fields'] if f['id'] == 'named_accounts')
-    assert pools['tier'] == 'advanced'
     ids = [f['id'] for s in sections.values() for f in s['fields']]
     assert len(ids) == len(set(ids))
 
@@ -1100,7 +1106,7 @@ def test_every_section_publishes_setup_hint_and_explicit_ordered_tiers(tmp_path)
     integrations = next(section for section in sections if section['id'] == 'integrations')
     tiers = {field['id']: field['tier'] for field in integrations['fields']}
     assert tiers['aethermind.project'] == 'required'
-    assert tiers['aethermind.endpoints'] == 'optional'
+    assert tiers['aethermind_endpoints'] == 'optional'
     assert tiers['aethermind.bundled_path'] == 'advanced'
     assert tiers['aethermind.engine_log_max_bytes'] == 'advanced'
 

@@ -543,6 +543,19 @@ def consume_permissions(config, approval):
     return 'yolo' if approval.get('yolo') else 'safe'
 
 
+def consume_goblin_avatar(config):
+    # tessera/sessions.py publishes it in the status ui block. web/app.js
+    # applyMark passes it to web/unleashed-label.js avatarUrl, which builds the
+    # F-it mark and the icon href.
+    return config.ui.goblin_avatar
+
+
+def consume_safe_policy(config):
+    # tessera/sessions.py:2129. Safe mode is the configured policy; the switch
+    # above only chooses whether Safe or Unleashed is running.
+    return config.tools.approval
+
+
 def consume_mcp_env(server):
     # tessera/mcp_servers.py:28-32. env reaches StdioMcpClient. The HTTP branch
     # takes token_env and drops server.env, so an Env refs box on an HTTP row is a lie.
@@ -657,7 +670,9 @@ CONSUMERS = {
     'ui.easter_egg_f_it': consume_easter_egg,
     'ui.send_shortcut': consume_ui,
     'ui.config_journal_entries': consume_config_journal,
+    'ui.goblin_avatar': consume_goblin_avatar,
     'permissions.mode': consume_permissions,
+    'permissions.safe_policy': consume_safe_policy,
     'codex.models_url': consume_codex_catalog,
     'codex.client_version': consume_codex_catalog,
 }
@@ -808,16 +823,17 @@ def test_projection_shape_is_pinned(tmp_path):
     ids = [field['id'] for section in project(config, {})['sections'] for field in section['fields']]
     records = [field['id'] for section in project(config, {})['sections'] for field in section['fields']
                if field['type'] == 'list-of-records']
-    # mcp_servers is the Plugins section, after Hosts and Systems.
-    assert records == ['providers', 'oauth_accounts', 'worker_policy', 'credentials', 'service_accounts',
-                       'named_accounts', 'hosts', 'systems', 'mcp_servers']
+    # mcp_servers is the Plugins section, after Hosts and Systems. The ordered
+    # AetherMind endpoints are a record list under Integrations, not a text box.
+    assert records == ['providers', 'oauth_accounts', 'worker_policy', 'credentials', 'named_accounts',
+                       'aethermind_endpoints', 'hosts', 'systems', 'mcp_servers']
     # A stored aethermind.enabled value adds its notice. A bare config has no such row.
     # swarm.max_job_tasks, swarm.distinct_workers, aethermind.engine_log_max_bytes,
     # ui.config_journal_entries, the two Codex catalog settings, and ui.mark
     # are scalars on that bare page.
     assert 'aethermind.enabled' not in ids
     assert len(list(catalog(config, {}))) == 73
-    # 82 catalog+record fields, plus update.status on the Update section.
+    # 73 catalog fields plus the nine record rows, plus update.status.
     assert len(ids) == 83
 
 

@@ -5418,8 +5418,8 @@ const view = context.window.TesseraSettings.mount({
   await view.load();
   const walk = (node, out) => { out.push(node); for (const child of node.children) walk(child, out); return out; };
   const nodes = walk(root, []);
-  const summary = nodes.find(n => n.tag === 'summary' && n.textContent.trim() === 'What goes here');
-  assert.ok(summary, 'a long hint offers What goes here');
+  const summary = nodes.find(n => n.tag === 'summary' && n.textContent.trim() === 'Details');
+  assert.ok(summary, 'a long hint offers Details');
   const longText = nodes.find(n => n.textContent === longHint);
   assert.ok(longText, 'the long guidance stays in the page');
   assert.equal(longText.hidden, true, 'the long guidance starts hidden');
@@ -5437,11 +5437,11 @@ const view = context.window.TesseraSettings.mount({
   };
   const trust = blockFor('Trust', longHint);
   const trustText = trust.textContent;
-  assert.ok(trustText.indexOf('Trust') < trustText.indexOf('What goes here'));
-  assert.ok(trustText.indexOf('What goes here') < trustText.indexOf('Auto'));
+  assert.ok(trustText.indexOf('Trust') < trustText.indexOf('Details'));
+  assert.ok(trustText.indexOf('Details') < trustText.indexOf('Auto'));
   assert.ok(trustText.indexOf('Auto') < trustText.indexOf(longHint));
   await summary.fire('click');
-  assert.equal(longText.hidden, false, 'pressing What goes here shows the guidance');
+  assert.equal(longText.hidden, false, 'pressing Details shows the guidance');
   const voice = blockFor('Voice key', 'The voice key is for voice only.');
   const voiceText = voice.textContent;
   assert.ok(voiceText.indexOf('Voice key') < voiceText.indexOf('The voice key is for voice only.'));
@@ -5537,10 +5537,8 @@ const view = context.window.TesseraSettings.mount({
   await view.load();
   assert.ok(root.textContent.includes('Appearance'));
   assert.ok(root.textContent.includes('Show Unleashed banner'));
-  assert.ok(root.textContent.includes('F-it button'));
-  const egg = root.querySelector('[data-key="easter_egg_f_it"]');
-  assert.equal(egg.type, 'checkbox');
-  assert.equal(egg.checked, false);
+  // F-it and the goblin it shows moved to Goblin Mode; this page is the banner.
+  assert.equal(root.querySelector('[data-key="easter_egg_f_it"]'), null);
   for (const value of [false, true]) {
     const input = root.querySelector('[data-key="yolo_banner"]');
     assert.ok(input, 'the catalog field renders in the existing Settings page');

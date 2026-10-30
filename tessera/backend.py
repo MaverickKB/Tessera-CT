@@ -16,6 +16,12 @@ from .provider_status import initial_status
 from .cli_worker import CliWorker, WorkerError
 from .rate_limits import parse_rate_limits
 
+# The ChatGPT Codex backend answers 400 "Unsupported parameter" for these, and
+# applies its own sampling. `chat_template_kwargs` is a local-server extension
+# the loop sends for vLLM thinking; reasoning.effort is what this backend reads.
+CODEX_UNSUPPORTED = ('temperature', 'top_p', 'presence_penalty', 'frequency_penalty', 'stop',
+                     'chat_template_kwargs')
+
 
 class _NoRedirect(request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -288,7 +294,15 @@ class Backend:
                         options[key] = allowance + thinking_budget
             headers = {'Content-Type': 'application/json'}
             payload = self.adapter.encode(self.model, messages, tools, options)
+            if official_codex_url(self.base_url):
+                for key in CODEX_UNSUPPORTED:
+                    payload.pop(key, None)
             streaming = bool(self.on_delta) and hasattr(self.adapter, 'assemble') and self.extra.get('stream', True) is not False
+            if official_codex_url(self.base_url):
+                # The Codex backend rejects a non-streamed request with 400
+                # "Stream must be set to true". Its stream is folded back into
+                # one response below, so a turn with no live listener works too.
+                streaming = hasattr(self.adapter, 'assemble')
             if streaming:
                 payload['stream'] = True
             # An OAuth grant is this call's credential. The API-key variable is not a fallback.
@@ -320,17 +334,27 @@ class Backend:
         for attempt in range(retries + 1):
             self.check_cancelled()
             req = request.Request(url, data=encoded, headers=headers, method='POST')
+
+            def emit(kind, text):
+                """Report a stream event when someone is listening, and stay quiet otherwise."""
+                if self.on_delta:
+                    self.on_delta(kind, text)
+
             try:
                 if streaming:
-                    self.on_delta('status', 'Requesting model response' if attempt == 0 else 'Retrying model connection')
+                    emit('status', 'Requesting model response' if attempt == 0 else 'Retrying model connection')
                 with self._opener.open(req, timeout=timeout) as response:
                     self._transport.response = response
                     self.check_cancelled()
                     rates = parse_rate_limits(getattr(response, 'headers', {}))
                     kind = (getattr(response, 'headers', {}) or {}).get('Content-Type', '') if streaming else ''
-                    if streaming and 'text/event-stream' in kind:
-                        self.on_delta('status', 'Connected, waiting for model output')
-                        on_delta = self.on_delta
+                    # The Codex endpoint streams without a Content-Type header,
+                    # so the URL decides as well as the header. Reading that
+                    # body as JSON was a decode error at character zero.
+                    stream_body = streaming and ('text/event-stream' in kind or official_codex_url(self.base_url))
+                    if stream_body:
+                        emit('status', 'Connected, waiting for model output')
+                        on_delta = emit
                         redactor = _StreamRedactor(on_delta, credential.value) if credential.value else None
                         if redactor is None:
                             data = self.adapter.assemble(response, on_delta)
@@ -350,11 +374,19 @@ class Backend:
                 status = exc.code
                 rates = parse_rate_limits(exc.headers)
                 retry_after = exc.headers.get('Retry-After', '')
+                # The provider's own words for a rejected request. An auth
+                # failure can echo the credential, so its body is not kept.
+                detail = ''
+                if status not in (401, 403):
+                    try:
+                        detail = exc.read(400).decode('utf-8', 'replace').strip()
+                    except (OSError, ValueError):
+                        detail = ''
                 exc.close()
                 if status != 429 and not 500 <= status <= 599:
                     category = {401: 'authentication', 403: 'permission'}.get(status, 'provider')
                     raise BackendError(f'Backend {self.name}: HTTP {status}', category,
-                                       kind='http', http_status=status) from None
+                                       kind='http', http_status=status, detail=detail) from None
                 if attempt == retries:
                     category = 'rate_limit' if status == 429 else 'provider'
                     raise BackendError(f'Backend {self.name}: HTTP {status} after {attempt + 1} attempts', category,
@@ -374,7 +406,11 @@ class Backend:
                     raise BackendError(f'Backend {self.name}: transport failed ({type(exc).__name__})', category) from None
                 if self._transport._cancelled.wait(min(delay * (2 ** attempt), 30)):
                     self.check_cancelled()
-            except (ValueError, KeyError, IndexError, TypeError):
+            except (ValueError, KeyError, IndexError, TypeError) as exc:
                 self.check_cancelled()
-                raise BackendError(f'Backend {self.name}: invalid provider response', kind='parse') from None
+                # Name what the parser rejected. "invalid provider response"
+                # alone cannot tell a stream shape from a missing field.
+                detail = type(exc).__name__ + ': ' + str(exc)
+                raise BackendError(f'Backend {self.name}: invalid provider response',
+                                   kind='parse', detail=detail[:400]) from None
         raise BackendError('Backend exhausted retries')

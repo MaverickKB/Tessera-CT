@@ -33,12 +33,7 @@ type-checking and rendering the value do not count as reads.
 
 ## Summary at HEAD
 
-113 fields: 112 CONSUMED, 1 NO-READER, 0 UNRESOLVED.
-
-The single NO-READER is `service_accounts`, a record-container placeholder
-that serves an empty list with no actions; the page hint already says no
-third-party service account records exist yet. It is page furniture, not a
-config value, so `init --check` cannot flag it against any config.
+112 fields: 112 CONSUMED, 0 NO-READER, 0 UNRESOLVED.
 
 ## Partial findings, recorded as debt
 
@@ -96,7 +91,6 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `computer_use.jev.min_confidence` | CONSUMED | tessera/cua_jev.py:215 confidence compared against min_confidence |
 | `aethermind.source` | CONSUMED | tessera/bundled_engine.py _wants_external: embedded stays on the packaged engine; external is used only after it validates |
 | `aethermind.url` | CONSUMED | tessera/bundled_engine.py probe_external validates this URL; loop.py uses it only after that probe succeeds |
-| `aethermind.endpoints` | CONSUMED | tessera/bundled_engine.py probe_external validates this list; loop.py uses it only after that probe succeeds |
 | `aethermind.project` | CONSUMED | tessera/loop.py:161 passes the project to Capture |
 | `aethermind.bundled_path` | CONSUMED | tessera/bundled_engine.py:30 _engine_root resolves the packaged vs configured engine |
 | `aethermind.engine_log_max_bytes` | CONSUMED | tessera/bundled_engine.py _log_limit keeps the engine log to this many bytes; engine_log_text returns that cap |
@@ -145,6 +139,7 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `ui.send_shortcut` | CONSUMED | tessera/sessions.py:1872 status ui block; web/app.js:6782 applyShortcut applies it |
 | `ui.config_journal_entries` | CONSUMED | tessera/config_editor.py change_report keeps and shows this many config changes; tessera/settings_model.py SettingsService.view publishes shown and total |
 | `permissions.mode` | CONSUMED | tessera/settings_model.py:405 reads the approval dict; tessera/sessions.py:1848 set_yolo writes it |
+| `permissions.safe_policy` | CONSUMED | tessera/sessions.py:2129 _init_approval derives the safe mode from tools.approval; set_yolo(false) restores it |
 | `accounts.*.credential_ref` | CONSUMED | tessera/config.py:1292 becomes the backend credential reference; tessera/settings_ladder.py credential_source reads it |
 | `accounts.*.provider_kind` | CONSUMED | tessera/config.py:1227 and :1291 route the backend through the account kind; tessera/agents.py:54,:98 branch per kind |
 | `credentials.*.env` | CONSUMED | tessera/credentials.py:98,:100 resolves the value from that environment variable |
@@ -184,8 +179,7 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `providers.*.throttle_requests_per_minute` | CONSUMED | tessera/endpoint_throttle.py:24 throttle_limits; tessera/backend.py:189 and tessera/jobs.py pace that endpoint in requests per minute. A hand-set number is enforced in Unleashed; there is no system default |
 | `providers.*.throttle_tokens_per_minute` | CONSUMED | tessera/endpoint_throttle.py:24 throttle_limits; tessera/backend.py:189 charges reported usage. A hand-set number is enforced in Unleashed; there is no system default |
 | `providers.*.vendor` | CONSUMED | tessera/cli_worker.py:105 requires a vendor; :200,:211,:223,:229,:333,:360 branch per vendor |
-| `service_accounts` | NO-READER | (none) |
 
 ## NO-READER and UNRESOLVED fields
 
-- `service_accounts` (NO-READER): no reader: the container serves an empty list with actions=[] and nothing consumes it yet; the hint says so on the page
+None at HEAD.

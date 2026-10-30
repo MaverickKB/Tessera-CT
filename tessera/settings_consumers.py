@@ -121,6 +121,7 @@ CATALOG_READERS = {
     'ui.send_shortcut': [Reader('tessera/sessions.py:1872 status ui block; web/app.js:6782 applyShortcut applies it')],
     'ui.config_journal_entries': [Reader('tessera/config_editor.py change_report keeps and shows this many config changes; tessera/settings_model.py SettingsService.view publishes shown and total')],
     'permissions.mode': [Reader('tessera/settings_model.py:405 reads the approval dict; tessera/sessions.py:1848 set_yolo writes it', 'no config path: the spec writes approval state, not a config field')],
+    'permissions.safe_policy': [Reader('tessera/sessions.py:2129 _init_approval derives the safe mode from tools.approval; set_yolo(false) restores it')],
     'codex.models_url': [Reader('tessera/model_discovery.py codex_request_url; discover_codex_models GETs it with the stored sign-in token')],
     'codex.client_version': [Reader('tessera/model_discovery.py codex_request_url appends client_version to that request')],
 }
@@ -176,8 +177,6 @@ RECORD_READERS = {
     # oauth_accounts — the two fixed OAuth sign-in rows. The row's only action is sign-in/refresh,
     # handled by the OAuth grant code, which is not part of the settings surface.
     'oauth_accounts.sign-in': [Reader('tessera/account_oauth.py grant flow; refresh action in _oauth_actions (settings_model.py:491)', 'record container, not a scalar field; the page only triggers sign-in')],
-    # service_accounts — a placeholder collection with no records and no actions at HEAD.
-    'service_accounts': [Reader(None, 'no reader: the container serves an empty list with actions=[] and nothing consumes it yet; the hint says so on the page')],
 }
 
 # Fields rendered conditionally or not at all for a given install. Not counted as silently dead:

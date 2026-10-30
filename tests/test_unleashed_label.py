@@ -16,7 +16,7 @@ def _mode_field(body):
 
 
 def _egg_field(body):
-    return next(field for section in body['sections'] if section['id'] == 'appearance'
+    return next(field for section in body['sections'] if section['id'] == 'goblin'
                 for field in section['fields'] if field['id'] == 'ui.easter_egg_f_it')
 
 
@@ -146,7 +146,11 @@ def test_icon_and_logo_saves_both_values_without_a_second_switch(tmp_path):
         assert manager.approval_status()['mode'] == 'ask'
         ids = [field['id'] for section in manager.settings_view()['sections'] if section['id'] == 'appearance'
                for field in section['fields']]
-        assert ids.count('ui.easter_egg_f_it') == 1
+        # F-it and the goblin it shows live in Goblin Mode now, not Appearance.
+        assert ids.count('ui.easter_egg_f_it') == 0
+        goblin_ids = [field['id'] for section in manager.settings_view()['sections'] if section['id'] == 'goblin'
+                      for field in section['fields']]
+        assert goblin_ids.count('ui.easter_egg_f_it') == 1
         assert 'ui.gremlin' not in ids
 
 

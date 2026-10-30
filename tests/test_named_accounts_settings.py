@@ -56,7 +56,7 @@ def test_named_accounts_are_projected_with_controls(tmp_path):
     config = load_config(tmp_path)
     field = accounts_field(config)
 
-    assert field['id'] == 'named_accounts' and field['section'] == 'integrations'
+    assert field['id'] == 'named_accounts' and field['section'] == 'accounts'
     assert field['type'] == 'list-of-records'
     assert field['actions'] == ['add', 'edit', 'remove']
 
@@ -75,7 +75,7 @@ def test_named_accounts_are_projected_with_controls(tmp_path):
     # It must be reachable from the real projection the page reads.
     body = project(config, {'mode': 'safe'})
     sections = {section['id']: section for section in body['sections']}
-    assert 'named_accounts' in [item['id'] for item in sections['integrations']['fields']]
+    assert 'named_accounts' in [item['id'] for item in sections['accounts']['fields']]
     assert 'oauth_accounts' in [item['id'] for item in sections['providers']['fields']]
 
 
@@ -193,7 +193,7 @@ def test_the_pool_form_speaks_plain_words_and_never_offers_a_refused_choice(tmp_
     assert 'cli_worker' in values and 'openai_chat' in values
 
     # The section says what it is: pools, not sign-ins.
-    assert field['label'] == 'Worker pools'
+    assert field['label'] == 'Service accounts'
     assert 'sign-in' in field['hint']
 
     # A CLI pool cannot carry a credential, so the form must not ask for one. The

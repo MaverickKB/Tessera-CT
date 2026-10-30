@@ -16,9 +16,44 @@
       if (status) status.textContent = text;
     }
 
+    // What each field is, in one sentence, with an example where the value is a
+    // shape a person cannot guess. A page of bare text boxes is not an editor.
+    const FIELD_HELP = {
+      "World view": "The first thing a wake says, in your words. Example: Here is what changed since the last wake.",
+      "World view limit": "Characters kept from the world view. 0 keeps all of it.",
+      "Wake score": "How much pressure a wake needs before it is delivered. Higher means fewer, more serious wakes.",
+      "Hold seconds": "How long a reading stays current before it is treated as stale, or the minimum gap between two wakes from a rule.",
+      "Hold label": "The word a stale reading is shown with. Example: stale.",
+      "Disk free percent": "Wake when free disk falls below this percentage. Example: 10.",
+      "Missing priority": "What a missing reading counts as when it ranks against others. Higher ranks first.",
+      "World view introduction": "The lead-in line above the world view. Clear it to drop the line.",
+      "Pressure introduction": "The lead-in line above the pressure list. Clear it to drop the line.",
+      "Coordination paragraph": "The sentence a wake uses when another session is already working. Clear it to omit.",
+      "Quiet-time paragraph": "The sentence a wake uses when nothing crossed the bar. Clear it to omit.",
+      "Wake footer": "The last lines of every wake, for standing instructions. Clear it to omit.",
+      "Enabled": "Off keeps the rule in the file but never runs it.",
+      "Can wake": "Off lets the rule contribute pressure without waking you.",
+      "Pressure": "On counts this rule's findings as pressure rather than a note.",
+      "Safe-only guard": "On applies the rule only in Safe mode.",
+      "Name": "The rule's own name, shown in this editor. It is not the wake text.",
+      "Signal": "Which reading feeds the rule. Example: host.",
+      "Emit": "One line per match, all matches joined, a single fallback line, or offers.",
+      "Sort": "Order matches by input order or by priority.",
+      "Score": "The pressure this rule adds when it fires. Example: 2.",
+      "Condition": "A condition over the signal's fields. Example: disk_free_percent < 10.",
+      "Template": "The wake line, with {placeholders} filled from the signal. Example: {name} disk at {disk}%.",
+      "Name field": "The signal field used as the subject's name. Example: ordinal.",
+      "Names shown": "How many names one line lists before it summarizes. Example: 3.",
+      "Title priority pattern": "A pattern that raises a match's priority when the title matches it.",
+      "Owner": "Who the wake is addressed to. Empty uses the floor session.",
+      "Note": "A note for the next reader. The floor does not read it.",
+    };
+
     function field(label, node) {
       const row = el("label", "floor-field");
       row.append(el("span", "set-label", label), node);
+      const help = FIELD_HELP[label];
+      if (help) row.append(el("span", "set-hint", help));
       return row;
     }
 

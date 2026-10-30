@@ -13,7 +13,7 @@
   };
   // "Add account" on a pool was the wrong word: the sign-in buttons above are the
   // accounts. A pool row adds a pool, so its button says so.
-  const ADD = {providers: "Add model", credentials: "Add credential", mcp_servers: "Add plugin", named_accounts: "Add pool"};
+  const ADD = {providers: "Add model", credentials: "Add credential", mcp_servers: "Add plugin", named_accounts: "Add service account"};
   ADD.identities = "Add person";
   ADD.hosts = "Add host";
   const CLI_KEYS = new Set(["vendor", "command", "cwd"]);
@@ -23,7 +23,7 @@
   const NAME_OK = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
   function mount({api, element, root, status, restartButton, onRestarted, onAppearance, onApproval, onChanged}) {
-    const view = {data: null, form: null, confirm: "", login: null, section: "all", search: "", detail: "", restoreName: ""};
+    const view = {data: null, form: null, confirm: "", login: null, section: "all", search: "", detail: "", restoreName: "", accounts: null};
     let sectionChosen = false;
 
     const advancedOpen = new Map();
@@ -68,6 +68,9 @@
     }
 
     function applyResult(result) {
+      // Any settings change can change an account's grant or a model's state,
+      // so the roster is re-read rather than kept for the life of the page.
+      view.accounts = null;
       if (result?.settings) {
         if (result.settings.provider_pages) view.data = result.settings;
         else view.data = Object.assign({}, view.data, result.settings);
@@ -189,7 +192,10 @@
     }
 
     // Short help sits under its control. A longer hint is a disclosure on the
-    // label line; the paragraph stays in the page and starts hidden.
+    // label line; the paragraph stays in the page and starts hidden. A
+    // checkbox always shows its hint: "Details" beside a checkbox reads as a
+    // link to somewhere else, and the sentence is the only thing that explains
+    // what the box does.
     const INLINE_HINT_MAX = 120;
 
     function hintNode(text) {
@@ -200,14 +206,14 @@
         return node;
       }
       const fold = element("details", "set-hint-fold");
-      fold.append(element("summary", "set-hint-summary", "What goes here"));
+      fold.append(element("summary", "set-hint-summary", "About this list"));
       fold.append(element("p", "set-hint", text));
       return fold;
     }
 
-    function fieldHelp(text) {
+    function fieldHelp(text, expand) {
       if (!text) return null;
-      if (text.length <= INLINE_HINT_MAX) {
+      if (expand || text.length <= INLINE_HINT_MAX) {
         const hint = element("p", "set-hint", text);
         addClass(hint, "settings-field-help");
         return {fold: null, hint};
@@ -216,7 +222,7 @@
       addClass(hint, "settings-field-help");
       hint.hidden = true;
       const fold = element("details", "set-hint-fold");
-      const summary = element("summary", "set-hint-summary", "What goes here");
+      const summary = element("summary", "set-hint-summary", "Details");
       summary.addEventListener("click", (event) => {
         event.preventDefault();
         hint.hidden = !hint.hidden;
@@ -232,10 +238,10 @@
       return control;
     }
 
-    function placeField(row, field, input, control, tier) {
+    function placeField(row, field, input, control, tier, expand) {
       addClass(row, "settings-field");
       if (tier) addClass(row, "settings-model-field");
-      const help = fieldHelp(field.hint);
+      const help = fieldHelp(field.hint, expand || field.type === "bool");
       if (field.type === "bool") {
         addClass(row, "settings-check");
         const line = element("div", "settings-check-line");
@@ -275,8 +281,35 @@
           break;
         }
       }
-      if (cursor) row.insertBefore(fact, cursor);
+      if (cursor) {
+        row.insertBefore(fact, cursor);
+        return;
+      }
+      // No hidden paragraph to sit in front of: the fact goes directly under the
+      // control, and the help follows it.
+      let controlAt = -1;
+      for (let index = 0; index < children.length; index += 1) {
+        const name = String(children[index].className || "");
+        if (name.split(/\s+/).includes("set-control")) {
+          controlAt = index;
+          break;
+        }
+      }
+      if (controlAt >= 0) row.insertBefore(fact, children[controlAt + 1] || null);
       else row.append(fact);
+    }
+
+    // A control that does not apply to the current choice is hidden, not left
+    // inert. Today that is the duplex voice controls under the local pipe.
+    function hiddenByState(field) {
+      const rule = field.hidden_when;
+      if (!rule) return false;
+      for (const id of Object.keys(rule)) {
+        const other = fieldById(id);
+        if (!other) return false;
+        if (other.value !== rule[id]) return false;
+      }
+      return true;
     }
 
     function renderScalar(field, tier) {
@@ -284,17 +317,24 @@
       const id = domId(field);
       const input = inputFor(field, id);
       input.addEventListener("change", () => commitScalar(field, scalarValue(field, input)));
-      placeField(row, field, input, field.type === "bool" ? null : controlFor(field, input), tier);
-      if (field.id === "ui.mark" || field.id === "ui.skin") {
-        const previews = element("div", field.id === "ui.mark" ? "mark-previews" : "skin-previews");
-        const kind = field.id === "ui.mark" ? "mark" : "skin";
+      // A field whose choices are drawn as previews uses the previews as its
+      // control. A select above them repeats the same list.
+      const previewKind = field.id === "ui.mark" ? "mark"
+        : field.id === "ui.skin" ? "skin" : "";
+      if (previewKind) placeField(row, field, input, null, tier);
+      else placeField(row, field, input, field.type === "bool" ? null : controlFor(field, input), tier);
+      if (previewKind) {
+        const previews = element("div", previewKind === "mark" ? "mark-previews" : "skin-previews");
+        previews.setAttribute("role", "group");
+        previews.setAttribute("aria-label", field.label);
         for (const option of field.options || []) {
-          const button = element("button", kind === "mark" ? "mark-preview" : "skin-preview", option.label.split(" · ")[0]);
+          const button = element("button", previewKind === "mark" ? "mark-preview" : "skin-preview",
+            option.label.split(" · ")[0]);
           button.type = "button";
-          button.dataset[kind] = option.value;
+          button.dataset[previewKind] = option.value;
           button.setAttribute("aria-pressed", String(field.value === option.value));
           button.title = option.label;
-          if (kind === "skin") {
+          if (previewKind === "skin") {
             const palette = element("span", "skin-palette");
             palette.setAttribute("aria-hidden", "true");
             for (let index = 0; index < 3; index++) palette.append(element("i"));
@@ -312,7 +352,44 @@
         reset.addEventListener("click", () => commitScalar(field, ""));
         row.append(reset);
       }
+      if (field.id === "autonomy.world_view") {
+        // This is a prompt, not a note. It gets an editor, a live word count and
+        // an example of the shape, because "what matters" is not a format a
+        // person can guess.
+        input.rows = 8;
+        input.placeholder = "What matters right now, in the order it matters. One line per item.";
+        const count = element("p", "set-count");
+        const updateCount = () => {
+          const text = String(input.value || "");
+          const words = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+          count.textContent = words + (words === 1 ? " word" : " words") + " · " + text.length + " characters";
+        };
+        input.addEventListener("input", updateCount);
+        updateCount();
+        const sample = element("details", "set-hint-fold");
+        sample.append(element("summary", "set-hint-summary", "Show an example"));
+        const example = [
+          "Wake only when one of these changed since the last wake.",
+          "1. The board: a card blocked for more than a day.",
+          "2. Hosts: disk below 10%, or a service that stopped answering.",
+          "3. The build: a test that was green yesterday and fails now.",
+          "Say what changed, what you checked, and what you did about it.",
+        ].join("\n");
+        sample.append(element("pre", "settings-example", example));
+        const use = element("button", "", "Use this example");
+        use.type = "button";
+        use.addEventListener("click", () => {
+          input.value = example;
+          updateCount();
+          // Save it like any other change, so the example the person just read
+          // is the one the floor wakes with.
+          input.dispatchEvent(new Event("change", {bubbles: true}));
+        });
+        sample.append(use);
+        row.append(count, sample);
+      }
       if (field.inert) addClass(row, "set-row-inert");
+      if (hiddenByState(field)) row.hidden = true;
       attachStatus(row, field);
       return row;
     }
@@ -355,7 +432,11 @@
       // do not ask for one. The page must not offer a choice that cannot be stored.
       if (listId === "named_accounts" && key === "credential_ref") return kind !== "cli_worker";
       if (listId !== "providers" || view.form?.mode !== "add") return true;
-      if (key === "account" || key === "credential") return false;
+      if (key === "credential") return false;
+      // The account picker is the first question on Add model. A row that adds a
+      // model to a known account already answered it, so the picker stays hidden
+      // there and the endpoint and credential fields stay hidden with it.
+      if (key === "account") return view.form?.flavor !== "signin";
       const flavor = view.form?.flavor || "";
       if (flavor === "local" && key === "api_key_env") return false;
       if (view.form?.presetLocked && (key === "base_url" || key === "kind")) return false;
@@ -377,6 +458,9 @@
         if (!showKey(listId, field.key, kind, account, fields)) continue;
         const input = form.querySelector(`[data-key="${field.key}"]`);
         if (!input) continue;
+        // A control the form is not showing (another kind, an inert row) is
+        // disabled, and a disabled control carries no value into the save.
+        if (input.disabled) continue;
         if (field.type === "secret" && !input.value) continue;
         record[field.key] = scalarValue(field, input);
       }
@@ -514,7 +598,17 @@
           input.addEventListener("change", () => { view.form.draft[field.key] = scalarValue(field, input); });
         }
         const control = field.type === "bool" ? null : controlFor(shown, input);
-        placeField(row, shown, input, control);
+        // A form is short. Folding its help into "Details" hides the sentence
+        // that says what to type, so every hint in a form stays visible.
+        placeField(row, shown, input, control, undefined, true);
+        // A field is only offered for the kinds that read it. Records carry the
+        // list on the field; a form that shows a Prometheus instance on an SSH
+        // connection is asking for a value nothing reads.
+        if (field.kinds && field.kinds.length) {
+          addClass(row, "set-kind-row");
+          row.dataset.kinds = field.kinds.join(",");
+        }
+        row.dataset.inert = field.inert ? "1" : "";
         // Model names are the one field a person usually does not know. Ask the
         // endpoint it is being wired to and offer what it actually serves, so a
         // typo cannot become a failed turn later. The answer is a suggestion: the
@@ -560,6 +654,21 @@
         form.append(fold);
       }
       view.form.baseline = baseline;
+      // Hide the rows the chosen kind does not read, and disable their inputs so
+      // a save cannot carry a value the form is not showing. Before a kind is
+      // chosen every connection row stays hidden: the first decision is the kind.
+      const kindSelect = form.querySelector('[data-key="kind"]');
+      const chosenKind = kindSelect ? kindSelect.value : "";
+      for (const row of form.querySelectorAll(".set-kind-row")) {
+        const allowed = String(row.dataset.kinds || "").split(",");
+        const applies = Boolean(chosenKind) && allowed.includes(chosenKind);
+        row.hidden = !applies;
+        for (const tag of ["input", "select", "textarea"]) {
+          for (const field of row.querySelectorAll(tag)) {
+            field.disabled = !applies || row.dataset.inert === "1";
+          }
+        }
+      }
       const actions = element("div", "record-actions");
       addClass(actions, "settings-form-actions");
       const cancel = element("button", "", "Cancel");
@@ -827,7 +936,7 @@
       }
       mainCol.append(identity);
       if (record.source) {
-        const value = record.source === "No credential" ? "none" : record.source;
+        const value = record.source === "No credential" || !record.source ? "none" : record.source;
         mainCol.append(element("span", "settings-card-line", "Credential: " + value));
       }
       const aside = element("div", "settings-list-aside");
@@ -922,12 +1031,21 @@
 
     function renderRecords(field, options) {
       const wrap = element("div", "record-list");
+      // A list nested inside another section names itself. A list whose label
+      // repeats the page heading does not.
+      if (field.show_label) wrap.append(element("h3", "settings-list-title", field.label));
       if (!options || options.hint !== false) {
         const hint = hintNode(field.hint);
         if (hint) wrap.append(hint);
       }
+      // An empty list states what the list is for. One Add button and a folded
+      // paragraph is a page that looks broken, not a page with nothing in it.
+      const records = field.records || [];
+      if (!records.length && field.empty) {
+        wrap.append(element("p", "settings-empty-list set-hint", field.empty));
+      }
       let previousGroup = "";
-      for (const record of field.records || []) {
+      for (const record of records) {
         if (field.id === "providers" && record.group && record.group !== previousGroup) {
           wrap.append(element("h3", "settings-group", record.group));
           previousGroup = record.group;
@@ -1040,15 +1158,18 @@
     }
 
     function openAdd() {
-      view.section = "provider-endpoints";
+      // Adding a model starts here now. The old target was an Endpoints page that
+      // listed the same backends this page lists, and the form that opened there
+      // never asked which account it belonged to.
+      view.section = "models";
       view.discovery = null;
       view.form = {
-        id: "providers", mode: "add", flavor: "endpoint",
-        draft: {account: "other", kind: "openai_chat"},
-        presetLocked: false, anchor: "", error: "",
+        id: "providers", mode: "add", flavor: "custom",
+        draft: {}, presetLocked: false, anchor: "", error: "",
       };
       view.detail = "";
       paint();
+      root.querySelector('[data-form="providers"] select[data-key="account"]')?.focus();
     }
 
     function connectRow(row) {
@@ -1204,19 +1325,17 @@
       applyButton.addEventListener("click", () => apply());
     }
 
-    function paintProvider(main, pageId) {
-      const pages = view.data.provider_pages;
-      const page = pageId === "provider-keys" ? pages.keys
-        : pageId === "provider-endpoints" ? pages.endpoints
-        : pageId === "provider-local" ? pages["local"]
-        : pages.accounts;
+    function paintProvider(main) {
+      const page = view.data.provider_pages.accounts;
       main.append(crumbBar(page.crumb));
       main.append(element("h2", "", page.title));
       main.append(element("p", "set-hint", page.help));
       if (page.api_key_link) {
         const link = element("button", "settings-text-link", page.api_key_link);
         link.type = "button";
-        link.addEventListener("click", () => { view.section = "provider-keys"; paint(); });
+        // One place holds keys. This link goes there instead of opening a second
+        // page that lists the same credentials under another name.
+        link.addEventListener("click", () => { view.section = "credentials"; paint(); });
         main.append(link);
       }
       if (page.local_row) {
@@ -1233,40 +1352,136 @@
       const available = page.available || page.records || [];
       if (page.available) main.append(element("h3", "", "Connect another provider"));
       for (const row of available) main.append(connectRow(row));
-      if (pageId === "provider-local" || pageId === "provider-endpoints") {
-        const add = element("button", "settings-add", "Add endpoint");
-        add.type = "button";
-        add.addEventListener("click", () => openAdd());
-        main.append(add);
+    }
+
+    function modelToggle(account, model, checked, kind) {
+      const box = document.createElement("input");
+      box.type = kind === "default" ? "radio" : "checkbox";
+      if (kind === "default") box.name = "settings-default-model";
+      box.checked = checked;
+      box.setAttribute("aria-label", (kind === "default"
+        ? "Make " + model.id + " the default chat model"
+        : "List " + model.id + " in the chat model picker"));
+      box.addEventListener("change", () => setModelState(account.id, model, kind));
+      return box;
+    }
+
+    // Every model an account offers is a row with its own two switches. The
+    // name is not a button: a click on a name must never change what answers
+    // chat. Only the Default column does that, and it says so.
+    function modelTable(account) {
+      const table = element("div", "settings-model-table");
+      const head = element("div", "settings-model-head");
+      head.append(element("span", "settings-model-id", "Model"),
+                  element("span", "settings-model-col", "In chat"),
+                  element("span", "settings-model-col", "Default"));
+      table.append(head);
+      for (const model of account.models) {
+        const row = element("div", "settings-model-row");
+        const name = element("code", "settings-model-id", model.id);
+        if (model.role === "main") name.append(element("span", "settings-model-current", "default"));
+        row.append(name,
+                   modelToggle(account, model, model.chat === true, "chat"),
+                   modelToggle(account, model, model.role === "main", "default"));
+        table.append(row);
       }
-      if (pageId === "provider-keys") {
-        const add = element("button", "settings-add", "+ Add");
-        add.type = "button";
-        add.addEventListener("click", () => {
-          view.form = {id: "credentials", mode: "add", draft: {}};
-          view.section = "credentials";
-          paint();
-        });
-        main.append(add);
+      return table;
+    }
+
+    function accountModelBlock(account) {
+      const block = element("div", "settings-account");
+      const head = element("div", "settings-account-head");
+      head.append(element("strong", "settings-card-name", account.label));
+      if (account.status) head.append(element("span", "settings-tag", account.status));
+      block.append(head);
+      if (account.error) {
+        block.append(element("p", "settings-field-error", account.error));
+        return block;
       }
-      if (view.form?.mode === "add" && view.form.id === "providers" && !view.form.anchor
-          && (pageId === "provider-endpoints" || pageId === "provider-local")
-          && view.form.flavor === "endpoint") {
-        const list = fieldById("providers");
-        if (list) main.append(renderForm(list, list.blank || [], ""));
+      if (!account.models.length) {
+        block.append(element("p", "set-hint", "This account reported no models."));
+        return block;
       }
+      block.append(modelTable(account));
+      return block;
+    }
+
+    function renderAccountRows(host) {
+      const accounts = (view.accounts && view.accounts.accounts) || [];
+      const title = element("h3", "", "Connected accounts");
+      if (!accounts.length) {
+        host.replaceChildren(title, element("p", "set-hint", "No sign-in account is connected. Connect one on Accounts."));
+        return;
+      }
+      const nodes = [title];
+      for (const account of accounts) nodes.push(accountModelBlock(account));
+      host.replaceChildren(...nodes);
+    }
+
+    // The page cannot know an account's models without asking the service. It
+    // renders the accounts it already knows, then fills the model rows, and a
+    // failed read stays on that account's block.
+    function paintAccountModels(main) {
+      const host = element("div", "settings-accounts");
+      main.append(host);
+      if (view.accounts) {
+        renderAccountRows(host);
+        return;
+      }
+      host.append(element("p", "set-hint", "Reading models from connected accounts…"));
+      api("/api/models/accounts", "GET").then((data) => {
+        view.accounts = data;
+        renderAccountRows(host);
+      }).catch((error) => {
+        host.replaceChildren(element("p", "settings-field-error", error.message || "Could not read connected accounts."));
+      });
+    }
+
+    async function setModelState(accountId, model, kind) {
+      const body = {account: accountId, model: model.id};
+      if (kind === "chat") body.chat = model.chat !== true;
+      if (kind === "default") body.default = true;
+      status.textContent = "Saving " + model.id + "…";
+      try {
+        const result = await api("/api/models/state", "POST", body);
+        applyResult(result);
+        status.textContent = model.id + " saved.";
+      } catch (error) {
+        // The switch did not land, so the page must show the saved state again.
+        view.accounts = null;
+        paint();
+        status.textContent = error.message || "Not saved";
+      }
+    }
+
+    function paintAccountModels(main) {
+      const host = element("div", "settings-accounts");
+      main.append(host);
+      if (view.accounts) {
+        renderAccountRows(host);
+        return;
+      }
+      host.append(element("p", "set-hint", "Reading models from connected accounts…"));
+      api("/api/models/accounts", "GET").then((data) => {
+        view.accounts = data;
+        renderAccountRows(host);
+      }).catch((error) => {
+        host.replaceChildren(element("p", "settings-field-error", error.message || "Could not read connected accounts."));
+      });
     }
 
     function paintModels(main) {
       main.append(crumbBar(["Settings", "Models"]));
       main.append(element("h2", "", "Models"));
+      const section = (view.data.sections || []).find((item) => item.id === "models");
+      if (section?.start_hint) main.append(element("p", "set-hint", section.start_hint));
       const mainRole = fieldById("roles.main");
       const failover = fieldById("roles.failover");
       if (mainRole) main.append(renderScalar(mainRole, "Required"));
       if (failover) main.append(renderScalar(failover, "Optional"));
+      paintAccountModels(main);
       const models = fieldById("providers");
       if (models) main.append(renderRecords(models, {hint: false}));
-      const section = (view.data.sections || []).find((item) => item.id === "models");
       const advanced = (section?.fields || []).filter((field) => field.tier === "advanced");
       if (advanced.length) {
         const fold = element("details", "settings-advanced");
@@ -1283,13 +1498,10 @@
       navigation.setAttribute("aria-label", "Settings sections");
       navigation.append(element("div", "settings-nav-label", "Required"));
       navigation.append(element("div", "settings-nav-label settings-nav-sub", "Providers"));
-      for (const item of [
-        ["provider-accounts", "Accounts"],
-        ["provider-keys", "API keys"],
-        ["provider-endpoints", "Endpoints"],
-      ]) navigation.append(navButton(item[0], item[1], "settings-nav-sub"));
+      navigation.append(navButton("provider-accounts", "Accounts", "settings-nav-sub"));
       navigation.append(navButton("models", "Models", "settings-nav-sub"));
-      const optional = new Set(["credentials", "identity", "voice", "appearance", "integrations", "hosts", "plugins"]);
+      navigation.append(navButton("credentials", "Saved credentials", "settings-nav-sub"));
+      const optional = new Set(["identity", "voice", "appearance", "goblin", "integrations", "hosts", "plugins"]);
       const advanced = new Set(["accounts", "systems", "computer", "permissions", "autonomy", "judge", "update"]);
       const labels = {credentials: "Saved credentials", accounts: "Service accounts"};
       navigation.append(element("div", "settings-nav-label", "Optional"));
@@ -1319,10 +1531,11 @@
       };
       addOption(sectionSelect, "all", "All settings");
       const groups = [
-        ["Required", [["provider-accounts", "Accounts"], ["provider-keys", "API keys"],
-                      ["provider-endpoints", "Endpoints"], ["models", "Models"]]],
-        ["Optional", [["credentials", "Saved credentials"], ["identity", "Identity"], ["voice", "Voice"],
-                      ["appearance", "Appearance"], ["integrations", "Integrations"], ["hosts", "Hosts"],
+        ["Required", [["provider-accounts", "Accounts"], ["models", "Models"],
+                      ["credentials", "Saved credentials"]]],
+        ["Optional", [["identity", "Identity"], ["voice", "Voice"],
+                      ["appearance", "Appearance"], ["goblin", "Goblin Mode"],
+                      ["integrations", "Integrations"], ["hosts", "Hosts"],
                       ["plugins", "Plugins"]]],
         ["Advanced", [["accounts", "Service accounts"], ["systems", "Systems"], ["computer", "Computer use"],
                       ["permissions", "Permissions"], ["autonomy", "Autonomy"],
@@ -1384,8 +1597,8 @@
         main.append(steps);
       } else if (view.data.setup) main.append(element("p", "settings-setup", view.data.setup));
       const page = view.section;
-      if (page === "provider-accounts" || page === "provider-keys" || page === "provider-endpoints" || page === "provider-local") {
-        paintProvider(main, page);
+      if (page === "provider-accounts") {
+        paintProvider(main);
       } else if (page === "models") {
         paintModels(main);
       } else if (page === "credentials") {
@@ -1451,13 +1664,28 @@
       const floor = element("section", "settings-block");
       floor.dataset.section = "floor";
       floor.hidden = page !== "floor";
+      floor.append(element("h2", "", "Floor definition"));
+      floor.append(element("p", "settings-start set-hint",
+        "What a floor wake says, and the rules that decide when one is worth sending. " +
+        "Each value below is saved to the floor definition file, not to config.toml."));
       const floorHost = element("div", "floor-editor");
       floor.append(floorHost);
-      root.append(floor);
+      // The editor belongs in the page body. As a sibling of the shell it
+      // rendered under an empty main column, which read as a broken page.
+      main.append(floor);
       if (window.TesseraFloor) window.TesseraFloor.mount(floorHost, {api, element, status});
       for (const button of navigation.querySelectorAll("button")) {
         button.setAttribute("aria-pressed", String(button.dataset.section === page));
       }
+    }
+
+    function appendGrouped(container, node, field, seen) {
+      const name = field.group || "";
+      if (name && name !== seen.last) {
+        container.append(element("h3", "settings-subhead", name));
+        seen.last = name;
+      }
+      container.append(node);
     }
 
     function sectionBlock(section) {
@@ -1467,15 +1695,21 @@
       if (section.start_hint) block.append(element("p", "settings-start set-hint", section.start_hint));
       const fields = section.fields || [];
       const advanced = fields.filter((field) => field.tier === "advanced");
+      const seen = {last: ""};
       for (const field of fields.filter((field) => field.tier !== "advanced")) {
-        block.append(field.type === "list-of-records" ? renderRecords(field) : renderScalar(field));
+        const node = field.type === "list-of-records" ? renderRecords(field) : renderScalar(field);
+        appendGrouped(block, node, field, seen);
       }
       if (advanced.length) {
         const fold = element("details", "settings-advanced");
         fold.open = advancedOpen.get(section.id) === true;
         fold.addEventListener("toggle", () => { advancedOpen.set(section.id, fold.open); });
         fold.append(element("summary", "", "Advanced (" + advanced.length + ")"));
-        for (const field of advanced) fold.append(field.type === "list-of-records" ? renderRecords(field) : renderScalar(field));
+        const seenAdvanced = {last: ""};
+        for (const field of advanced) {
+          const node = field.type === "list-of-records" ? renderRecords(field) : renderScalar(field);
+          appendGrouped(fold, node, field, seenAdvanced);
+        }
         block.append(fold);
       }
       return block;
@@ -1588,9 +1822,11 @@
         fileOnly.reachable + " top-level settings are on this page. The " + fileOnly.count +
         " below have no control here; each says why."));
       const fold = element("details", "settings-advanced");
-      fold.open = advancedOpen.get("file-only") === true;
+      // Open by default. The answer to "where do I change worker concurrency"
+      // is only useful when the list is on screen, not behind a summary line.
+      fold.open = advancedOpen.get("file-only") !== false;
       fold.addEventListener("toggle", () => { advancedOpen.set("file-only", fold.open); });
-      fold.append(element("summary", "", "Not on this page (" + fileOnly.count + ")"));
+      fold.append(element("summary", "", "Settings with no control on this page (" + fileOnly.count + ")"));
       const table = element("div", "settings-file-only-rows");
       const live = element("div", "file-only-live-tables");
       for (const row of fileOnly.rows) {
@@ -1724,6 +1960,8 @@
     async function load() {
       const data = await api("/api/settings");
       view.data = data;
+      // A sign-in or a refresh can change what an account serves.
+      view.accounts = null;
       view.form = null;
       view.confirm = "";
       if (!sectionChosen) {

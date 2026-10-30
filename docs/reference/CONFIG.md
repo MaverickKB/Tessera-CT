@@ -62,7 +62,7 @@ Default: `{}`. Entries live under `accounts.*`.
 | --- | --- | --- | --- |
 | `aethermind.url` | `""` | `TESSERA_AETHERMIND_URL` | Settings row |
 | `aethermind.auto_recall` | `true` | `TESSERA_AETHERMIND_AUTO_RECALL` | file-only: no Settings row — set this in config.toml |
-| `aethermind.endpoints` | `[]` | `TESSERA_AETHERMIND_ENDPOINTS` | Settings row |
+| `aethermind.endpoints` | `[]` | `TESSERA_AETHERMIND_ENDPOINTS` | file-only: no Settings row — set this in config.toml |
 | `aethermind.token_env` | `"AETHERMIND_TOKEN"` | — (credential selector; configure in TOML) | file-only: no Settings row — set this in config.toml |
 | `aethermind.project` | `""` | `TESSERA_AETHERMIND_PROJECT` | Settings row |
 | `aethermind.personal_project` | `""` | `TESSERA_AETHERMIND_PERSONAL_PROJECT` | file-only: no Settings row — set this in config.toml |
@@ -639,7 +639,7 @@ Default: `{}`. Entries live under `systems.*`.
 
 | Key | Default | Environment override | Availability |
 | --- | --- | --- | --- |
-| `tools.approval` | `"ask"` | `TESSERA_TOOLS_APPROVAL` | file-only: no Settings row — set this in config.toml |
+| `tools.approval` | `"ask"` | `TESSERA_TOOLS_APPROVAL` | Settings row |
 | `tools.yolo_switch` | `true` | `TESSERA_TOOLS_YOLO_SWITCH` | file-only: no Settings row — set this in config.toml |
 | `tools.approval_state_file` | `"state/approval.json"` | `TESSERA_TOOLS_APPROVAL_STATE_FILE` | file-only: no Settings row — set this in config.toml |
 | `tools.approval_classes` | `{"acting": ["mac_act", "desk_act", "shell", "write_file", "edit_file", "apply_patch", "move_path", "copy_path", "delete_path", "mkdir", "process", "remote_shell", "remote_write_file", "background_task", "computer_mouse", "computer_scroll", "computer_type", "computer_key", "computer_focus", "computer_click", "computer_perform_secondary_action", "computer_set_value", "computer_select_text", "computer_drag", "computer_press_key", "computer_type_text"], "memory-self": ["clock_heartbeat", "clock_journal_write", "*write_layer", "skill_write"]}` | `TESSERA_TOOLS_APPROVAL_CLASSES` | file-only: no Settings row — set this in config.toml |

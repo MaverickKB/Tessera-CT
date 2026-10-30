@@ -905,11 +905,12 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
 #page-settings .settings-model-field { align-items: stretch; }
 #page-settings .settings-main .record-list,
 #page-settings .settings-main .record-block {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  width: min(100%, 30rem);
-  max-width: 30rem;
+  width: 100%;
+  max-width: none;
   margin-left: 0;
 }
 #page-settings .settings-main .record-row {
@@ -957,46 +958,54 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
   .session-secondary.open button { min-height: 2.75rem; text-align: left; }
 }
 
-/* One Settings form layout: label above the control, one width, one left edge.
-   Shelf and other pages keep the older row grid. */
+/* One Settings form layout: label and control share a line on a desktop and
+   stack on a phone. A list spans every column of the block, because the block
+   is a grid for the shelf and a form trapped in the nav track is unreadable. */
 #settings-platform { display: none; }
 #page-settings .record-form,
 #page-settings .settings-form {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  align-self: stretch;
+  align-items: stretch;
   width: 100%;
-  max-width: 30rem;
-  margin-left: 0;
+  max-width: 48rem;
+  margin: 12px 0 4px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 16px;
-  margin: 16px 0 0;
+  padding: 16px 16px 12px;
   box-sizing: border-box;
 }
 #page-settings .set-row,
 #page-settings .settings-field {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 4px 12px;
   width: 100%;
-  max-width: 30rem;
-  margin: 0 0 16px;
+  max-width: none;
+  margin: 0 0 14px;
   padding: 0;
-  grid-template-columns: minmax(0, 30rem);
+}
+#page-settings .set-row:last-child,
+#page-settings .settings-field:last-child { margin-bottom: 0; }
+@media (min-width: 761px) {
+  #page-settings .set-row,
+  #page-settings .settings-field { grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr); align-items: center; }
+  #page-settings .settings-check { grid-template-columns: minmax(0, 1fr); }
 }
 #page-settings .set-label,
 #page-settings .settings-field-label { text-align: left; }
 #page-settings .set-control,
 #page-settings .settings-field-control {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   width: 100%;
-  max-width: 30rem;
+  max-width: none;
+  min-width: 0;
 }
 #page-settings .set-control input[type="text"],
 #page-settings .set-control input[type="password"],
@@ -1011,10 +1020,20 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
 #page-settings .record-form select,
 #page-settings .record-form textarea {
   width: 100%;
-  max-width: 30rem;
+  max-width: 34rem;
   min-width: 0;
   box-sizing: border-box;
 }
+/* A hint or a fact sits on its own line under the control, never in the label
+   column where it would squeeze the label to one word per line. */
+#page-settings .set-row > .set-hint,
+#page-settings .set-row > .set-hint-fold,
+#page-settings .set-row > .set-fact,
+#page-settings .settings-field > .set-hint,
+#page-settings .settings-field > .set-hint-fold,
+#page-settings .settings-field > .set-fact,
+#page-settings .set-row > textarea { grid-column: 1 / -1; }
+#page-settings .set-row > textarea { max-width: 34rem; }
 #page-settings .settings-check-line {
   display: flex;
   flex-direction: row;
@@ -1032,8 +1051,8 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
   justify-content: flex-end;
   gap: 8px;
   width: 100%;
-  max-width: 30rem;
-  margin: 8px 0 0;
+  max-width: none;
+  margin: 12px 0 0;
   grid-column: auto;
   justify-self: stretch;
 }
@@ -1054,12 +1073,26 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
 #page-settings .settings-list-aside { display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; gap: 8px; }
 #page-settings .settings-card-name { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
 #page-settings .settings-main h3 { margin: 16px 0 8px; }
+#page-settings .settings-accounts { display: flex; flex-direction: column; gap: 18px; width: 100%; margin: 8px 0 4px; }
+#page-settings .settings-account { padding: 0; }
+#page-settings .settings-account-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+#page-settings .settings-model-table { display: flex; flex-direction: column; width: 100%; margin: 6px 0 2px; border-top: 1px solid var(--border); }
+#page-settings .settings-model-head,
+#page-settings .settings-model-row { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem 4.5rem; align-items: center; gap: 8px; padding: 5px 2px; border-bottom: 1px solid var(--border); }
+#page-settings .settings-model-head { font: 0.72rem/1.2 var(--font-ui); color: var(--muted); }
+#page-settings .settings-model-id { font: 0.8rem/1.3 var(--font-data); min-width: 0; overflow-wrap: anywhere; }
+#page-settings .settings-model-col { text-align: center; }
+#page-settings .settings-model-row input[type="checkbox"],
+#page-settings .settings-model-row input[type="radio"] { justify-self: center; margin: 0; width: auto; }
+#page-settings .settings-model-current { margin-left: 6px; font: 0.68rem/1 var(--font-ui); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; }
+#page-settings .mark-previews,
+#page-settings .skin-previews { grid-column: 1 / -1; }
 #page-settings .settings-check-line { min-width: 0; }
 #page-settings .settings-card-line { flex: none; overflow-wrap: anywhere; }
 #page-settings .settings-setup { padding-left: 1.2rem; }
 #page-settings .settings-setup-done { color: var(--ok); }
 #page-settings .settings-tier { margin-left: 0; }
-#page-settings .settings-advanced { width: 100%; max-width: 30rem; }
+#page-settings .settings-advanced { width: 100%; max-width: 48rem; }
 #page-settings .settings-label-line .set-hint-fold,
 #page-settings .settings-check-line .set-hint-fold,
 #page-settings .settings-label-line .set-hint-summary,
@@ -1077,7 +1110,7 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
   flex-wrap: nowrap;
   gap: 4px;
   width: 100%;
-  max-width: 30rem;
+  max-width: 34rem;
   margin-top: 4px;
 }
 #page-settings .set-model-choices {
@@ -1382,4 +1415,20 @@ button:enabled:focus-visible, select:focus-visible { box-shadow: 0 0 0 5px var(-
   .settings-section-label { display: block; grid-column: 1 / -1; font-size: 0.75rem; font-weight: 600; color: var(--muted); margin: 0 0 0.35rem 0.15rem; }
   .settings-section-select { display: block; width: 100%; grid-column: 1 / -1; padding: 0.65rem 0.75rem; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--foreground); font-size: 1rem; }
   .settings-search { width: 100%; }
+}
+
+/* Phone layout for Settings. These rules come last because the desktop rules
+   above them are more specific by position, and a media query earlier in the
+   file loses to a plain rule that follows it. */
+@media (max-width: 760px) {
+  #page-settings .settings-list-row { grid-template-columns: minmax(0, 1fr); row-gap: 6px; }
+  #page-settings .settings-list-aside { flex-wrap: wrap; justify-content: flex-start; }
+  #page-settings .settings-connect-row { flex-wrap: wrap; }
+  #page-settings .settings-check-line { flex-wrap: wrap; }
+  #page-settings .settings-card-name { flex: 1 1 100%; }
+  #page-settings .settings-model-head,
+  #page-settings .settings-model-row { grid-template-columns: minmax(0, 1fr) 3.5rem 3.5rem; }
+  /* The section picker is the way back. A second back control above it is one
+     more row of chrome on a phone. */
+  #page-settings .settings-back { display: none; }
 }

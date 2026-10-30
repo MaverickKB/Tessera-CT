@@ -57,25 +57,16 @@ def test_checked_in_json_matches_the_generated_map(tmp_path):
     assert checked_in['counts'] == generated['counts']
 
 
-def test_the_no_reader_field_is_genuinely_dead(tmp_path):
-    """The one NO-READER is the service_accounts container. The grep it rests on:
-    the page serves an empty records list with actions=[] and nothing else in
-    tessera/ or web/ reads a service_accounts value. If someone adds a consumer,
-    this test should be updated alongside the map.
+def test_no_catalog_field_is_left_without_a_reader(tmp_path):
+    """The page used to carry one placeholder container with no consumer.
+
+    That container became the real accounts registry, so the map has no dead
+    field left. A new dead field still fails: ``test_doctor_names_a_set_but_unread_field``
+    plants one and asserts the doctor names it.
     """
     entries = {entry['id']: entry for entry in mapping(tmp_path)['fields']}
     no_readers = [field_id for field_id, entry in entries.items() if entry['status'] == 'NO-READER']
-    assert no_readers == ['service_accounts'], f'unexpected NO-READER set: {no_readers}'
-    # Honest search: the only code sites naming service_accounts serve or
-    # validate the container itself; none reads a value out of it.
-    hits = []
-    for path in sorted(ROOT.glob('tessera/*.py')) + sorted(ROOT.glob('web/*.js')):
-        for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), start=1):
-            if 'service_accounts' in line:
-                hits.append(f'{path.relative_to(ROOT)}:{number}')
-    assert hits, 'the grep moved; update this test and the map together'
-    allowed = ('settings_model', 'settings_consumers', 'cli.py')
-    assert all(any(name in hit for name in allowed) for hit in hits), hits
+    assert no_readers == [], f'unexpected NO-READER set: {no_readers}'
 
 
 def _cited_lines(site):

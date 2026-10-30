@@ -157,25 +157,6 @@ def pytest_unconfigure(config):
 # into tmp_path. Isolation is per test, so a test that wants one of them
 # sets it with monkeypatch.
 @pytest.fixture(autouse=True)
-def _settings_probe_skips_remote_hosts(monkeypatch):
-    """Settings tests inject the model-list probe. Production does not look at pytest.
-
-    A non-loopback probe would be recorded as external networking even when the
-    caller catches the error. Loopback probes still hit the real function.
-    """
-    from tessera import settings_model
-    real = settings_model._probe_models
-
-    def probe(url):
-        host = (urlsplit(url or '').hostname or '').strip('[]').lower()
-        if host not in ('localhost', '127.0.0.1', '::1'):
-            return 'Unreachable', ''
-        return real(url)
-
-    monkeypatch.setattr(settings_model, '_probe_models', probe)
-
-
-@pytest.fixture(autouse=True)
 def _clear_aethermind_choice_cache():
     """choose_memory must not keep another test's URL for the life of the process."""
     from tessera.bundled_engine import clear_memory_choices

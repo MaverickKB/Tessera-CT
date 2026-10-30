@@ -134,7 +134,8 @@ def test_no_model_dropdown_asks_for_a_credential(tmp_path):
     enums(body, found)
     named = [field['id'] for field in found
              if any(option.get('value') == 'slot' for option in field.get('options') or [])]
-    assert named and all(item.startswith('accounts.') for item in named)
+    allowed = ('accounts.', 'jev.credential_ref', 'computer_use.jev.credential_ref')
+    assert named and all(item.startswith(allowed) for item in named)
 
 
 def _serve(tmp_path, text=''):
@@ -173,33 +174,6 @@ def test_a_signed_in_provider_can_add_a_model_and_shows_the_sign_in(tmp_path):
     assert 'xai-oauth' in text
 
 
-def test_a_custom_endpoint_keeps_its_env_var_name_on_the_next_model(tmp_path, monkeypatch):
-    monkeypatch.setenv('DEMO_XAI_KEY', 'env-secret-value')
-    server, thread = _serve(tmp_path)
-    try:
-        added = call(server, 'POST', '/api/settings', {'id': 'providers', 'action': 'add', 'record': {
-            'name': 'remote', 'account': 'other', 'kind': 'openai_chat',
-            'base_url': 'https://example.invalid/v1', 'model': 'one',
-            'api_key_env': 'DEMO_XAI_KEY', 'chat': True}})
-        assert added[0] == 200, added[1]
-        code, body = call(server, 'GET', '/api/settings')
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
-    assert code == 200
-    card = next(row for row in body['provider_pages']['endpoints']['records']
-                if row.get('base_url') == 'https://example.invalid/v1')
-    assert card['name'] == 'remote'
-    assert card['pill'] == 'Unreachable'
-    assert card['preset']['api_key_env'] == 'DEMO_XAI_KEY'
-    assert 'env-secret-value' not in json.dumps(body)
-    providers = next(field for section in body['sections'] if section['id'] == 'providers'
-                     for field in section['fields'] if field['id'] == 'providers')
-    row = next(record for record in providers['records'] if record['name'] == 'remote')
-    assert row['source_kind'] == 'env'
-
-
 def test_where_stored_matches_resolve_when_env_and_keychain_are_both_set(tmp_path, monkeypatch):
     monkeypatch.setenv('BOTH_KEY', 'env-secret-value')
     config = _config(tmp_path)
@@ -211,11 +185,9 @@ def test_where_stored_matches_resolve_when_env_and_keychain_are_both_set(tmp_pat
     creds = next(field for section in body['sections'] if section['id'] == 'credentials'
                  for field in section['fields'] if field['id'] == 'credentials')
     record = next(row for row in creds['records'] if row['name'] == 'both')
-    key = next(row for row in body['provider_pages']['keys']['records'] if row['name'] == 'both')
     assert record['source_kind'] == resolved.source
-    assert key['source_kind'] == resolved.source
-    assert 'BOTH_KEY' in record['stored'] and 'BOTH_KEY' in key['stored']
-    assert 'Keychain' not in record['stored'] and 'Keychain' not in key['stored']
+    assert 'BOTH_KEY' in record['stored']
+    assert 'Keychain' not in record['stored']
     blob = json.dumps(body)
     assert 'env-secret-value' not in blob
     assert resolved.value not in blob
@@ -341,9 +313,7 @@ def test_api_key_env_rejects_a_pasted_secret_and_clears(tmp_path):
 def _credential_row(body, name):
     creds = next(field for section in body['sections'] if section['id'] == 'credentials'
                  for field in section['fields'] if field['id'] == 'credentials')
-    record = next(row for row in creds['records'] if row['name'] == name)
-    key = next(row for row in body['provider_pages']['keys']['records'] if row['name'] == name)
-    return record, key
+    return next(row for row in creds['records'] if row['name'] == name)
 
 
 def test_keychain_status_checks_the_item_without_reading_it(tmp_path):
@@ -351,19 +321,17 @@ def test_keychain_status_checks_the_item_without_reading_it(tmp_path):
     config.credentials['slot'] = CredentialReference(keychain_service='svc', keychain_account='acct')
     secret = 'synthetic-os-secret'
     empty = MemoryKeychain()
-    missing_record, missing_key = _credential_row(project(config, {}, keychain=empty), 'slot')
+    missing_record = _credential_row(project(config, {}, keychain=empty), 'slot')
     assert missing_record['pill'] == 'Keychain item missing'
     assert missing_record['status'] == 'Keychain item missing'
-    assert missing_key['pill'] == 'Keychain item missing'
     assert missing_record['pill'] != 'Configured'
     held = MemoryKeychain()
     held.put('svc', 'acct', secret)
-    found_record, found_key = _credential_row(project(config, {}, keychain=held), 'slot')
+    found_record = _credential_row(project(config, {}, keychain=held), 'slot')
     assert found_record['pill'] == 'Keychain item found'
-    assert found_key['line'] == 'Keychain item: slot'
-    assert found_key['pill'] == 'Keychain item found'
-    assert found_key['added'] == ''
-    assert 'Not recorded' not in json.dumps(found_key)
+    assert found_record['line'] == 'Keychain item: slot'
+    assert found_record['added'] == ''
+    assert 'Not recorded' not in json.dumps(found_record)
     blob = json.dumps(project(config, {}, keychain=held))
     assert secret not in blob
     assert held.items[('svc', 'acct')] == secret
@@ -373,97 +341,37 @@ def test_keychain_status_checks_the_item_without_reading_it(tmp_path):
         which=lambda name: calls.append(name) or name,
         run=lambda *_args, **_kwargs: calls.append('run'),
     )
-    unavailable_record, unavailable_key = _credential_row(project(config, {}, keychain=store), 'slot')
+    unavailable_record = _credential_row(project(config, {}, keychain=store), 'slot')
     assert unavailable_record['pill'] == 'Keychain not available on this system'
-    assert unavailable_key['pill'] == 'Keychain not available on this system'
     assert unavailable_record['status'] == 'Keychain not available on this system'
     assert calls == []
     assert 'Configured' not in unavailable_record['pill']
 
 
-def test_two_named_endpoints_at_one_address_keep_their_own_credential(tmp_path, monkeypatch):
-    monkeypatch.delenv('OPENAI_API_KEY', raising=False)
+
+def test_a_sign_in_credential_reports_its_grant_not_a_stored_value(tmp_path, monkeypatch):
+    """Saved credentials and Accounts must not disagree about the same account."""
+    from tessera import settings_model
+
     config = _config(tmp_path)
-    url = 'http://127.0.0.1:9/v1'
-    config.backends['local-test'] = BackendConfig(
-        name='local-test', base_url=url, model='llama-3.1-8b-demo', provider_kind='openai_chat')
-    config.backends['env-check'] = BackendConfig(
-        name='env-check', base_url=url, model='llama-3.1-8b-demo', provider_kind='openai_chat',
-        api_key_env='OPENAI_API_KEY')
-    rows = {row['name']: row for row in project(config, {})['provider_pages']['endpoints']['records']}
-    assert set(rows) >= {'local-test', 'env-check'}
-    local_line = rows['local-test']['line']
-    env_line = rows['env-check']['line']
-    assert 'No credential' in local_line
-    assert 'OPENAI_API_KEY' not in local_line
-    assert 'Credential unavailable' not in local_line
-    assert 'Env var OPENAI_API_KEY is not set' in env_line
-    assert 'No credential' not in env_line
-    assert 'Credential unavailable' not in env_line
-    assert env_line.count('OPENAI_API_KEY') == 1
-    monkeypatch.setenv('OPENAI_API_KEY', 'present')
-    set_rows = {row['name']: row for row in project(config, {})['provider_pages']['endpoints']['records']}
-    set_line = set_rows['env-check']['line']
-    assert 'Env var OPENAI_API_KEY' in set_line
-    assert 'is not set' not in set_line
-    assert 'No credential' not in set_line
-    assert 'present' not in set_line
+    config.credentials['xai-oauth'] = CredentialReference(oauth='xai')
 
+    expired = {'state': 'expired', 'status': 'Access expired. Refresh or sign in again.',
+               'has_refresh': True, 'expires_at': 0}
+    monkeypatch.setattr(settings_model, 'grant_report', lambda home, provider: expired)
+    creds = next(field for section in settings_model.project(config, {})['sections']
+                 if section['id'] == 'credentials' for field in section['fields']
+                 if field['id'] == 'credentials')
+    row = next(item for item in creds['records'] if item['name'] == 'xai-oauth')
+    assert row['pill'] == 'Sign-in expired'
+    assert row['status'] == 'Access expired. Refresh or sign in again.'
+    assert row['line'] == 'Sign-in: xai-oauth'
 
-def test_endpoint_pill_follows_a_real_model_list_probe(tmp_path):
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(204)
-            self.end_headers()
-
-        def log_message(self, *_args):
-            pass
-
-    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        config = _config(tmp_path)
-        port = server.server_port
-        config.backends['up'] = BackendConfig(name='up', base_url='http://127.0.0.1:%d/v1' % port, model='m')
-        config.backends['down'] = BackendConfig(name='down', base_url='http://127.0.0.1:9/v1', model='m')
-        config.backends['cli'] = BackendConfig(
-            name='cli', provider_kind='cli_worker', model='m',
-            extra={'cli': {'vendor': 'grok', 'command': 'grok', 'cwd': 'workers'}})
-        rows = {row['name']: row for row in project(config, {})['provider_pages']['endpoints']['records']}
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
-    assert rows['up']['pill'] == 'Connected'
-    assert rows['down']['pill'] == 'Unreachable'
-    assert rows['grok CLI']['pill'] == 'Saved'
-
-
-def test_endpoint_pill_labels_a_rejected_key(tmp_path):
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(401)
-            self.end_headers()
-
-        def log_message(self, *_args):
-            pass
-
-    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        config = _config(tmp_path)
-        config.backends['locked'] = BackendConfig(
-            name='locked', base_url='http://127.0.0.1:%d/v1' % server.server_port, model='llama-3.1-8b-demo')
-        body = project(config, {})
-        rows = {row['name']: row for row in body['provider_pages']['endpoints']['records']}
-        models = next(field for section in body['sections'] if section['id'] == 'providers'
-                      for field in section['fields'] if field['id'] == 'providers')
-        listed = next(row for row in models['records'] if row['name'] == 'locked')
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
-    assert rows['locked']['pill'] == 'Reachable, key rejected'
-    assert listed['title'] == 'llama-3.1-8b-demo'
+    current = {'state': 'current', 'status': 'Signed in until 2026-11-07',
+               'has_refresh': True, 'expires_at': 0}
+    monkeypatch.setattr(settings_model, 'grant_report', lambda home, provider: current)
+    creds = next(field for section in settings_model.project(config, {})['sections']
+                 if section['id'] == 'credentials' for field in section['fields']
+                 if field['id'] == 'credentials')
+    row = next(item for item in creds['records'] if item['name'] == 'xai-oauth')
+    assert row['pill'] == 'Connected'

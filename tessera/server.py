@@ -664,6 +664,24 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 raise ApiError(405, 'Method not allowed')
             return
+        if path == '/api/models/accounts' and method == 'GET':
+            # Every connected account and what it can serve. A discovery failure
+            # is reported on its own row, so one dead provider does not hide the
+            # models of the others.
+            from .account_models import account_rows
+            self._json(200, {'accounts': account_rows(manager.config)})
+            return
+        if path == '/api/models/state' and method == 'POST':
+            body = self._body(('account', 'model', 'chat', 'default'), ('account', 'model'))
+            chat = body.get('chat')
+            make_default = body.get('default')
+            if chat is not None and not isinstance(chat, bool):
+                raise ApiError(400, 'chat must be true or false')
+            if make_default is not None and not isinstance(make_default, bool):
+                raise ApiError(400, 'default must be true or false')
+            self._json(200, manager.settings.set_model_state(
+                body['account'], body['model'], chat=chat, make_default=make_default))
+            return
         if path == '/api/models/discover':
             # Two questions, one route: a saved backend (name) or an endpoint being
             # typed into the Add-model form (base_url + kind). Nothing is written.

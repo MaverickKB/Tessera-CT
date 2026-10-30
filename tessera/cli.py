@@ -155,9 +155,9 @@ def _unread_settings(config, approval):
     mapping = settings_consumers.annotate_counts(settings_consumers.build_map(config, approval))
     findings = []
     for field_id in settings_consumers.unread_set_fields(mapping):
-        # Record-container placeholders (service_accounts) carry no config path;
-        # they are page furniture, not a set value. A scalar NO-READER field is
-        # compared against the config's own attributes, including nested paths.
+        # A record container with no config path is page furniture, not a set
+        # value. A scalar NO-READER field is compared against the config's own
+        # attributes, including nested paths.
         target = config
         known = True
         for part in field_id.split('.'):

@@ -60,7 +60,9 @@ def test_provider_failure_kind_survives_session_close(tmp_path, monkeypatch, fai
     errors = [event['data'] for event in events if event['event'] == 'error']
     assert len(errors) == 1
     assert {key: errors[0][key] for key in expected} == expected
-    assert set(errors[0]) == {'turn_id', 'error', 'at', *expected}
+    # A provider's own error body is one extra, redacted diagnostic. Nothing
+    # else may appear on the event.
+    assert set(errors[0]) - {'error_detail'} == {'turn_id', 'error', 'at', *expected}
     assert errors[0]['turn_id'] == turn
     assert events[-1]['event'] == 'turn_end' and events[-1]['data']['success'] is False
     persisted = ''.join(p.read_text() for p in root.rglob('*.jsonl'))

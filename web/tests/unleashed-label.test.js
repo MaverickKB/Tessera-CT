@@ -216,13 +216,12 @@ test("Settings lists both icon sets and writes the chosen one", async () => {
   assert.ok(root.textContent.includes("Icon and logo"));
   assert.ok(root.textContent.includes("Tessera"));
   assert.ok(root.textContent.includes("Gremlin"));
-  const select = root.querySelector('[data-key="mark"]');
-  assert.equal(select.tag, "select");
-  assert.equal(select.value, "cairn");
+  // The previews are the control; there is no second select listing the same two.
+  assert.equal(root.querySelector('[data-key="mark"]'), null);
   const previews = root.querySelectorAll(".mark-preview");
   assert.equal(previews.length, 2);
-  select.value = "gremlin";
-  await select.fire("change");
+  const gremlin = previews.find((button) => button.dataset.mark === "gremlin");
+  await gremlin.fire("click");
   assert.equal(writes.at(-1).id, "ui.mark");
   assert.equal(writes.at(-1).value, "gremlin");
   assert.equal(appearances.some((patch) => patch.mark === "gremlin"), true);
