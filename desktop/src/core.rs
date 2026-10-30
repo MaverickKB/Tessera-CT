@@ -205,8 +205,28 @@ impl Core {
 
     fn command(settings: &Settings, home: Option<&str>, env: &std::collections::HashMap<String, String>) -> Command {
         let mut command = Command::new(settings.python());
+        command.envs(env);
         if let Some(home) = home { command.env("TESSERA_HOME", home); }
         command.env("PATH", Core::spawn_path(settings, env));
+        // AppRun prepares Python variables for interpreters bundled inside an
+        // AppImage. Our interpreter lives outside it (usually in a venv); those
+        // variables otherwise replace its stdlib and prevent even encodings from
+        // importing. Remove only AppImage paths, retaining operator additions.
+        if let Some(appdir) = env.get("APPDIR").filter(|path| !path.is_empty()) {
+            let appdir = std::path::Path::new(appdir);
+            if env.get("PYTHONHOME").is_some_and(|path| std::path::Path::new(path).starts_with(appdir)) {
+                command.env_remove("PYTHONHOME");
+            }
+            if let Some(paths) = env.get("PYTHONPATH") {
+                let retained: Vec<_> = std::env::split_paths(paths)
+                    .filter(|path| !path.starts_with(appdir)).collect();
+                if retained.is_empty() {
+                    command.env_remove("PYTHONPATH");
+                } else if let Ok(paths) = std::env::join_paths(retained) {
+                    command.env("PYTHONPATH", paths);
+                }
+            }
+        }
         command
     }
 
@@ -515,6 +535,42 @@ mod tests {
         let mut reply = String::new();
         stream.read_to_string(&mut reply).unwrap();
         reply.split_whitespace().nth(1).unwrap().parse().unwrap()
+    }
+
+    #[test]
+    fn appimage_python_paths_do_not_replace_the_selected_external_interpreter() {
+        let mut settings = Settings::default();
+        settings.python = settings.python().to_string_lossy().into_owned();
+        let appdir = std::env::temp_dir().join("tessera-appimage-path-test");
+        let operator = std::env::temp_dir().join("tessera-operator-python-module-path");
+        let injected = appdir.join("usr/share/pyshared");
+        let mut env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        env.insert("APPDIR".into(), appdir.to_string_lossy().into_owned());
+        env.insert("PYTHONHOME".into(), appdir.join("usr").to_string_lossy().into_owned());
+        env.insert("PYTHONPATH".into(), std::env::join_paths([&injected, &operator]).unwrap().to_string_lossy().into_owned());
+        let output = Core::command(&settings, None, &env)
+            .args(["-c", "import encodings, json, os, ssl, sys; print(json.dumps({'executable':sys.executable, 'home':os.environ.get('PYTHONHOME'), 'paths':os.environ.get('PYTHONPATH')}))"])
+            .output().expect("selected Python starts");
+        assert!(output.status.success(), "selected interpreter cannot import its stdlib: {}",
+                String::from_utf8_lossy(&output.stderr));
+        let info: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(info["home"].is_null(), "the AppImage Python home is not our venv's stdlib");
+        assert_eq!(info["paths"].as_str(), operator.to_str(), "operator module paths remain available");
+        assert_eq!(std::path::Path::new(info["executable"].as_str().unwrap()).canonicalize().unwrap(),
+                   settings.python().canonicalize().unwrap(), "the selected interpreter must be used");
+    }
+
+    #[test]
+    fn appimage_cleanup_preserves_an_external_operator_python_home() {
+        let settings = Settings::default();
+        let appdir = std::env::temp_dir().join("tessera-appimage-path-test");
+        let home = std::env::temp_dir().join("operator-python-home");
+        let mut env = std::collections::HashMap::new();
+        env.insert("APPDIR".into(), appdir.to_string_lossy().into_owned());
+        env.insert("PYTHONHOME".into(), home.to_string_lossy().into_owned());
+        let command = Core::command(&settings, None, &env);
+        assert_eq!(command.get_envs().find(|(key, _)| *key == std::ffi::OsStr::new("PYTHONHOME"))
+                   .unwrap().1, Some(home.as_os_str()));
     }
 
     #[test]
