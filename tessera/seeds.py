@@ -93,14 +93,50 @@ def shelf_path(config):
     return Path(configured).expanduser() if configured else home / SKILL_DIR
 
 
+def personal_store_path(config):
+    """The configured personal store, or None when the install names none."""
+    memory = getattr(config, 'aethermind', None)
+    configured = str(getattr(memory, 'personal_project', '') or '').strip()
+    if not configured:
+        return None
+    home = Path(getattr(config, 'home', '') or '~').expanduser()
+    return Path(resolve_store_path(configured, home))
+
+
 def ensure(config):
     """Write the pack into the store a session addresses. Never returns empty.
 
     Idempotent by hash, so this is safe on every engine start. Raises
     SeedUnavailable when the pack or the bundled engine is absent: a caller that
     cannot seed must not go on to serve a memoryless session.
+
+    A configured personal store is also created, empty. It holds no seeds by
+    design, but a memory tool pointed at a directory that does not exist answers
+    `AUTO_INIT_BLOCKED`, which reads as a broken install rather than as an
+    install with no personal history yet.
     """
-    return install(store_path(config), skills_dir=shelf_path(config))
+    result = install(store_path(config), skills_dir=shelf_path(config))
+    _create_empty_store(personal_store_path(config), result)
+    return result
+
+
+def _create_empty_store(store_root, result):
+    """Create a store with no layers, or leave an existing one alone."""
+    if store_root is None or result.get('unavailable'):
+        return
+    if (Path(store_root) / '.aethermind').exists():
+        return
+    lib_dir = engine_lib_dir()
+    if lib_dir is None:
+        return
+    try:
+        # The engine writes store metadata for create=True and nothing else.
+        _aethermind(store_root, lib_dir)
+    except Exception:
+        # A store that cannot be created is reported where it is read; it must
+        # not fail the boot of the store that holds the rules.
+        return
+    result.setdefault('stores_created', []).append(str(store_root))
 
 
 def pack_path():

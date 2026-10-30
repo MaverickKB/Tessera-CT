@@ -116,6 +116,26 @@ def test_ensure_writes_the_pack_into_the_configured_store(tmp_path):
     assert (tmp_path / 'skills' / 'first-contact' / 'SKILL.md').is_file()
 
 
+def test_a_configured_personal_store_is_created_empty(tmp_path):
+    """A missing personal store reads as a broken install, so create it.
+
+    The personal store holds no seeds by design. Before this, every read against
+    it answered AUTO_INIT_BLOCKED, which the model reported as an empty memory.
+    """
+    config = _config(tmp_path, project=str(tmp_path / 'store'))
+    config.aethermind.personal_project = str(tmp_path / 'personal')
+    result = seed_pack.ensure(config)
+    personal = tmp_path / 'personal' / '.aethermind'
+    assert personal.is_dir(), 'the configured personal store was not created'
+    # Creating a store writes its metadata. The engine adds layers.aem with the
+    # first write, so an empty store is a real store with no layer file.
+    assert (personal / 'project.json').is_file()
+    assert str(tmp_path / 'personal') in result.get('stores_created', [])
+
+    again = seed_pack.ensure(config)
+    assert str(tmp_path / 'personal') not in again.get('stores_created', [])
+
+
 def test_a_second_boot_adds_nothing_and_keeps_an_operator_rule(tmp_path):
     """The pack is a floor: a rerun skips its own bodies and the operator's."""
     config = _config(tmp_path)
