@@ -14,12 +14,13 @@ mod config;
 mod core;
 mod menu;
 mod server;
+mod supervisor;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::webview::PageLoadEvent;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 /// Tells the page which operating system this window is, and whether this
 /// process owns the core as a child or through a system service.
@@ -78,7 +79,17 @@ fn main() {
     let reported = Arc::new(Mutex::new(false));
     let stopping = Arc::new(AtomicBool::new(false));
 
+    // The workspace page gets real Start server and Stop server controls on
+    // every platform. macOS can hand the core to launchd; elsewhere this app is
+    // already the supervisor, so it exposes that supervisor the same way.
+    let supervisor = supervisor::Supervisor { core: core.clone(), settings: settings.clone() };
     let app = tauri::Builder::default()
+        .manage(supervisor)
+        .manage(origin.clone())
+        .invoke_handler(tauri::generate_handler![
+            supervisor::supervisor_status,
+            supervisor::supervisor_change
+        ])
         .setup({
             let settings = settings.clone();
             let origin = origin.clone();
@@ -89,11 +100,25 @@ fn main() {
                 let handle = app.handle().clone();
                 app.set_menu(menu::build(app.handle(), &settings.title)?)?;
                 app.on_menu_event(|app, event| menu::handle(app, event.id().as_ref()));
-                let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(origin.clone()))
+                let permission = tauri::ipc::CapabilityBuilder::new("workspace-server")
+                    .window("main")
+                    .local(false)
+                    .remote(format!("{}/*", origin.origin().ascii_serialization()))
+                    .permission("server-controls");
+                app.add_capability(permission)?;
+                // The window opens the address the operator configured, fragment included,
+                // so a configured `#view=settings` lands on Settings. The core is
+                // still addressed without it.
+                let window_url = url::Url::parse(&settings.attach_url)
+                    .ok()
+                    .filter(|parsed| parsed.fragment().is_some())
+                    .unwrap_or_else(|| origin.clone());
+                let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(window_url))
                     .title(&settings.title)
                     // Runs before the page. A missing WebKit handler must not become a red banner.
                     .initialization_script(include_str!("../../web/shell-errors.js"))
                     .initialization_script(shell_banner("child"))
+                    .initialization_script(supervisor::PAGE_BRIDGE)
                     .inner_size(settings.width, settings.height)
                     .min_inner_size(settings.min_width, settings.min_height)
                     // Navigation can never leave the core's own origin.
@@ -137,9 +162,11 @@ fn main() {
             loop {
                 std::thread::sleep(Duration::from_millis(500));
                 if stopping.load(Ordering::SeqCst) { break; }
-                let kept = core.lock().unwrap().kept();
-                if core.lock().unwrap().running() { failures = 0; continue; }
-                if !kept {
+                let mut core = core.lock().unwrap();
+                let action = core.monitor_action();
+                if action == core::MonitorAction::Idle { failures = 0; continue; }
+                if action == core::MonitorAction::Exit {
+                    drop(core);
                     eprintln!("{}", serde_json::json!({"event": "tessera-desktop.error", "error": "The local core stopped"}));
                     handle.exit(1);
                     break;
@@ -147,7 +174,7 @@ fn main() {
                 // A kept core is the app's to restart: the window stays open and the
                 // page's reconnect banner clears when the address answers again.
                 eprintln!("{}", serde_json::json!({"event": "tessera-desktop.core-restarting"}));
-                match core.lock().unwrap().respawn(&settings) {
+                match core.respawn(&settings) {
                     Ok(()) => {
                         failures = 0;
                         eprintln!("{}", serde_json::json!({"event": "tessera-desktop.core-restarted"}));
@@ -155,6 +182,7 @@ fn main() {
                     Err(error) => {
                         failures += 1;
                         eprintln!("{}", serde_json::json!({"event": "tessera-desktop.core-respawn-failed", "error": error}));
+                        drop(core);
                         // Back off rather than hammer a home lock or a bad config.
                         std::thread::sleep(Duration::from_secs((failures.min(6) * 5) as u64));
                     }

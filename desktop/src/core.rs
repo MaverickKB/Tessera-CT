@@ -13,6 +13,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use url::Url;
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum MonitorAction { Idle, Restart, Exit }
+
 pub struct Core {
     pub origin: Url,
     pub pid: u32,
@@ -20,6 +23,8 @@ pub struct Core {
     stdin: Option<ChildStdin>,
     /// Never stop this core; it outlives the window.
     keep: bool,
+    /// An explicit Stop suppresses crash handling until Start succeeds.
+    paused: bool,
     /// Enough to spawn it again after it exits on its own.
     home: Option<String>,
     env: std::collections::HashMap<String, String>,
@@ -30,9 +35,13 @@ pub struct Core {
 /// Parse a configured core URL: http, loopback IP, explicit port, root path only.
 pub fn loopback_origin(raw: &str) -> Result<Url, String> {
     let url = Url::parse(raw).map_err(|_| "attach_url is not a URL".to_string())?;
+    // A fragment is allowed: it names the page the window opens on (for example
+    // `#view=settings`) and is never sent to the core, so it changes nothing
+    // about the address this app probes or supervises. Everything else about
+    // the URL still has to be a bare loopback origin.
     if url.scheme() != "http" || !is_loopback(url.host_str().unwrap_or("")) || url.port().is_none()
         || !url.username().is_empty() || url.password().is_some() || url.path() != "/"
-        || url.query().is_some() || url.fragment().is_some() {
+        || url.query().is_some() {
         return Err("attach_url must be an http loopback origin with a port".into());
     }
     Ok(url)
@@ -82,8 +91,21 @@ pub fn parse_ready(line: &str, pid: u32) -> Result<Url, String> {
     if obj.len() != expected.len() || !expected.iter().all(|k| obj.contains_key(*k)) {
         return Err("Invalid core startup reply".into());
     }
-    if obj["type"] != "tessera.ready" || obj["version"] != 1 || obj["transport"] != "loopback-http"
-        || obj["pid"].as_u64() != Some(pid as u64) {
+    if obj["type"] != "tessera.ready" || obj["version"] != 1 || obj["transport"] != "loopback-http" {
+        return Err("Core startup failed".into());
+    }
+    // The line arrived on the pipe of the child this app spawned, so the pipe is
+    // the provenance. The pid is a second check where the OS hands back the pid
+    // of the process that writes: on Windows a virtualenv's python.exe is a
+    // launcher, and the interpreter that answers is its child, so the numbers
+    // legitimately differ and the reported pid only has to be present.
+    let reported = obj["pid"].as_u64().unwrap_or(0);
+    #[cfg(unix)]
+    if reported != pid as u64 {
+        return Err("Core startup failed".into());
+    }
+    #[cfg(not(unix))]
+    if reported == 0 {
         return Err("Core startup failed".into());
     }
     let url = Url::parse(obj["url"].as_str().ok_or("Invalid core address")?).map_err(|_| "Invalid core address")?;
@@ -107,7 +129,7 @@ impl Core {
                 // Keep the home even when attaching: if this core dies while the
                 // window is open, the app respawns it here rather than going dark.
                 return Ok(Core { origin, pid: 0, child: None, stdin: None,
-                                 keep: settings.keep_core,
+                                 keep: settings.keep_core, paused: false,
                                  home: if home.is_empty() { None } else { Some(home) },
                                  env: env.clone(),
                                  auth: settings.auth_token.clone() });
@@ -126,6 +148,15 @@ impl Core {
 
     /// A kept core outlives this window; the app supervises the address, not one pid.
     pub fn kept(&self) -> bool { self.keep }
+
+    /// The window monitor and lifecycle tests use the same stop/crash decision.
+    pub fn monitor_action(&mut self) -> MonitorAction {
+        if self.paused || self.running() { MonitorAction::Idle }
+        else if self.keep { MonitorAction::Restart }
+        else { MonitorAction::Exit }
+    }
+
+    pub fn set_paused(&mut self, paused: bool) { self.paused = paused; }
 
     pub fn launch(settings: &Settings, env: &std::collections::HashMap<String, String>) -> Result<Core, String> {
         Core::launch_with_home(settings, None, env)
@@ -200,7 +231,7 @@ impl Core {
             let _ = std::io::copy(&mut rest, &mut std::io::sink());
         });
         let mut core = Core { origin: Url::parse("http://127.0.0.1/").unwrap(), pid, child: Some(child), stdin,
-                              keep: false, home: home.map(str::to_string), env: env.clone(),
+                              keep: false, paused: false, home: home.map(str::to_string), env: env.clone(),
                               auth: settings.auth_token.clone() };
         match rx.recv_timeout(settings.startup()) {
             Ok(Ok(line)) if !line.is_empty() => match parse_ready(&line, pid) {
@@ -240,7 +271,7 @@ impl Core {
             .map_err(|_| "Python core could not start".to_string())?;
         let pid = child.id();
         let mut core = Core { origin, pid, child: Some(child), stdin: None,
-                              keep: true, home: Some(home.to_string()), env: env.clone(),
+                              keep: true, paused: false, home: Some(home.to_string()), env: env.clone(),
                               auth: settings.auth_token.clone() };
         if !core.wait_ready(settings) {
             core.kill();
@@ -259,6 +290,29 @@ impl Core {
             std::thread::sleep(Duration::from_millis(100));
         }
         false
+    }
+
+    /// Start the core again at the address this app was using.
+    ///
+    /// The actual address can differ from `attach_url` after a failed attach
+    /// falls back to a child on an assigned port. A restart must come back on
+    /// the actual port or the open window is left
+    /// pointing at nothing. This is the path Start server takes after Stop in
+    /// the default mode on Linux and Windows.
+    pub fn restart(&mut self, settings: &Settings) -> Result<(), String> {
+        let mut same = settings.clone();
+        same.attach_url = self.origin.to_string();
+        let home = self.home.clone().ok_or("No Tessera home configured for a restarted core")?;
+        let env = self.env.clone();
+        let mut fresh = Core::spawn_detached(&same, &home, &env)?;
+        self.pid = fresh.pid;
+        if let Some(mut dead) = self.child.take() {
+            let _ = dead.wait();
+        }
+        self.child = fresh.child.take();
+        self.origin = fresh.origin.clone();
+        self.paused = false;
+        Ok(())
     }
 
     /// Start a fresh detached core at the same address after the last one exited.
@@ -298,6 +352,17 @@ impl Core {
     }
 
     fn kill(&mut self) {
+        // On Windows a virtualenv's python.exe is a launcher whose child is the
+        // interpreter that owns the port, so killing the handle alone leaves the
+        // core serving. taskkill /T takes the tree.
+        #[cfg(windows)]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/T", "/F", "/PID", &self.pid.to_string()])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
         if let Some(child) = self.child.as_mut() {
             let _ = child.kill();
             let _ = child.wait();
@@ -307,6 +372,15 @@ impl Core {
     /// Close stdin (graceful), then SIGTERM, then kill; always reaps the child.
     pub fn stop(&mut self, settings: &Settings) {
         if self.keep { return; } // A kept core outlives the window by design.
+        self.shutdown(settings);
+    }
+
+    /// Stop the core on the operator's explicit request.
+    ///
+    /// Unlike `stop`, this also stops a kept core, because Stop server in the
+    /// workspace is a deliberate act and must not be answered with "still
+    /// running". A core this app attached to but never started stays untouched.
+    pub fn shutdown(&mut self, settings: &Settings) {
         if self.attached() { return; } // Never stop a core this app did not start.
         drop(self.stdin.take());
         if self.wait_for(settings.shutdown()) { return; }
@@ -334,7 +408,10 @@ mod tests {
         assert_eq!(parse_ready(ok, 42).unwrap().as_str(), "http://127.0.0.1:12345/");
         let v6 = r#"{"type":"tessera.ready","version":1,"transport":"loopback-http","url":"http://[::1]:5000","pid":7}"#;
         assert!(parse_ready(v6, 7).is_ok());
+        #[cfg(unix)]
         assert!(parse_ready(ok, 43).is_err(), "pid must be the owned child");
+        #[cfg(not(unix))]
+        assert!(parse_ready(ok, 43).is_ok(), "a Windows venv launcher reports the interpreter pid");
         for url in ["https://127.0.0.1:1", "http://0.0.0.0:1", "http://example.com:1", "http://127.0.0.1",
                     "http://127.0.0.1:1/private", "http://user@127.0.0.1:1", "http://127.0.0.1:1/?q", "http://127.evil.example:1"] {
             let line = format!(r#"{{"type":"tessera.ready","version":1,"transport":"loopback-http","url":"{url}","pid":1}}"#);
@@ -376,6 +453,25 @@ mod tests {
         attached.stop(&attach);
         assert!(owned.running(), "stopping an attached core is a no-op");
         owned.stop(&settings);
+        std::fs::remove_dir_all(home).ok();
+    }
+
+    #[test]
+    fn restart_preserves_actual_origin_after_attach_fallback() {
+        let home = std::env::temp_dir().join(format!("tessera-restart-fallback-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = closed.local_addr().unwrap().port();
+        drop(closed);
+        let mut settings = Settings::default();
+        settings.home = home.to_str().unwrap().to_string();
+        settings.attach_url = format!("http://127.0.0.1:{port}/");
+        let mut core = Core::connect(&settings, &std::collections::HashMap::new()).expect("fallback core");
+        let origin = core.origin.clone();
+        core.shutdown(&settings);
+        core.restart(&settings).expect("restart fallback core");
+        assert_eq!(core.origin, origin, "the window and IPC retain the original origin");
+        core.shutdown(&settings);
         std::fs::remove_dir_all(home).ok();
     }
 
@@ -448,14 +544,25 @@ mod tests {
         assert!(second.attached(), "attached to the kept core, not spawned again");
         assert_eq!(second.origin, origin);
 
-        // A deliberate stop of a kept core is still graceful (SIGTERM drains).
+        // Cleanup differs by platform: SIGTERM drains a kept core on unix, and
+        // Windows stops one by taking its process tree. Sending no signal and
+        // then asserting it stopped is a unix-only expectation.
         #[cfg(unix)]
-        unsafe { libc::kill(pid as i32, libc::SIGTERM); }
-        let deadline = Instant::now() + settings.shutdown();
-        while Instant::now() < deadline && probe(&origin, Duration::from_millis(200), "") {
-            std::thread::sleep(Duration::from_millis(50));
+        {
+            unsafe { libc::kill(pid as i32, libc::SIGTERM); }
+            let deadline = Instant::now() + settings.shutdown();
+            while Instant::now() < deadline && probe(&origin, Duration::from_millis(200), "") {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            assert!(!probe(&origin, Duration::from_millis(200), ""), "SIGTERM stops a kept core");
         }
-        assert!(!probe(&origin, Duration::from_millis(200), ""), "SIGTERM stops a kept core");
+        #[cfg(not(unix))]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/T", "/F", "/PID", &pid.to_string()])
+                .stdout(Stdio::null()).stderr(Stdio::null()).status();
+            std::thread::sleep(Duration::from_millis(300));
+        }
         std::fs::remove_dir_all(home).ok();
     }
 

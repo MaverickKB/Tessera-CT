@@ -30,7 +30,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, app_name: &str) -> tauri::Result<Me
         for item in items {
             match item {
                 "about" => sub.append(&PredefinedMenuItem::about(app, None, None)?)?,
-                "server.settings" => sub.append(&MenuItem::with_id(app, "server.settings", "Settings…", app.try_state::<crate::server::Server>().is_some(), Some("CmdOrCtrl+,"))?)?,
+                // The Settings page holds the server controls in both modes, so the menu
+                // command has to be reachable in both: launchd hands the core to a
+                // service, and elsewhere the app supervises it.
+                "server.settings" => {
+                    let controls = app.try_state::<crate::server::Server>().is_some()
+                        || app.try_state::<crate::supervisor::Supervisor>().is_some();
+                    sub.append(&MenuItem::with_id(app, "server.settings", "Settings…", controls, Some("CmdOrCtrl+,"))?)?
+                }
                 "separator" => sub.append(&PredefinedMenuItem::separator(app)?)?,
                 "hide" => sub.append(&PredefinedMenuItem::hide(app, None)?)?,
                 "hide_others" => sub.append(&PredefinedMenuItem::hide_others(app, None)?)?,

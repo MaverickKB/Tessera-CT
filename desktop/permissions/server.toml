@@ -1,4 +1,9 @@
 [[permission]]
 identifier = "server-controls"
 description = "Read and change the configured core service from the workspace."
-commands.allow = ["server_status", "server_change"]
+commands.allow = [
+  "server_status",
+  "server_change",
+  "supervisor_status",
+  "supervisor_change",
+]
