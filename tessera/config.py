@@ -1046,6 +1046,10 @@ class Config:
     # or a list of paths loaded in order. Empty means none.
     identity_file: object = ''
     identity_max_bytes: int = 65536
+    # Seconds the desktop-install download may take. The native shell bundle is
+    # fetched and verified by `tessera start`/`install-desktop`, not by a model
+    # turn; this bounds that one network operation, not provider latency.
+    desktop_install_timeout: float = 600.0
 
     def validate(self):
         self.credentials = CredentialResolver(self.credentials).references
@@ -1302,6 +1306,10 @@ class Config:
                 or (isinstance(self.identity_file, list) and any(not item for item in files))
                 or type(self.identity_max_bytes) is not int or self.identity_max_bytes <= 0):
             raise ValueError('identity_file must be a path string or list of path strings with a positive identity_max_bytes')
+        if (not isinstance(self.desktop_install_timeout, (int, float))
+                or not math.isfinite(self.desktop_install_timeout)
+                or self.desktop_install_timeout <= 0):
+            raise ValueError('desktop_install_timeout must be a positive number of seconds')
         if (type(self.agents.max_concurrent) is not int or self.agents.max_concurrent < 0
                 or self.agents.token_budget < 0
                 or self.agents.judge_tokens < 0 or self.agents.wall_seconds < 0
@@ -1709,7 +1717,7 @@ def load_config(home=None):
     config.config_missing = not path.exists()
     config.migration_notes = []
     for name in ('cwd', 'workspace', 'agent_name', 'operator_name', 'user_instructions',
-                 'identity_file', 'identity_max_bytes'):
+                 'identity_file', 'identity_max_bytes', 'desktop_install_timeout'):
         if name in data:
             setattr(config, name, data[name])
     if not isinstance(config.cwd, (str, Path)):

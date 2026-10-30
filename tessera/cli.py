@@ -280,23 +280,29 @@ def _start(config, args):
     use_browser = bool(getattr(args, 'browser', False))
     no_browser = bool(getattr(args, 'no_browser', False))
     if not use_browser and not no_browser:
-        from . import native
-        binary = native.find_binary()
+        from . import desktop_install
+        binary = desktop_install.find_binary()
         if binary is None:
             try:
-                binary = native.ensure_installed(config)
-            except native.NativeShellNotFound as error:
+                binary = desktop_install.ensure_installed(config)
+            except desktop_install.NativeShellNotFound as error:
                 print(f'tessera: native desktop shell not installed: {error}', file=sys.stderr)
                 print('tessera: opening the web UI instead. Run `tessera install-desktop`, '
                       'or use --browser to stay in the browser by choice.', file=sys.stderr)
             else:
                 print(f'Installed native desktop shell to {binary}')
         if binary is not None:
-            # exec replaces this process: the shell owns the core from here.
-            native.launch(home)
-            # launch only returns on failure; fall through to the browser path so
-            # the operator is not left with a silent dead terminal.
-            print('tessera: native shell failed to launch; opening the web UI instead.', file=sys.stderr)
+            try:
+                # launch() execs and never returns on POSIX; it returns only after
+                # a detached launch on Windows. A clean return therefore always
+                # means the shell owns the core and this process must stop.
+                desktop_install.launch(home)
+            except desktop_install.NativeShellNotFound as error:
+                print(f'tessera: native shell failed to launch: {error}', file=sys.stderr)
+                print('tessera: opening the web UI instead.', file=sys.stderr)
+            else:
+                print('Tessera desktop app launched.', flush=True)
+                return 0
     from .server import create_server
     from . import updates
     origin = updates.install_report()
@@ -582,7 +588,7 @@ def main(argv=None):
                 print(f"Icon: {written['icon']}")
             return 0
         if args.command == 'install-desktop':
-            from . import native
+            from . import desktop_install
             # An explicit release wins; otherwise derive it from provenance.
             release_url = getattr(args, 'release_url', None)
             checksum = getattr(args, 'sha256', None)
@@ -590,10 +596,13 @@ def main(argv=None):
                 release_url = os.environ.get('TESSERA_DESKTOP_RELEASE_URL')
             if checksum is None:
                 checksum = os.environ.get('TESSERA_DESKTOP_RELEASE_SHA256')
-            url, checksum = native._release_asset(release_url, checksum)
-            binary = native.install(url, checksum)
+            url, checksum = desktop_install._release_asset(release_url, checksum)
+            if not checksum:
+                checksum = desktop_install._fetch_checksum(url, config.desktop_install_timeout)
+            checksum = desktop_install._required_checksum(checksum)
+            binary = desktop_install.install(url, checksum, timeout=config.desktop_install_timeout)
             print(f'Installed native desktop shell to {binary}')
-            native.launch(config.home)
+            desktop_install.launch(config.home)
             return 0
         if args.command in ('serve', 'desktop'):
             if args.host is not None:

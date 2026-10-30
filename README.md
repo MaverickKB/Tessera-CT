@@ -29,6 +29,12 @@ then explicitly send a test message through a normal saved chat. Example
 endpoints in the starter config do not count as configured models. Everything
 else is optional. `start` reruns cleanly; it only creates what is missing.
 
+Automatic download-and-install of the shell is published for every platform
+and architecture (Linux x86_64/aarch64 AppImage, macOS aarch64 `.app`, Windows
+x86_64 `.msi`). Each download is verified against a required sha256 before it
+is written. Linux is validated end to end; macOS and Windows auto-install is
+implemented and CI-built but not yet hardware-validated.
+
 The web UI and a headless core remain available as explicit options, never the
 default:
 
