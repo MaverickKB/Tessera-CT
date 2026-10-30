@@ -148,6 +148,42 @@ def test_a_second_boot_adds_nothing_and_keeps_an_operator_rule(tmp_path):
     assert (store / '.aethermind' / 'layers.aem').read_text(encoding='utf-8') == before
 
 
+def test_relaunch_validates_records_even_when_all_seed_bodies_are_present(tmp_path):
+    config = _config(tmp_path)
+    seed_pack.ensure(config)
+    store = seed_pack.store_path(config)
+    path = store / '.aethermind' / 'layers.aem'
+    # Keep every body unchanged, so the old raw-body hash check skips all
+    # writes. A schema error must still be caught by the engine's reader.
+    original = path.read_text(encoding='utf-8')
+    import re
+    damaged, count = re.subn(r'^author\s*=.*$', 'author = ""', original,
+                             count=1, flags=re.MULTILINE)
+    assert count == 1
+    path.write_text(damaged, encoding='utf-8')
+
+    result = seed_pack.ensure(config)
+
+    assert result.get('quarantined'), result
+    assert (Path(result['quarantined']) / 'layers.aem').read_text(encoding='utf-8') == damaged
+    assert result['layers_written'] >= MINIMUM_LAYERS
+    assert seed_pack.ensure(config)['layers_written'] == 0
+
+
+def test_seed_requires_engine_readback_of_every_written_rule(tmp_path, monkeypatch):
+    config = _config(tmp_path)
+    real_open = seed_pack._aethermind
+
+    def silently_drop_writes(store, lib):
+        engine = real_open(store, lib)
+        engine.write_layer = lambda **kwargs: None
+        return engine
+
+    monkeypatch.setattr(seed_pack, '_aethermind', silently_drop_writes)
+    with pytest.raises(seed_pack.SeedUnavailable, match='read back the complete seed pack'):
+        seed_pack.ensure(config)
+
+
 def test_a_store_the_engine_cannot_parse_is_set_aside_and_the_pack_lands(tmp_path):
     """A foreign record must not leave the install memoryless, and is not lost."""
     config = _config(tmp_path)

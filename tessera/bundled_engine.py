@@ -329,13 +329,24 @@ def _install_locked_mcp(python):
 
 
 def _wait_for_engine(port, process, deadline, poll=0.25):
+    from .mcp_client import McpClient, McpError
+
     while time.monotonic() < deadline:
         if process.poll() is not None:
             return False
         try:
             with socket.create_connection(('127.0.0.1', port), timeout=1):
+                pass
+            # A listening socket alone is not a ready memory service. Require
+            # MCP initialization and discovery before handing sessions its URL.
+            client = McpClient('http://127.0.0.1:' + str(port) + '/mcp',
+                               token_env='', timeout=max(0.01, min(2, deadline - time.monotonic())))
+            names = {tool.get('name') for tool in client.list_tools()}
+            if {'read_layers', 'write_layer'} <= names and process.poll() is None:
                 return True
-        except OSError:
+        except (OSError, McpError):
+            pass
+        if time.monotonic() < deadline:
             time.sleep(poll)
     return False
 

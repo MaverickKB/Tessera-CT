@@ -77,8 +77,8 @@ test('a shell without a system service says so instead of offering start and sto
   assert.equal(nodes['server-controls'].hidden, false);
   assert.equal(nodes['server-start'].hidden, true);
   assert.equal(nodes['server-stop'].hidden, true);
-  assert.match(nodes['server-status'].textContent, /not available on Linux/);
-  assert.match(nodes['server-status'].textContent, /LaunchAgent/);
+  assert.match(nodes['server-status'].textContent, /another process started/);
+  assert.match(nodes['server-status'].textContent, /where it was launched/);
 });
 
 test('failed service operations stay visible and allow another attempt', async () => {
