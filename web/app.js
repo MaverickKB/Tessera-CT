@@ -89,7 +89,7 @@
     if (focus && wasOpen) $("navigation-toggle").focus();
   }
 
-  function setPage(name, focus = true, write = true) {
+  function setPage(name, focus = true, write = true, reloadSettings = true) {
     if (!pages.includes(name)) name = "chat";
     const changed = state.pageShown && state.page !== name;
     state.pageShown = true;
@@ -108,7 +108,7 @@
     }
     $("skip-link").href = "#page-" + name;
     if (name === "integrations") refreshIntegrations();
-    if (name === "settings" && configView && !configView.hasEdits()) configView.load();
+    if (name === "settings" && reloadSettings && configView && !configView.hasEdits()) configView.load();
     if (name === "shelf" && shelfView) shelfView.load();
     syncProjectArena(name === "wip" ? projectById(state.openProject) : null);
     if (name === "infrastructure") {
@@ -7489,6 +7489,30 @@
     if (state.page === "wip") refreshBoardView();
   }, refreshInterval);
   autonomy = window.TesseraAutonomy ? window.TesseraAutonomy.mount({ api, element, getSlug: () => state.slug, agentName }) : null;
+  // First-use testing is an ordinary saved conversation, with the same runtime,
+  // approvals and event stream as every other chat. Never run it on page load.
+  let setupTest = null;
+  async function openSetupTest(backend) {
+    if (!setupTest || setupTest.backend !== backend) {
+      setupTest = {backend, slug: null, requestId: crypto.randomUUID(), submitted: false};
+    }
+    const test = setupTest;
+    if (!test.slug) {
+      const session = await api("/api/sessions", "POST", {title: "Getting started", backend});
+      test.slug = session.slug;
+    }
+    if (!test.submitted) {
+      await api(sessionPath(test.slug, "/messages"), "POST", {
+        text: "This is my first Tessera connection test. Reply with a brief greeting without using tools.",
+        client_request_id: test.requestId,
+      });
+      test.submitted = true;
+    }
+    await refreshSessions();
+    await selectSession(test.slug);
+    setPage("chat");
+  }
+
   configView = window.TesseraSettings ? window.TesseraSettings.mount({
     api, element, root: $("settings-root"), status: $("config-status"), restartButton: $("core-restart"),
     onRestarted: () => Promise.all([refreshSessions(), refreshStatus()]).catch(showError),
@@ -7507,7 +7531,12 @@
       }
     },
     onApproval: (approval) => { state.approvalEpoch += 1; renderApproval(approval); },
-    onChanged: () => refreshStatus().catch(showError),
+    onChanged: () => { setupTest = null; return refreshStatus().catch(showError); },
+    onTestChat: openSetupTest,
+    onSetupNeeded: () => {
+      // Respect explicit deep links; only a fresh landing is guided automatically.
+      if (!location.hash && !state.slug) setPage("settings", false, true, false);
+    },
   }) : null;
   if (configView) configView.load().catch((error) => { $("config-status").textContent = error.message || "Settings unavailable"; });
   shelfView = window.TesseraShelf ? window.TesseraShelf.mount({

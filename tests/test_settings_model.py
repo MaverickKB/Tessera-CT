@@ -1337,7 +1337,7 @@ def test_setup_progress_requires_an_existing_enabled_chat_model(tmp_path):
 
     config = Config(home=tmp_path, backends={}, roles={"main": "missing"})
     assert [step["done"] for step in _setup_steps(config)] == [False, False]
-    config.backends["missing"] = BackendConfig(name="missing", enabled=False)
+    config.backends["missing"] = BackendConfig(name="missing", enabled=False, base_url="http://127.0.0.1:9/v1", model="test-model")
     assert [step["done"] for step in _setup_steps(config)] == [False, False]
     config.backends["missing"].enabled = True
     config.backends["missing"].chat = False
@@ -1347,3 +1347,68 @@ def test_setup_progress_requires_an_existing_enabled_chat_model(tmp_path):
     assert [step["done"] for step in steps] == [True, True]
     assert "does not test connectivity" in steps[0]["text"]
     assert "send a message to test" in steps[1]["text"]
+
+
+def test_first_use_does_not_count_starter_placeholders_as_a_ready_model(tmp_path):
+    from tessera.config import BackendConfig, Config
+    from tessera.settings_model import chat_setup
+
+    config = Config(home=tmp_path, backends={"primary": BackendConfig(
+        name="primary", base_url="https://models.example.com/v1", model="your-main-model")}, roles={"main": "primary"})
+    assert chat_setup(config) == {'ready': False, 'backend': '', 'model': ''}
+    config.backends['primary'].base_url = 'http://127.0.0.1:9/v1'
+    config.backends['primary'].model = 'local-model'
+    assert chat_setup(config) == {'ready': True, 'backend': 'primary', 'model': 'local-model'}
+    config.backends['primary'].enabled = False
+    assert chat_setup(config)['ready'] is False
+    config.backends['primary'].enabled = True
+    config.backends['primary'].provider_kind = 'cli_worker'
+    config.backends['primary'].base_url = ''
+    config.backends['primary'].model = ''
+    assert chat_setup(config)['ready'] is True, 'CLI defaults remain a supported existing configuration'
+
+
+def test_first_use_key_binding_and_first_reply_use_existing_settings_and_chat_apis(tmp_path, monkeypatch):
+    from test_providers import provider_server
+    import uuid
+
+    monkeypatch.setenv('EXAMPLE_FIRST_USE_KEY', 'synthetic-first-use-key')
+    reply = {'choices': [{'message': {'role': 'assistant', 'content': 'Hello from your configured model.'},
+                          'finish_reason': 'stop'}]}
+    with provider_server([reply]) as (endpoint, received):
+        server, thread = serve(tmp_path, text='''
+[backends.primary]
+base_url = "https://models.example.com/v1"
+model = "your-main-model"
+[roles]
+main = "primary"
+''')
+        try:
+            assert call(server, 'GET', '/api/settings')[1]['chat_setup']['ready'] is False
+            code, _ = call(server, 'POST', '/api/settings', {'id': 'credentials', 'action': 'add', 'record': {
+                'name': 'model-key', 'env': 'EXAMPLE_FIRST_USE_KEY'}})
+            assert code == 200
+            code, _ = call(server, 'POST', '/api/settings', {'id': 'providers', 'action': 'add', 'record': {
+                'name': 'first-model', 'account': 'other', 'kind': 'openai_chat',
+                'base_url': endpoint, 'model': 'chosen-model', 'credential': 'model-key'}})
+            assert code == 200
+            code, saved = call(server, 'POST', '/api/settings', {'id': 'roles.main', 'value': 'first-model'})
+            assert code == 200
+            assert saved['settings']['chat_setup'] == {'ready': True, 'backend': 'first-model', 'model': 'chosen-model'}
+            assert received == [], 'saving and rendering configuration must never send a model request'
+            code, session = call(server, 'POST', '/api/sessions', {'title': 'Getting started', 'backend': 'first-model'})
+            assert code == 201
+            slug = session['slug']
+            request_id = str(uuid.uuid4())
+            code, _ = call(server, 'POST', f'/api/sessions/{slug}/messages', {
+                'text': 'Reply with a brief greeting without using tools.', 'client_request_id': request_id})
+            assert code == 202
+            assert server.manager.wait(slug, 10)
+            code, messages = call(server, 'GET', f'/api/sessions/{slug}/messages')
+            assert code == 200
+            assert any(message['kind'] == 'agent' and message['text'] == 'Hello from your configured model.' for message in messages)
+            assert received[0]['body']['model'] == 'chosen-model'
+            assert received[0]['headers']['Authorization'] == 'Bearer ' + 'synthetic-first-use-key'
+            assert 'synthetic-first-use-key' not in (tmp_path / 'config.toml').read_text()
+        finally:
+            stop(server, thread)

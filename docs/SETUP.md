@@ -150,16 +150,47 @@ for architecture and install/run commands.
 
 ### First setup in Settings
 
-Start with **Accounts** to sign in, choose a local model server, or follow
-**Have an API key instead?** to Saved credentials. After saving a key, choose
-**Next: configure a model**, add the endpoint and model, and select the enabled
-chat model. The setup steps link to the relevant pages. Their checkmarks mean
-configuration is saved; they do not prove that a provider accepts the connection.
-Choose **Start chatting** and send a short message to verify the configured model.
+A fresh landing with no configured chat model opens **Getting started**. Existing
+configured installs retain their normal landing, and explicit session/page links
+are respected. You can reopen Getting started from Settings at any time or choose
+**Use settings without the guide** to use the complete editor.
+
+Choose the connection you already have:
+
+1. **Sign in** uses the existing supported provider sign-in flow. Continue to the
+   account’s model list and choose its **Chat model** option.
+2. **Use an API key** saves the key in the core computer’s OS credential store,
+   then carries that saved reference into the model form. Internal credential and
+   backend names are generated without replacing existing entries. If the key is
+   already in the core’s environment, use **Use an environment variable instead**
+   and enter its variable name. On Linux, pasting a key requires a working
+   `secret-tool`/Secret Service store; the environment alternative does not.
+3. **Use a local model** asks for the server address and model ID. The server must
+   already be running and reachable from the computer running Tessera. This does
+   not download or start a model. A phone’s localhost is the phone itself; the
+   model address entered in workspace Settings is resolved by the core computer.
+
+**Find models** reads the chosen server’s catalog on request. If it does not offer
+one, enter the model ID from that provider’s documentation. The HTTP protocol is
+under Advanced. **Save and use for chat** saves the model and explicitly selects
+it as the main chat model; worker roles and other settings are unchanged. If you
+already saved a key, the API-key connection step offers **Use saved key**.
+The guide carries that connection into the model form; models do not ask you to
+choose credentials.
+
+**Send test message** creates a saved “Getting started” conversation using that
+model and submits one short greeting through the normal session/turn API. Nothing
+runs merely because you opened the guide. The test uses the same harness,
+permissions, memory, and event stream as a normal chat. Read the actual reply in
+Chat; saved configuration and an accepted submission are not proof of a reply.
+The conversation remains available to continue with a useful task. Within the
+same open page, a failed or uncertain submission can be retried without
+duplicating an accepted request.
+Correct a provider or model in Settings and send a new test after changing it.
 
 Scalar settings save when changed and show saving, saved, restart-required, or
 error feedback beside the control. Record editors use Save and Cancel. Moving
-between settings sections keeps unfinished record drafts in this page's memory;
+between settings sections keeps unfinished record drafts in this page’s memory;
 return to that section to finish or cancel. Reloading or closing the app does not
 persist drafts. Removing a saved credential requires an explicit confirmation.
 
@@ -168,10 +199,9 @@ lifecycle controls are available only when their host supports them; a desktop
 bundle still needs the Python checkout described in `desktop/README.md`. Native
 Windows embedded memory is unsupported; use WSL for that runtime. The iPhone
 Connection sheet configures access to an already running core, while workspace
-Settings configures that core. A phone's localhost is the phone itself. Use a
-reachable private server address and the server's optional access token, then
-Test connection or Save and connect. Configure private networking on the host
-before attempting to connect from the phone.
+Settings configures that core. Use a reachable private server address and the
+server’s optional access token, then Test connection or Save and connect.
+Configure private networking on the host before connecting from the phone.
 
 ### What the Settings page edits, and what it does not
 
