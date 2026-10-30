@@ -119,7 +119,7 @@ class CredentialPrompts:
         runtime = self.manager.runtime(slug)
         # Order saving and continuation against Stop, using the generation from
         # request creation rather than accepting a newer post-Stop generation.
-        with self.lock, runtime.intake_lock, runtime.condition:
+        with self.lock, runtime.intake_lock:
             self._prune()
             item = self.requests.get(request_id)
             if not item or item['slug'] != slug:
@@ -131,8 +131,9 @@ class CredentialPrompts:
             if cancel:
                 item['state'] = 'cancelled'
                 return self.public(item)
-            if runtime.operator_stopped or runtime.operator_stop_generation != item['stop_generation']:
-                raise ValueError('Protected request predates operator Stop; request a new form')
+            with runtime.condition:
+                if runtime.operator_stopped or runtime.operator_stop_generation != item['stop_generation']:
+                    raise ValueError('Protected request predates operator Stop; request a new form')
             if not isinstance(value, str) or not value or '\x00' in value or len(value) > 4096:
                 raise ValueError('Enter a credential value of 1-4096 characters')
             reference = self.manager.config.credentials.get(item['name'])

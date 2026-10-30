@@ -1407,7 +1407,7 @@ class SessionManager:
 
     def interrupt(self, slug):
         runtime = self.runtime(slug)
-        with runtime.condition:
+        with runtime.intake_lock, runtime.condition:
             active = runtime.active
             runtime.operator_stopped = True
             runtime.operator_stop_generation += 1
