@@ -1057,8 +1057,12 @@ class Session:
         return getattr(getattr(self, 'capture', None), 'client', None) is not None
 
     def _start_compactor(self):
-        if self._memory_confirmed() and getattr(self, 'compactor', None) is not None:
-            self.compactor.start()
+        # Compaction is not conditional. It needs the model backend, not memory, so
+        # it starts with the runtime. Waiting for a turn to confirm memory left an
+        # idle session with no summaries until someone spoke to it.
+        compactor = getattr(self, 'compactor', None)
+        if compactor is not None:
+            compactor.start()
 
     def run_turn(self, message, turn_meta=None):
         with self._turn_lock:
