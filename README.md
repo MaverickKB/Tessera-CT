@@ -29,14 +29,21 @@ then explicitly send a test message through a normal saved chat. Example
 endpoints in the starter config do not count as configured models. Everything
 else is optional. `start` reruns cleanly; it only creates what is missing.
 
-Automatic download-and-install of the shell is published for every platform
-and architecture (Linux x86_64/aarch64 AppImage, macOS aarch64 `.app`, Windows
-x86_64 `.msi`). Each download is verified against a required sha256 before it
-is written. Linux is validated end to end; macOS and Windows auto-install is
-implemented and CI-built but not yet hardware-validated.
+The native release workflow builds Linux AppImages, macOS application bundles,
+and Windows current-user installers for x86_64 and ARM64. Automatic installation
+uses the release matching the installed Python package version and requires a
+valid SHA-256 checksum before installing. Windows automatic installation uses
+the per-user NSIS package; MSI packages remain available for manual installation.
+The release checks install the actual packages and verify a loaded native window,
+the selected home, an answering core, and a subsequent native `start`.
 
-The web UI and a headless core remain available as explicit options, never the
-default:
+A matching published release is required for automatic download. If it is
+unavailable or installation fails, `start` reports the failure before recovering
+to the browser; this recovery does not mean the native app installed successfully.
+`install-desktop` reports a failed installation and exits without substituting a
+browser. Existing native installations continue to work without downloading.
+
+The web UI and a headless core remain available as explicit options:
 
 ```sh
 .venv/bin/python -m tessera start --browser    # web UI in a browser

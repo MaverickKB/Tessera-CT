@@ -134,6 +134,7 @@ def main():
                if not key.startswith('TESSERA_') and key != 'PYTHONPATH'}
         env['BROWSER'] = f'"{sys.executable}" "{sentinel}" %s'
         env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+        env['TESSERA_DESKTOP_STARTUP_SECONDS'] = '120'
         # The installed interpreter must find the installed package from a clean
         # directory. The release job installs this checkout in its venv first.
         base = [sys.executable, '-u', '-m', 'tessera', '--home', str(home)]
