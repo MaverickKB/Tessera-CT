@@ -1,0 +1,53 @@
+name: release
+
+# On a tag, build the Linux native shell, rename it to the canonical
+# `tessera-linux-x86_64.AppImage` that `tessera start` derives, emit a
+# `.sha256` sidecar, and attach both to the matching GitHub release. That is the
+# automatic-install source: on a machine with no shell, `tessera start` resolves
+# the exact bundle URL, verifies it against the sidecar, and installs it.
+# macOS and Windows shells keep building in desktop.yml; their manual bundles
+# remain on that path until automatic install is extended to them.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  linux:
+    name: publish linux AppImage
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: WebKitGTK and bundler prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libgtk-3-dev libfuse2t64
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Build AppImage
+        working-directory: desktop
+        run: cargo tauri build --bundles appimage
+      - name: Assemble canonical artifact and sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Canonical name is deterministic on purpose: the downloader derives it
+          # from platform + arch + version, so it must match here, exactly.
+          appimage=$(ls desktop/target/release/bundle/appimage/*.AppImage)
+          cp "$appimage" dist/tessera-linux-x86_64.AppImage
+          (cd dist && sha256sum tessera-linux-x86_64.AppImage > tessera-linux-x86_64.AppImage.sha256)
+      - name: Publish to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release upload "$tag" dist/* --clobber

@@ -20,13 +20,23 @@ python3 -m venv .venv
 .venv/bin/python -m tessera start
 ```
 
-`start` creates what is missing (config, engine bundle, seed pack), starts the
-core with AetherMind, and opens the app in a browser. A fresh landing with no
-configured chat model opens Getting started in Settings: choose sign-in, an API
-key, or an already running local model server, select a model, then explicitly
-send a test message through a normal saved chat. Example endpoints in the starter
-config do not count as configured models. Everything else is optional. `start` reruns
-cleanly; it only creates what is missing.
+`start` creates what is missing (config, engine bundle, seed pack), then opens
+the native desktop app: `start` downloads and installs the compiled shell when
+it is not there, and the shell runs the core and shows a real window. A fresh
+landing with no configured chat model opens Getting started in Settings: choose
+sign-in, an API key, or an already running local model server, select a model,
+then explicitly send a test message through a normal saved chat. Example
+endpoints in the starter config do not count as configured models. Everything
+else is optional. `start` reruns cleanly; it only creates what is missing.
+
+The web UI and a headless core remain available as explicit options, never the
+default:
+
+```sh
+.venv/bin/python -m tessera start --browser    # web UI in a browser
+.venv/bin/python -m tessera start --no-browser # headless core
+.venv/bin/python -m tessera install-desktop    # download + install the shell, then open it
+```
 
 To put Tessera in the app menu (Linux), Applications (macOS) or the Start Menu
 (Windows), run:
@@ -35,7 +45,7 @@ To put Tessera in the app menu (Linux), Applications (macOS) or the Start Menu
 .venv/bin/python -m tessera install-launcher
 ```
 
-The launcher runs `start` with this interpreter and home; reruns update it.
+The launcher opens the native app; reruns update it.
 
 From a checkout instead of the git install:
 

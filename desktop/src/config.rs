@@ -132,11 +132,18 @@ impl Settings {
     pub fn attach(&self) -> Duration { seconds("attach_seconds", self.attach_seconds).unwrap() }
 
     pub fn core_root(&self) -> PathBuf {
-        if self.core_root.is_empty() {
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
-        } else {
-            PathBuf::from(&self.core_root)
+        if !self.core_root.is_empty() {
+            return PathBuf::from(&self.core_root);
         }
+        // The build-time checkout, valid only while a checkout produced this
+        // binary and its `.venv`. An installed `.deb`/`.AppImage` on a clean
+        // machine has no checkout here: fall back to the current directory
+        // rather than spawning the core into a path that does not exist.
+        let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        if checkout.join("pyproject.toml").is_file() {
+            return checkout;
+        }
+        std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
     }
 
     pub fn python(&self) -> PathBuf {
@@ -263,6 +270,13 @@ mod tests {
         assert_eq!(s.core_host, "127.0.0.1");
         assert_eq!(s.core_port, 0);
         assert_eq!(s.title, "Tessera");
+    }
+
+    #[test]
+    fn explicit_core_root_wins_and_is_used_verbatim() {
+        let mut s = Settings::default();
+        s.core_root = "/explicit/anywhere".into();
+        assert_eq!(s.core_root(), PathBuf::from("/explicit/anywhere"));
     }
 
     #[test]

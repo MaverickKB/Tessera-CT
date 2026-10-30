@@ -2,7 +2,10 @@ name: desktop app
 
 # The native shell is part of the product, not an extra. This builds it for
 # Linux and Windows on every change to it, so a shell that does not compile or
-# bundle there is caught here instead of on an operator's machine.
+# bundle there is caught here instead of on an operator's machine. Release
+# publishing (which needs a tag, and bundles with canonical names + checksums)
+# lives in .github/workflows/release.yml, separate because a path filter here
+# would never match a tag push.
 on:
   workflow_dispatch:
   push:
