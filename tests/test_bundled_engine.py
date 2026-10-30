@@ -305,3 +305,24 @@ def test_readiness_waits_for_mcp_tools_not_only_a_listening_socket(monkeypatch):
     assert bundled_engine._wait_for_engine(
         12345, SimpleNamespace(poll=lambda: None), time.monotonic() + 2, poll=0)
     assert len(probes) == 3
+
+
+@pytest.mark.parametrize('incomplete', [[None], ['initializing'], [{'name': []}], [{'description': 'not ready'}]])
+def test_readiness_retries_incomplete_tool_descriptors_until_valid(monkeypatch, incomplete):
+    import contextlib
+    import time
+    from tessera.mcp_client import McpClient
+
+    responses = iter([incomplete, [{'name': 'read_layers'}, {'name': 'write_layer'}]])
+    probes = []
+
+    def tools(client):
+        probes.append(client.url)
+        return next(responses)
+
+    monkeypatch.setattr(bundled_engine.socket, 'create_connection',
+                        lambda *args, **kwargs: contextlib.nullcontext())
+    monkeypatch.setattr(McpClient, 'list_tools', tools)
+    assert bundled_engine._wait_for_engine(
+        12345, SimpleNamespace(poll=lambda: None), time.monotonic() + 2, poll=0)
+    assert len(probes) == 2
