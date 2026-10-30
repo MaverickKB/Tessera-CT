@@ -33,7 +33,7 @@ type-checking and rendering the value do not count as reads.
 
 ## Summary at HEAD
 
-113 fields: 113 CONSUMED, 0 NO-READER, 0 UNRESOLVED.
+112 fields: 112 CONSUMED, 0 NO-READER, 0 UNRESOLVED.
 
 ## Partial findings, recorded as debt
 
@@ -136,7 +136,6 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `ui.show_thoughts` | CONSUMED | tessera/sessions.py:1871 status ui block; web/app.js applies it |
 | `ui.yolo_banner` | CONSUMED | tessera/sessions.py:1803 status ui block; web/app.js shows the banner from it |
 | `ui.easter_egg_f_it` | CONSUMED | tessera/sessions.py:2063 status ui block; web/unleashed-label.js:76 paints the approval button from it; web/app.js:6961 paintApprovalLabel applies it |
-| `ui.goblin_avatar` | CONSUMED | tessera/sessions.py status ui block; web/app.js applyMark passes it; web/unleashed-label.js avatarUrl paints the F-it mark and the icon |
 | `ui.send_shortcut` | CONSUMED | tessera/sessions.py:1872 status ui block; web/app.js:6782 applyShortcut applies it |
 | `ui.config_journal_entries` | CONSUMED | tessera/config_editor.py change_report keeps and shows this many config changes; tessera/settings_model.py SettingsService.view publishes shown and total |
 | `permissions.mode` | CONSUMED | tessera/settings_model.py:405 reads the approval dict; tessera/sessions.py:1848 set_yolo writes it |

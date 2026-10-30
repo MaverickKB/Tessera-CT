@@ -1085,13 +1085,8 @@ nav.settings-nav.settings-nav-side { flex-wrap: nowrap; }
 #page-settings .settings-model-row input[type="checkbox"],
 #page-settings .settings-model-row input[type="radio"] { justify-self: center; margin: 0; width: auto; }
 #page-settings .settings-model-current { margin-left: 6px; font: 0.68rem/1 var(--font-ui); color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 4px; }
-#page-settings .avatar-previews { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; margin: 8px 0 4px; }
-#page-settings .avatar-previews,
 #page-settings .mark-previews,
 #page-settings .skin-previews { grid-column: 1 / -1; }
-#page-settings .avatar-preview { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px !important; }
-#page-settings .avatar-preview img { width: 72px; height: 72px; }
-#page-settings .avatar-preview[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 #page-settings .settings-check-line { min-width: 0; }
 #page-settings .settings-card-line { flex: none; overflow-wrap: anywhere; }
 #page-settings .settings-setup { padding-left: 1.2rem; }

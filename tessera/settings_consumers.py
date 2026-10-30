@@ -119,7 +119,6 @@ CATALOG_READERS = {
     'ui.yolo_banner': [Reader('tessera/sessions.py:1803 status ui block; web/app.js shows the banner from it')],
     'ui.easter_egg_f_it': [Reader('tessera/sessions.py:2063 status ui block; web/unleashed-label.js:76 paints the approval button from it; web/app.js:6961 paintApprovalLabel applies it')],
     'ui.send_shortcut': [Reader('tessera/sessions.py:1872 status ui block; web/app.js:6782 applyShortcut applies it')],
-    'ui.goblin_avatar': [Reader('tessera/sessions.py status ui block; web/app.js applyMark passes it; web/unleashed-label.js avatarUrl paints the F-it mark and the icon')],
     'ui.config_journal_entries': [Reader('tessera/config_editor.py change_report keeps and shows this many config changes; tessera/settings_model.py SettingsService.view publishes shown and total')],
     'permissions.mode': [Reader('tessera/settings_model.py:405 reads the approval dict; tessera/sessions.py:1848 set_yolo writes it', 'no config path: the spec writes approval state, not a config field')],
     'permissions.safe_policy': [Reader('tessera/sessions.py:2129 _init_approval derives the safe mode from tools.approval; set_yolo(false) restores it')],

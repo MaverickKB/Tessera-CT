@@ -63,8 +63,8 @@ SECTION_START = {
     'voice': ('Start here: connect a duplex account, or add a speech-to-text and a '
               'text-to-speech service. A pipe choice appears only when both are ready.'),
     'appearance': 'Start here: choose a theme and an icon and logo set; the remaining display preferences are optional.',
-    'goblin': ('Start here: turn F-it on and pick the goblin that represents this install. '
-               'The roster, schedules and workbenches are the Goblin Mode build, not this page.'),
+    'goblin': ('Start here: turn F-it on. The button keeps its cartoon and reads F-it instead '
+               'of Unleashed. The roster, schedules and workbenches are the Goblin Mode build.'),
     'permissions': 'Start here: choose the approval policy for tool actions.',
     'autonomy': 'Start here: choose whether autonomy runs and describe what matters in World view.',
     'judge': 'Start here: review the judge and action gate switches, then supply the judge credential.',
@@ -73,10 +73,6 @@ SECTION_START = {
                'repository URL and restarts the core.'),
 }
 SAFE_FACT = {'ask': 'Safe asks', 'deny_risky': 'Safe blocks', 'never': 'Safe allows'}
-# The avatar ids in web/brand/goblin/manifest.json. Order is the roster order a
-# person sees, so the list is explicit rather than read from the filesystem.
-GOBLIN_AVATARS = ('courier', 'guard', 'lookout', 'medic', 'nerd', 'rookie',
-                  'scout', 'scribe', 'smith', 'tinkerer', 'veteran')
 _TIER_RANK = {'required': 0, 'optional': 1, 'advanced': 2}
 
 # The config table each record editor writes. A named-entry editor reaches its whole
@@ -826,9 +822,10 @@ def catalog(config, approval):
               options=(('system', 'System'), ('light', 'Light'), ('dark', 'Dark')), key='theme'), ui.theme),
         (Spec('ui.mark', 'appearance', 'enum', 'Icon and logo', 'live', ('ui', 'mark'),
               tier='optional',
-              options=(('cairn', 'Tessera'), ('gremlin', 'Goblin')),
-              hint='Chooses the logo art and follows the theme. The default includes the Tessera-CT wordmark and the tree. The goblin pack shows the avatar picked in Goblin Mode.',
-              status=('Showing the goblin pack.' if ui.mark == 'gremlin' or ui.easter_egg_f_it
+              options=(('cairn', 'Tessera'), ('gremlin', 'Gremlin')),
+              hint='Chooses the logo art and follows the theme. The default includes the Tessera-CT wordmark and the tree. The F-it button adds the gremlin favicon and the goblin crew.',
+              status=('F-it button is on, so the gremlin logo, favicon and crew are showing.' if ui.easter_egg_f_it
+                      else 'Showing the gremlin logo.' if ui.mark == 'gremlin'
                       else 'Showing the Tessera art with the Tessera-CT wordmark.'),
               key='mark'), ui.mark),
         (Spec('ui.skin', 'appearance', 'enum', 'Skin', 'live', ('ui', 'skin'),
@@ -846,11 +843,6 @@ def catalog(config, approval):
               tier='optional',
               hint='When on, the approval button reads F-it and shows the chosen goblin, and the goblin logo, favicon and crew turn on. The stored mode stays yolo.',
               key='easter_egg_f_it'), ui.easter_egg_f_it),
-        (Spec('ui.goblin_avatar', 'goblin', 'enum', 'Goblin', 'live', ('ui', 'goblin_avatar'),
-              tier='optional',
-              options=tuple((item, item.title()) for item in GOBLIN_AVATARS),
-              hint='The goblin shown on the F-it button and in the logo slot. Each one is a square avatar with a transparent cutout.',
-              key='goblin_avatar'), ui.goblin_avatar),
         (Spec('ui.send_shortcut', 'appearance', 'enum', 'Send with', 'live', ('ui', 'send_shortcut'),
               tier='optional',
               options=(('enter', 'Enter'), ('modifier', 'Ctrl or Command + Enter')), key='send_shortcut'),

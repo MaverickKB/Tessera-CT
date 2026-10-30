@@ -128,18 +128,16 @@ test("the button reads Unleashed and draws nothing until the setting is on", () 
   api.paint(button, {easter_egg_f_it: true});
   assert.equal(button.querySelector(".approval-label").textContent, "F-it");
   const image = button.querySelector("img");
-  assert.ok(image, "the mark is the chosen goblin avatar");
-  assert.equal(image.getAttribute("src"), "/static/brand/goblin/smith/avatar-64.png");
+  assert.ok(image, "the cartoon is the shared svg file");
+  assert.equal(image.getAttribute("src"), api.MARK_URL);
   assert.equal(image.getAttribute("alt"), api.ALT);
   assert.equal(image.className, "f-it-mark");
   assert.equal(button.querySelector("svg"), null);
-  api.paint(button, {easter_egg_f_it: true, goblin_avatar: "scout"});
-  const chosen = button.querySelector("img");
-  assert.equal(chosen.getAttribute("src"), "/static/brand/goblin/scout/avatar-64.png");
-  const png = fs.readFileSync(path.join(__dirname, "..", "brand", "goblin", "scout", "avatar-64.png"));
-  assert.ok(png.length > 0, "the avatar file ships beside the page");
-  assert.equal(api.avatarId({goblin_avatar: "../etc/passwd"}), "smith");
-  assert.equal(api.avatarId({goblin_avatar: "scout"}), "scout");
+  const svg = fs.readFileSync(path.join(__dirname, "..", "brand", "f-it-gremlin.svg"), "utf8");
+  assert.match(svg, /class="f-it-gremlin"/);
+  assert.match(svg, /class="f-it-letters"/);
+  assert.match(svg, new RegExp(api.ALT));
+  assert.doesNotMatch(labelSource, /M44 50/);
   api.paint(button, {easter_egg_f_it: false});
   assert.equal(button.textContent, "Unleashed");
   assert.equal(button.querySelector("svg"), null);
@@ -165,10 +163,10 @@ test("the icon picker stays a plain logo choice and never gates the pack", () =>
   assert.equal(api.activeMark({mark: "nope", easter_egg_f_it: false}), "cairn");
   assert.equal(api.packOn({mark: "cairn", easter_egg_f_it: false}), false);
   assert.equal(api.iconFor("cairn"), null);
-  assert.equal(api.iconFor("gremlin", {goblin_avatar: "medic"}).href, "/static/brand/goblin/medic/avatar-256.png");
-  assert.equal(api.LOGO_URL, "/static/brand/goblin/smith/avatar-256.png");
+  assert.equal(api.iconFor("gremlin").href, "/static/brand/gremlin-logo.svg");
+  assert.equal(api.LOGO_URL, "/static/brand/gremlin-logo.svg");
   assert.notEqual(api.LOGO_URL, api.MARK_URL);
-  assert.equal(api.iconFor("gremlin", {}).type, "image/png");
+  assert.equal(api.iconFor("gremlin").type, "image/svg+xml");
 });
 
 test("Settings lists both icon sets and writes the chosen one", async () => {
@@ -218,12 +216,13 @@ test("Settings lists both icon sets and writes the chosen one", async () => {
   assert.ok(root.textContent.includes("Icon and logo"));
   assert.ok(root.textContent.includes("Tessera"));
   assert.ok(root.textContent.includes("Gremlin"));
-  // The previews are the control; there is no second select listing the same two.
-  assert.equal(root.querySelector('[data-key="mark"]'), null);
+  const select = root.querySelector('[data-key="mark"]');
+  assert.equal(select.tag, "select");
+  assert.equal(select.value, "cairn");
   const previews = root.querySelectorAll(".mark-preview");
   assert.equal(previews.length, 2);
-  const gremlin = previews.find((button) => button.dataset.mark === "gremlin");
-  await gremlin.fire("click");
+  select.value = "gremlin";
+  await select.fire("change");
   assert.equal(writes.at(-1).id, "ui.mark");
   assert.equal(writes.at(-1).value, "gremlin");
   assert.equal(appearances.some((patch) => patch.mark === "gremlin"), true);

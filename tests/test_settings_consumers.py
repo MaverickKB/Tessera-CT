@@ -832,9 +832,9 @@ def test_projection_shape_is_pinned(tmp_path):
     # ui.config_journal_entries, the two Codex catalog settings, and ui.mark
     # are scalars on that bare page.
     assert 'aethermind.enabled' not in ids
-    assert len(list(catalog(config, {}))) == 74
-    # 74 catalog fields plus the nine record rows, plus update.status.
-    assert len(ids) == 84
+    assert len(list(catalog(config, {}))) == 73
+    # 73 catalog fields plus the nine record rows, plus update.status.
+    assert len(ids) == 83
 
 
 def test_yolo_banner_settings_save_reaches_status_and_disk(tmp_path):

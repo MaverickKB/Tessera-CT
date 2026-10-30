@@ -109,7 +109,7 @@ def test_icon_and_logo_values_are_visible_and_default_to_cairn(tmp_path, monkeyp
         egg = _egg_field(manager.settings_view())
     assert field['label'] == 'Icon and logo'
     assert [option['value'] for option in field['options']] == ['cairn', 'gremlin']
-    assert [option['label'] for option in field['options']] == ['Tessera', 'Goblin']
+    assert [option['label'] for option in field['options']] == ['Tessera', 'Gremlin']
     assert 'Tessera-CT' in field['status']
     assert 'yolo' in egg['hint']
     (tmp_path / 'config.toml').write_text('[ui]\nmark = "gremlin"\neaster_egg_f_it = false\n')
@@ -137,12 +137,12 @@ def test_icon_and_logo_saves_both_values_without_a_second_switch(tmp_path):
         manager.apply_settings({'id': 'ui.easter_egg_f_it', 'value': False})
         waiting = _mark_field(manager.settings_view())
         assert waiting['value'] == 'gremlin'
-        assert waiting['status'] == 'Showing the goblin pack.'
+        assert waiting['status'] == 'Showing the gremlin logo.'
         assert 'F-it button' not in waiting['status']
         manager.apply_settings({'id': 'ui.easter_egg_f_it', 'value': True})
         showing = _mark_field(manager.settings_view())
         assert showing['value'] == 'gremlin'
-        assert showing['status'] == 'Showing the goblin pack.'
+        assert showing['status'] == 'F-it button is on, so the gremlin logo, favicon and crew are showing.'
         assert manager.approval_status()['mode'] == 'ask'
         ids = [field['id'] for section in manager.settings_view()['sections'] if section['id'] == 'appearance'
                for field in section['fields']]

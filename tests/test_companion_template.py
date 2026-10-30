@@ -1,6 +1,5 @@
 """The shipped companion template stays generic, and the release names its gaps."""
 
-import json
 from pathlib import Path
 
 from tessera.config import Config
@@ -49,12 +48,4 @@ def test_release_copy_states_native_icon_and_custom_skin_gaps():
     assert drawings == ['web/brand/f-it-gremlin.svg']
     script = (ROOT / 'web/unleashed-label.js').read_text(encoding='utf-8')
     assert 'M44 50' not in script
-    # The mark is the chosen goblin avatar now, and every avatar it can name
-    # ships beside the page at both sizes.
-    assert '/static/brand/goblin' in script
-    manifest = json.loads((ROOT / 'web/brand/goblin/manifest.json').read_text(encoding='utf-8'))
-    assert manifest, 'the avatar manifest names every avatar'
-    for avatar in manifest:
-        for size in ('64', '256'):
-            picture = ROOT / 'web/brand/goblin' / avatar['id'] / ('avatar-' + size + '.png')
-            assert picture.is_file(), picture
+    assert '/static/brand/f-it-gremlin.svg' in script

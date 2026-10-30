@@ -45,7 +45,6 @@
       if (field.id === "ui.show_thoughts") return {show_thoughts: value};
       if (field.id === "ui.send_shortcut") return {send_shortcut: value};
       if (field.id === "ui.easter_egg_f_it") return {easter_egg_f_it: value};
-      if (field.id === "ui.goblin_avatar") return {goblin_avatar: value};
       return null;
     }
 
@@ -321,30 +320,20 @@
       // A field whose choices are drawn as previews uses the previews as its
       // control. A select above them repeats the same list.
       const previewKind = field.id === "ui.mark" ? "mark"
-        : field.id === "ui.skin" ? "skin"
-        : field.id === "ui.goblin_avatar" ? "goblin" : "";
+        : field.id === "ui.skin" ? "skin" : "";
       if (previewKind) placeField(row, field, input, null, tier);
       else placeField(row, field, input, field.type === "bool" ? null : controlFor(field, input), tier);
       if (previewKind) {
-        const previews = element("div", previewKind === "mark" ? "mark-previews"
-          : previewKind === "skin" ? "skin-previews" : "avatar-previews");
+        const previews = element("div", previewKind === "mark" ? "mark-previews" : "skin-previews");
         previews.setAttribute("role", "group");
         previews.setAttribute("aria-label", field.label);
         for (const option of field.options || []) {
-          const button = element("button", previewKind === "goblin" ? "avatar-preview"
-            : previewKind === "mark" ? "mark-preview" : "skin-preview",
-            previewKind === "goblin" ? "" : option.label.split(" · ")[0]);
+          const button = element("button", previewKind === "mark" ? "mark-preview" : "skin-preview",
+            option.label.split(" · ")[0]);
           button.type = "button";
           button.dataset[previewKind] = option.value;
           button.setAttribute("aria-pressed", String(field.value === option.value));
           button.title = option.label;
-          if (previewKind === "goblin") {
-            const image = document.createElement("img");
-            image.setAttribute("src", "/static/brand/goblin/" + option.value + "/avatar-256.png");
-            image.setAttribute("alt", option.label + " avatar");
-            button.prepend(image);
-            button.append(document.createTextNode(option.label));
-          }
           if (previewKind === "skin") {
             const palette = element("span", "skin-palette");
             palette.setAttribute("aria-hidden", "true");

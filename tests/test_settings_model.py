@@ -973,9 +973,9 @@ def test_appearance_controls_are_optional_preferences(tmp_path):
         'ui.send_shortcut': 'optional',
         'ui.config_journal_entries': 'advanced',
     }
-    # F-it and the goblin it shows live in Goblin Mode, not Appearance.
+    # F-it lives in Goblin Mode now, not Appearance. The button keeps its cartoon.
     goblin = next(s for s in project(load_config(tmp_path), {})['sections'] if s['id'] == 'goblin')
-    assert [f['id'] for f in goblin['fields']] == ['ui.easter_egg_f_it', 'ui.goblin_avatar']
+    assert [f['id'] for f in goblin['fields']] == ['ui.easter_egg_f_it']
 
 
 def test_models_keep_chat_prerequisites_before_optional_failover(tmp_path):
