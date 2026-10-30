@@ -490,12 +490,9 @@ mod tests {
     fn real_core_launches_on_loopback_serves_the_ui_origin_and_stops_on_stdin_close() {
         let home = std::env::temp_dir().join(format!("tessera-desktop-core-{}", std::process::id()));
         std::fs::create_dir_all(&home).unwrap();
-        std::env::set_var("TESSERA_HOME", &home);
-        for key in ["XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TESSERA_SERVER_TOKEN"] {
-            std::env::remove_var(key);
-        }
         let settings = Settings::default();
-        let mut core = Core::launch(&settings, &std::collections::HashMap::new()).expect("core starts");
+        let mut core = Core::launch_with_home(&settings, Some(home.to_str().unwrap()),
+                                              &std::collections::HashMap::new()).expect("core starts");
         assert!(core.running());
         let host = format!("{}:{}", core.origin.host_str().unwrap(), core.origin.port().unwrap());
         let same = core.origin.as_str().trim_end_matches('/').to_string();
@@ -726,15 +723,11 @@ mod auth_end_to_end_tests {
         std::fs::create_dir_all(&home).unwrap();
         std::fs::write(home.join("config.toml"),
             "[server]\nhost = \"127.0.0.1\"\nport = 0\nauth_token = \"e2e-key\"\nauth_mode = \"always\"\n").unwrap();
-        std::env::set_var("TESSERA_HOME", &home);
-        for key in ["XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TESSERA_SERVER_TOKEN"] {
-            std::env::remove_var(key);
-        }
-
         // Start it with the key, through the app's real launcher.
         let mut settings = Settings::default();
         settings.auth_token = "e2e-key".into();
-        let mut core = Core::launch(&settings, &std::collections::HashMap::new()).expect("keyed core starts");
+        let mut core = Core::launch_with_home(&settings, Some(home.to_str().unwrap()),
+                                              &std::collections::HashMap::new()).expect("keyed core starts");
         assert!(core.running(), "the app must see its own keyed core as running");
         let origin = core.origin.clone();
 
@@ -749,5 +742,39 @@ mod auth_end_to_end_tests {
         core.stop(&settings);
         assert!(!core.running());
         std::fs::remove_dir_all(&home).ok();
+    }
+
+    #[test]
+    fn concurrent_launches_keep_their_home_and_auth_configuration() {
+        // The suite launches real cores in parallel. A process-global TESSERA_HOME
+        // let one test steal another's config, causing both false authentication
+        // results and store-lock startup failures. Synchronize two launches so the
+        // keyed and unkeyed configurations must remain isolated at the same time.
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let handles: Vec<_> = [false, true].into_iter().map(|keyed| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                let home = std::env::temp_dir().join(format!("tessera-concurrent-auth-{}-{keyed}",
+                                                             std::process::id()));
+                let _ = std::fs::remove_dir_all(&home);
+                std::fs::create_dir_all(&home).unwrap();
+                let mode = if keyed { "always" } else { "loopback" };
+                std::fs::write(home.join("config.toml"), format!(
+                    "[server]\nhost = \"127.0.0.1\"\nport = 0\nauth_token = \"e2e-key\"\nauth_mode = \"{mode}\"\n")).unwrap();
+                let mut settings = Settings::default();
+                settings.auth_token = "e2e-key".into();
+                barrier.wait();
+                let mut core = Core::launch_with_home(&settings, Some(home.to_str().unwrap()),
+                                                       &std::collections::HashMap::new()).expect("isolated core starts");
+                assert!(core.running());
+                assert_eq!(probe(&core.origin, Duration::from_millis(600), ""), !keyed,
+                           "each child must load its own home's authentication policy");
+                assert!(probe(&core.origin, Duration::from_millis(600), "e2e-key"));
+                core.stop(&settings);
+                assert!(!core.running());
+                std::fs::remove_dir_all(home).ok();
+            })
+        }).collect();
+        for handle in handles { handle.join().unwrap(); }
     }
 }
