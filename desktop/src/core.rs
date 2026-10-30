@@ -540,7 +540,14 @@ mod tests {
     #[test]
     fn appimage_python_paths_do_not_replace_the_selected_external_interpreter() {
         let mut settings = Settings::default();
-        settings.python = settings.python().to_string_lossy().into_owned();
+        // A default interpreter may be a PATH command (python3), not a file
+        // relative to the Rust test directory. Select its actual executable
+        // before poisoning the AppImage environment, as the public launcher does.
+        let selected = Command::new(settings.python())
+            .args(["-c", "import sys; print(sys.executable)"])
+            .output().expect("discover selected external Python");
+        assert!(selected.status.success());
+        settings.python = String::from_utf8(selected.stdout).unwrap().trim().to_owned();
         let appdir = std::env::temp_dir().join("tessera-appimage-path-test");
         let operator = std::env::temp_dir().join("tessera-operator-python-module-path");
         let injected = appdir.join("usr/share/pyshared");
