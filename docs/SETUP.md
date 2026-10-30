@@ -183,6 +183,9 @@ model and submits one short greeting through the normal session/turn API. Nothin
 runs merely because you opened the guide. The test uses the same harness,
 permissions, memory, and event stream as a normal chat. Read the actual reply in
 Chat; saved configuration and an accepted submission are not proof of a reply.
+The conversation offers optional guided setup using the current repo docs: accounts,
+models, Jev, autonomy, and infrastructure. Credentials use a protected form outside
+the transcript; OAuth uses the existing browser sign-in. See [Orientation](ORIENTATION.md).
 The conversation remains available to continue with a useful task. Within the
 same open page, a failed or uncertain submission can be retried without
 duplicating an accepted request.

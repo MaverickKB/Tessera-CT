@@ -45,9 +45,10 @@
   let voice;
   let localVoice;
   let configView = null;
+  let credentialPrompt = null;
   let autonomy = null;
   let shelfView = null;
-  const eventTypes = ["delta", "message", "turn_start", "turn_end", "route", "capture", "error", "steer", "interrupt", "queue", "resume", "checkpoint"];
+  const eventTypes = ["credential_request", "delta", "message", "turn_start", "turn_end", "route", "capture", "error", "steer", "interrupt", "queue", "resume", "checkpoint"];
   const pages = ["chat", "wip", "infrastructure", "voice", "integrations", "settings", "shelf"];
   const taskLabels = {queued: "Queued", waiting: "Waiting", running: "Running", succeeded: "Succeeded", failed: "Failed", cancelled: "Cancelled"};
   const boardLabels = {queued: "Queued", running: "Running", blocked: "Blocked", succeeded: "Succeeded", failed: "Failed", cancelled: "Cancelled"};
@@ -1117,6 +1118,7 @@
     state.epoch += 1;
     const epoch = state.epoch;
     state.slug = slug;
+    if (credentialPrompt) credentialPrompt.refresh(slug);
     activity.phase = "";
     activity.approval = null;
     activity.tools.clear();
@@ -1758,6 +1760,10 @@
   function handleEvent(type, data, id, slug, epoch) {
     if (epoch !== state.epoch || slug !== state.slug) return;
     if (id) state.lastEvent = id;
+    if (type === "credential_request") {
+      if (credentialPrompt) credentialPrompt.refresh(slug);
+      return;
+    }
     if (type === "delta" && state.stopping === slug) return;
     observeActivity(type, data);
     // A fresh open skips replayed message bodies (the transcript fetched them) and
@@ -1814,6 +1820,7 @@
       }
     }
     if (type === "turn_end") {
+      if (credentialPrompt) credentialPrompt.refresh(slug);
       if (state.pendingMessages.length) {
         const messages = state.pendingMessages;
         state.pendingMessages = [];
@@ -7485,10 +7492,15 @@
     // screen under the reader.
     if (state.page === "wip" && boardFieldFocused()) return;
     Promise.all([refreshSessions(), refreshStatus()]).catch(showError);
+    if (credentialPrompt && activeSession()?.purpose === "orientation") credentialPrompt.refresh(state.slug);
     if (state.page === "integrations") refreshIntegrations();
     if (state.page === "wip") refreshBoardView();
   }, refreshInterval);
   autonomy = window.TesseraAutonomy ? window.TesseraAutonomy.mount({ api, element, getSlug: () => state.slug, agentName }) : null;
+  credentialPrompt = window.TesseraCredentialPrompt && $("credential-prompt") ? window.TesseraCredentialPrompt.mount({
+    api, element, root: $("credential-prompt"),
+  }) : null;
+  if (credentialPrompt) window.addEventListener("pagehide", () => credentialPrompt.clear());
   // First-use testing is an ordinary saved conversation, with the same runtime,
   // approvals and event stream as every other chat. Never run it on page load.
   let setupTest = null;
@@ -7511,12 +7523,12 @@
     }
     const test = setupTest;
     if (!test.slug) {
-      const session = await api("/api/sessions", "POST", {title: "Getting started", backend});
+      const session = await api("/api/sessions", "POST", {title: "Getting started", backend, purpose: "orientation"});
       test.slug = session.slug;
     }
     if (!test.submitted) {
       await api(sessionPath(test.slug, "/messages"), "POST", {
-        text: "This is my first Tessera connection test. Reply with a brief greeting without using tools.",
+        text: "This is my first Tessera connection test. Greet me briefly, then offer optional orientation and guided setup using the session-specific skill and current documentation.",
         client_request_id: test.requestId,
       });
       test.submitted = true;

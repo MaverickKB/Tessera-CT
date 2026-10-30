@@ -63,6 +63,7 @@ class Shelf:
         # Optional () -> current SkillsConfig. A reload replaces the session config;
         # the shelf object stays, and the next call reads the new switches.
         self.live = None
+        self.session_roots = ()
 
     def _settings(self):
         if self.live is not None:
@@ -92,6 +93,7 @@ class Shelf:
         for extra in getattr(settings, 'extra_dirs', ()) or ():
             if isinstance(extra, str) and extra.strip():
                 roots.append((Path(extra).expanduser(), 'added'))
+        roots += [(Path(path), 'session') for path in self.session_roots]
         return roots
 
     def _collect(self):
