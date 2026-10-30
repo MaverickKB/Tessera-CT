@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from queue import Empty, Queue
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -83,6 +84,35 @@ def test_unowned_core_does_not_stop_after_installing_an_update(update_server, mo
     result = request(update_server.url, '/api/update/apply', {})
     assert result['updated'] is True and result['restarting'] is False
     assert request(update_server.url, '/api/status?shape=connection')['generation']
+
+
+@pytest.mark.parametrize('supervised,self_supervised,accepted', [
+    (False, False, False), (True, False, True), (False, True, True),
+])
+def test_restart_route_requires_an_external_or_launcher_owner(update_server, monkeypatch,
+                                                              supervised, self_supervised, accepted):
+    from urllib.error import HTTPError
+    update_server.config.server.supervised = supervised
+    update_server.self_supervised = self_supervised
+    restarts = []
+    restarted = threading.Event()
+    def restart(when):
+        restarts.append(when)
+        restarted.set()
+    monkeypatch.setattr(update_server, 'restart', restart)
+    assert request(update_server.url, '/api/settings')['supervised'] is accepted
+    assert request(update_server.url, '/api/config')['supervised'] is accepted
+    assert update_server.config.server.supervised is supervised
+    if accepted:
+        result = request(update_server.url, '/api/core/restart', {'when': 'idle'})
+        assert result['restarting'] is True and result['deferred'] is True
+        assert restarted.wait(5)
+        assert restarts == ['idle']
+    else:
+        with pytest.raises(HTTPError) as refused:
+            request(update_server.url, '/api/core/restart', {'when': 'idle'})
+        assert refused.value.code == 409
+        assert restarts == []
 
 
 def test_successful_update_restarts_even_if_the_client_disconnects(update_server, monkeypatch):
@@ -339,6 +369,7 @@ def test_git_installed_harness_reinstalls_itself_and_loads_new_code(tmp_path, mo
     pytest.param('serve', marks=pytest.mark.skipif(os.name == 'nt', reason='POSIX exec lifecycle')),
     'desktop',
     pytest.param('desktop-owner', marks=pytest.mark.skipif(os.name == 'nt', reason='Owner is already used by native Windows desktop')),
+    pytest.param('serve-owner', marks=pytest.mark.skipif(os.name == 'nt', reason='Native Windows kept-core ownership is covered by Rust')),
 ])
 def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch, mode):
     monkeypatch.setenv('GIT_CONFIG_GLOBAL', os.devnull)
@@ -366,15 +397,16 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
     env = {key: value for key, value in os.environ.items() if not key.startswith('TESSERA_')}
     env['PYTHONPATH'] = str(clone)
     command = [sys.executable, '-u', '-m', 'tessera', '--home', str(home), mode, '--port', '0']
-    if mode == 'desktop-owner':
+    if mode.endswith('-owner'):
         # Exercise the Windows owner strategy with real subprocesses on POSIX too.
         script = ('from tessera.config import load_config; from tessera.desktop import _run_owned; '
-                  'import sys; config=load_config(sys.argv[1]); config.server.port=0; _run_owned(config)')
-        command = [sys.executable, '-u', '-c', script, str(home)]
+                  'import sys; config=load_config(sys.argv[1]); config.server.port=0; _run_owned(config, sys.argv[2])')
+        command = [sys.executable, '-u', '-c', script, str(home), mode.split('-')[0]]
     if mode == 'start':
         command.append('--no-browser')
     process = subprocess.Popen(command, cwd=clone, env=env, stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=mode == 'serve-owner')
     try:
         url = ready_url(process, mode)
         before = request(url, '/api/status?shape=connection')['generation']
@@ -407,14 +439,37 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
         assert git(clone, 'rev-parse', 'HEAD') == latest
         assert request(url, '/api/update/check')['behind'] == 0
         assert sentinel.read_text() == 'operator data'
-        if mode.startswith('desktop'):
+        if mode.startswith('desktop') or mode == 'serve-owner':
+            before_restart = status['generation']
+            assert request(url, '/api/core/restart', {})['restarting'] is True
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                assert process.poll() is None, 'the desktop owner must survive its restart API too'
+                try:
+                    after_restart = request(url, '/api/status?shape=connection')
+                    if after_restart['generation'] != before_restart:
+                        break
+                except (OSError, URLError):
+                    pass
+                time.sleep(0.1)
+            else:
+                pytest.fail('owned desktop did not restart at its existing origin')
+            assert after_restart['generation'].startswith('updated-')
+        if mode == 'serve-owner':
+            os.killpg(process.pid, signal.SIGTERM)
+        elif mode.startswith('desktop'):
             process.stdin.close()
             process.stdin = None
         else:
             process.terminate()
         process.wait(timeout=10)
-        assert process.returncode == 0
+        assert process.returncode == (-signal.SIGTERM if mode == 'serve-owner' else 0)
     finally:
+        if mode == 'serve-owner':
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         if process.poll() is None:
             process.kill()
         process.communicate(timeout=5)

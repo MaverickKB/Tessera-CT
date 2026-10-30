@@ -32,12 +32,20 @@ def owned_worker():
     return _owned_worker
 
 
-def _run_owned(config):
+def claim_owned_worker():
+    global _owned_worker
+    # Child tools must not inherit a claim to the owner's restart protocol.
+    _owned_worker = os.environ.pop(_WORKER_ENV, '') == '1'
+    return _owned_worker
+
+
+def _run_owned(config, mode='desktop'):
     """Keep the shell-owned process alive while fresh workers serve its origin.
 
-    This owner never creates a server, model thread, or memory manager. Its child
-    inherits the shell's stdin lifetime; EOF and actual failures exit the owner,
-    while the explicit restart exit code alone starts a new interpreter.
+    This owner never creates a server, model thread, or memory manager. Desktop
+    workers inherit the shell's stdin lifetime; kept serve workers stay detached.
+    Worker EOF or actual failures exit the owner, while the explicit restart exit
+    code alone starts a new interpreter.
     """
     environment = dict(os.environ)
     environment[_WORKER_ENV] = '1'
@@ -49,16 +57,22 @@ def _run_owned(config):
     # If EOF races a restart marker, the fresh worker inherits EOF and exits too.
     while True:
         command = [sys.executable, '-u', '-m', 'tessera', '--home', str(config.home),
-                   'desktop', '--host', config.server.host, '--port', str(port)]
+                   mode, '--host', config.server.host, '--port', str(port)]
         with subprocess.Popen(command, env=environment, stdin=owner_stdin,
                               stdout=subprocess.PIPE, stderr=sys.stderr) as worker:
             ready = False
             for line in worker.stdout:
                 if not ready:
                     try:
-                        record = json.loads(line)
-                        if record.get('type') == 'tessera.ready' and record.get('version') == 1:
-                            address = urlsplit(record['url'])
+                        url = None
+                        if mode == 'desktop':
+                            record = json.loads(line)
+                            if record.get('type') == 'tessera.ready' and record.get('version') == 1:
+                                url = record['url']
+                        elif line.startswith(b'Serving Tessera at '):
+                            url = line.decode().split()[-1]
+                        if url is not None:
+                            address = urlsplit(url)
                             if address.port:
                                 port = address.port
                                 ready = True
@@ -273,10 +287,7 @@ def _wait_for_stdin_eof():
 
 
 def run(config):
-    global _owned_worker
-    # Consume the launch marker so tools and other subprocesses started by this
-    # worker cannot accidentally inherit a claim to the owner's restart protocol.
-    _owned_worker = os.environ.pop(_WORKER_ENV, '') == '1'
+    claim_owned_worker()
     if os.name == 'nt' and not owned_worker():
         return _run_owned(config)
     _drop_leaked_stdin_writer()

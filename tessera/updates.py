@@ -83,7 +83,7 @@ def install_report():
 
 def restart_process(config, command, port):
     """Replace an owned core with fresh imports, retaining its home and origin."""
-    if command == 'desktop':
+    if command in ('desktop', 'serve'):
         from .desktop import owned_worker, _RESTART_EXIT
         if owned_worker():
             # The persistent owner retains the native shell's monitored handle.

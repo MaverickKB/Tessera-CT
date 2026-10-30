@@ -143,6 +143,9 @@ class TesseraServer(ThreadingHTTPServer):
     def __init__(self, config, manager, web_root, family, address):
         self.address_family = family
         self.manager = manager
+        settings = getattr(self.manager, 'settings', None)
+        if settings is not None:
+            settings.restart_capable = self.restart_capable
         self.web_root = Path(web_root).resolve()
         self.oauth_login = LoginDesk(Path(config.home) / 'oauth-login')
         self.stopping = threading.Event()
@@ -177,6 +180,9 @@ class TesseraServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
         self.server_name = host
         self.server_port = port
+
+    def restart_capable(self):
+        return bool(self.config.server.supervised or self.self_supervised)
 
     def ui_build(self):
         # Assets are read from disk per request, so a pull changes the UI without a restart.
@@ -730,7 +736,7 @@ class Handler(BaseHTTPRequestHandler):
             editor = manager.config_editor
             if method == 'GET':
                 self._json(200, {'config': editor.read(), 'file': editor.config_path.name,
-                                 'supervised': self.server.config.server.supervised})
+                                 'supervised': self.server.restart_capable()})
             elif method == 'POST':
                 body = self._body(('edits', 'adopt'))
                 if 'edits' in body:
@@ -748,11 +754,12 @@ class Handler(BaseHTTPRequestHandler):
             when = body.get('when', 'now')
             if when not in ('now', 'idle'):
                 raise ApiError(400, "when must be 'now' or 'idle'")
-            if not self.server.config.server.supervised:
+            if not self.server.restart_capable():
                 raise ApiError(409, 'Core is not supervised; restart it where it was started')
             self._json(202, {'restarting': True, 'deferred': when == 'idle',
                              'drain_seconds': self.server.config.server.drain_seconds})
-            # A supervisor (launchd KeepAlive) starts the core again after a clean exit.
+            # Either an external supervisor or this core's own launcher starts
+            # fresh code after the existing drain completes.
             self.server.restart(when)
             return
         if path == '/api/update/check' and method == 'GET':
@@ -1625,6 +1632,10 @@ def create_server(config, manager=None, web_root=None, backend_factory=None):
 
 
 def serve(config):
+    from .desktop import claim_owned_worker, _run_owned
+    worker = claim_owned_worker()
+    if os.name == 'nt' and not config.server.supervised and not worker:
+        return _run_owned(config, 'serve')
     from .bundled_engine import ensure_local_engine_bundle
     ensure_local_engine_bundle(config)
     terminating = []
