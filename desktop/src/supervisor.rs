@@ -19,7 +19,7 @@ pub struct Supervisor {
 
 #[derive(Serialize)]
 pub struct Status {
-    /// This app can start the core: it owns one, or supervises a kept address.
+    /// This app owns the child and can both start and stop it.
     loaded: bool,
     running: bool,
 }
@@ -34,18 +34,22 @@ impl Supervisor {
         // A core the app attached to but never started (systemd, a terminal) is
         // not the app's to start or stop, so the page is told there is nothing
         // to control rather than offering buttons that would refuse.
-        let loaded = !core.attached() || core.kept();
+        let loaded = !core.attached();
         Ok(Status { loaded, running: core.running() })
     }
 
     fn change(&self, start: bool) -> Result<Status, String> {
         {
             let mut core = self.lock()?;
+            if core.attached() {
+                return Err("This core was started elsewhere; control it where it was launched".into());
+            }
             let running = core.running();
             if start && !running {
                 core.restart(&self.settings)?;
-            } else if !start && running {
-                core.shutdown(&self.settings);
+            } else if !start {
+                core.set_paused(true);
+                if running { core.shutdown(&self.settings); }
             }
         }
         // Report only the state that was asked for, and say so when it is not
@@ -105,18 +109,50 @@ mod tests {
         assert!(PAGE_BRIDGE.contains("window.TesseraServer"));
     }
 
+    #[test]
+    fn an_attached_kept_core_has_no_stop_control() {
+        let home = std::env::temp_dir().join(format!("tessera-supervisor-attached-{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let mut settings = Settings::default();
+        settings.home = home.to_str().unwrap().to_string();
+        let mut owned = Core::connect(&settings, &std::collections::HashMap::new()).expect("owned core");
+        settings.attach_url = owned.origin.to_string();
+        settings.keep_core = true;
+        let attached = Core::connect(&settings, &std::collections::HashMap::new()).expect("attached core");
+        let supervisor = Supervisor { core: Arc::new(Mutex::new(attached)), settings: settings.clone() };
+        assert!(!supervisor.status().unwrap().loaded);
+        assert!(supervisor.change(false).err().unwrap().contains("started elsewhere"));
+        assert!(owned.running());
+        owned.shutdown(&settings);
+        std::fs::remove_dir_all(home).ok();
+    }
+
     /// The buttons are only real if they move a live core. This starts one,
     /// stops it with the same call the page makes, and starts it again.
     #[test]
     fn stop_and_start_move_a_live_core() {
+        stop_and_start(false);
+    }
+
+    #[test]
+    fn stop_and_start_move_a_kept_core() {
+        stop_and_start(true);
+    }
+
+    fn stop_and_start(keep: bool) {
         let home = std::env::temp_dir()
-            .join(format!("tessera-supervisor-{}", std::process::id()));
+            .join(format!("tessera-supervisor-{}-{keep}", std::process::id()));
         std::fs::create_dir_all(&home).unwrap();
         for key in ["XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TESSERA_SERVER_TOKEN"] {
             std::env::remove_var(key);
         }
         let mut settings = Settings::default();
         settings.home = home.to_str().unwrap().to_string();
+        if keep {
+            let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+            settings.attach_url = format!("http://127.0.0.1:{port}/");
+            settings.keep_core = true;
+        }
         settings.shutdown_seconds = 3.0;
         settings.terminate_seconds = 2.0;
         let core = Core::connect(&settings, &std::collections::HashMap::new()).expect("core starts");
@@ -128,11 +164,20 @@ mod tests {
         let running = supervisor.status().expect("status");
         assert!(running.loaded && running.running, "a spawned core is loaded and running");
 
+        let origin = supervisor.core.lock().unwrap().origin.clone();
         let stopped = supervisor.change(false).expect("Stop server");
         assert!(!stopped.running, "Stop server must leave the core stopped");
+        assert_eq!(supervisor.core.lock().unwrap().monitor_action(), crate::core::MonitorAction::Idle,
+                   "the actual monitor decision must neither exit nor respawn after Stop");
 
         let started = supervisor.change(true).expect("Start server");
         assert!(started.running, "Start server must bring the core back");
+        let mut core = supervisor.core.lock().unwrap();
+        assert_eq!(core.origin, origin, "Start must retain the window origin");
+        core.shutdown(&settings);
+        assert_eq!(core.monitor_action(), if keep { crate::core::MonitorAction::Restart }
+                   else { crate::core::MonitorAction::Exit }, "Start resumes crash monitoring");
+        drop(core);
 
         supervisor.change(false).ok();
     }

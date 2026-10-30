@@ -162,9 +162,11 @@ fn main() {
             loop {
                 std::thread::sleep(Duration::from_millis(500));
                 if stopping.load(Ordering::SeqCst) { break; }
-                let kept = core.lock().unwrap().kept();
-                if core.lock().unwrap().running() { failures = 0; continue; }
-                if !kept {
+                let mut core = core.lock().unwrap();
+                let action = core.monitor_action();
+                if action == core::MonitorAction::Idle { failures = 0; continue; }
+                if action == core::MonitorAction::Exit {
+                    drop(core);
                     eprintln!("{}", serde_json::json!({"event": "tessera-desktop.error", "error": "The local core stopped"}));
                     handle.exit(1);
                     break;
@@ -172,7 +174,7 @@ fn main() {
                 // A kept core is the app's to restart: the window stays open and the
                 // page's reconnect banner clears when the address answers again.
                 eprintln!("{}", serde_json::json!({"event": "tessera-desktop.core-restarting"}));
-                match core.lock().unwrap().respawn(&settings) {
+                match core.respawn(&settings) {
                     Ok(()) => {
                         failures = 0;
                         eprintln!("{}", serde_json::json!({"event": "tessera-desktop.core-restarted"}));
@@ -180,6 +182,7 @@ fn main() {
                     Err(error) => {
                         failures += 1;
                         eprintln!("{}", serde_json::json!({"event": "tessera-desktop.core-respawn-failed", "error": error}));
+                        drop(core);
                         // Back off rather than hammer a home lock or a bad config.
                         std::thread::sleep(Duration::from_secs((failures.min(6) * 5) as u64));
                     }
