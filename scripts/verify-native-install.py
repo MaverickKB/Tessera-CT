@@ -54,8 +54,8 @@ def stop(process, ready, port):
                 owner = wintypes.DWORD()
                 user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
                 if owner.value == shell_pid and user32.IsWindowVisible(window):
-                    user32.PostMessageW(window, 0x0010, 0, 0)  # WM_CLOSE
-                    closed.append(window)
+                    if user32.PostMessageW(window, 0x0010, 0, 0):  # WM_CLOSE
+                        closed.append(window)
                 return True
 
             callback = callback_type(close_window)
@@ -85,7 +85,8 @@ def stop(process, ready, port):
                 process.terminate()
         else:
             try:
-                os.killpg(ready.get('native_owner_pid', process.pid), signal.SIGKILL)
+                from tessera.desktop_install import _signal_native_group
+                _signal_native_group(ready.get('native_owner_pid', process.pid), signal.SIGKILL, 10)
             except ProcessLookupError:
                 pass
         try:
