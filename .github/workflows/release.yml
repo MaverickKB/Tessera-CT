@@ -1,126 +1,118 @@
-name: release
+name: native release
 
-# On a tag, build the native desktop shell for every platform and architecture
-# the installer supports, rename each bundle to the canonical
-# `tessera-<platform>-<arch>.<ext>` name the downloader derives, emit a `.sha256`
-# sidecar for each, create the GitHub release when it is absent, and attach all
-# artifacts. This is the automatic-install source: `tessera start` resolves the
-# exact bundle URL, verifies it against the sidecar, and installs it.
+# PRs and manual runs exercise the exact release build/assembly path but cannot
+# publish. Only a pushed version tag can reach the publishing job.
 on:
+  pull_request:
+  workflow_dispatch:
   push:
     tags: ['v*']
 
+permissions:
+  contents: read
+
 jobs:
-  linux:
-    name: linux (x86_64 + aarch64 AppImage)
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-      - name: Prerequisites
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Version tag matches installer and bundle versions
+        if: github.event_name == 'push'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/desktop_release.py --check-version "$RELEASE_TAG"
+      - id: targets
+        run: echo "matrix=$(python scripts/desktop_release.py --matrix)" >> "$GITHUB_OUTPUT"
+
+  bundle:
+    needs: matrix
+    name: native release (${{ matrix.platform }}, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.targets) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python core with the selected interpreter
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [[ -x .venv/bin/python ]]; then
+            native_python="$PWD/.venv/bin/python"
+          else
+            native_python="$PWD/.venv/Scripts/python.exe"
+          fi
+          "$native_python" -m pip install -e ".[test]"
+          "$native_python" -m pip install --require-hashes -r docs/packaging/aethermind-mcp-requirements.lock
+          echo "NATIVE_PYTHON=$native_python" >> "$GITHUB_ENV"
+      - name: Linux prerequisites (native architecture)
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
-            patchelf libgtk-3-dev libfuse2t64
+            patchelf libgtk-3-dev libfuse2t64 xvfb
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop
       - name: Install tauri-cli
         run: cargo install tauri-cli --version "^2" --locked
-      - name: Build x86_64 AppImage
+      - name: Build native bundles
         working-directory: desktop
-        run: cargo tauri build --bundles appimage --target x86_64-unknown-linux-gnu
-      - name: Build aarch64 AppImage
-        working-directory: desktop
-        run: cargo tauri build --bundles appimage --target aarch64-unknown-linux-gnu
-      - name: Assemble canonical artifacts and sidecars
+        run: cargo tauri build --bundles ${{ matrix.bundles }} --target ${{ matrix.target }}
+      - name: Assemble canonical artifacts and required checksums
+        id: assemble
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          declare -A names=( [x86_64]="tessera-linux-x86_64.AppImage" [aarch64]="tessera-linux-aarch64.AppImage" )
-          for arch in x86_64 aarch64; do
-            src=$(ls desktop/target/$arch/release/bundle/appimage/*.AppImage)
-            cp "$src" "dist/${names[$arch]}"
-          done
-          (cd dist && for f in *; do sha256sum "$f" > "$f.sha256"; done)
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        run: echo "asset=$(python scripts/desktop_release.py --target ${{ matrix.target }} | head -n1)" >> "$GITHUB_OUTPUT"
+      - name: Verify actual installation and native startup (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+        run: xvfb-run -a "$NATIVE_PYTHON" scripts/verify-native-install.py --asset "dist/${{ steps.assemble.outputs.asset }}" --sha256-file "dist/${{ steps.assemble.outputs.asset }}.sha256"
+      - name: Verify actual installation and native startup (macOS / Windows)
+        if: matrix.platform != 'linux'
+        shell: bash
+        run: '"$NATIVE_PYTHON" scripts/verify-native-install.py --asset "dist/${{ steps.assemble.outputs.asset }}" --sha256-file "dist/${{ steps.assemble.outputs.asset }}.sha256"'
+      - uses: actions/upload-artifact@v4
         with:
-          name: tessera-linux
-          path: dist/**
+          name: native-release-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: dist/*
 
-  macos:
-    name: macos (aarch64 .app)
-    runs-on: macos-latest
-    permissions:
-      contents: write
+  verify:
+    name: verify complete native release
+    needs: bundle
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
         with:
-          targets: aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
         with:
-          workspaces: desktop
-      - name: Install tauri-cli
-        run: cargo install tauri-cli --version "^2" --locked
-      - name: Build .app
-        working-directory: desktop
-        run: cargo tauri build --bundles app
-      - name: Assemble canonical artifact and sidecar
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          app=$(ls desktop/target/release/bundle/macos/*.app | head -1)
-          tar -C "$(dirname "$app")" -czf dist/tessera-macos-aarch64.app.tar.gz "$(basename "$app")"
-          (cd dist && sha256sum tessera-macos-aarch64.app.tar.gz > tessera-macos-aarch64.app.tar.gz.sha256)
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tessera-macos
-          path: dist/**
-
-  windows:
-    name: windows (x86_64 .msi)
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: desktop
-      - name: Install tauri-cli
-        run: cargo install tauri-cli --version "^2" --locked
-      - name: Build MSI
-        working-directory: desktop
-        run: cargo tauri build --bundles msi
-      - name: Assemble canonical artifact and sidecar
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          cp desktop/target/release/bundle/msi/*.msi dist/tessera-windows-x86_64.msi
-          (cd dist && sha256sum tessera-windows-x86_64.msi > tessera-windows-x86_64.msi.sha256)
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tessera-windows
-          path: dist/**
+          pattern: native-release-*
+          path: dist
+          merge-multiple: true
+      - name: Verify complete asset set and checksums
+        run: python scripts/desktop_release.py --verify
 
   publish:
-    name: create release and attach assets
-    needs: [linux, macos, windows]
+    name: publish versioned native release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: verify
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,14 +120,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          pattern: native-release-*
           path: dist
           merge-multiple: true
-      - name: Create release if absent, then attach
+      - name: Create release if absent, then attach verified assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           gh release view "$tag" >/dev/null 2>&1 || \
-            gh release create "$tag" --title "$tag" --generate-notes
+            gh release create "$tag" --verify-tag --title "$tag" --generate-notes
           gh release upload "$tag" dist/* --clobber
