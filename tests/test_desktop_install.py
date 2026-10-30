@@ -14,7 +14,12 @@ from tessera.desktop_install import NativeShellNotFound, find_binary, install, l
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
+def _linux_platform_and_clean_env(monkeypatch):
+    # The locate/install tests below assert the per-user Linux install layout
+    # (~/.local/bin AppImage). Pin the platform so they run identically on the
+    # macOS/Windows CI runners rather than exercising the .app/.msi branch with
+    # a Linux-shaped fixture.
+    monkeypatch.setattr(native.sys, 'platform', 'linux')
     monkeypatch.delenv('TESSERA_DESKTOP_BIN', raising=False)
     monkeypatch.delenv('TESSERA_HOME', raising=False)
     monkeypatch.delenv('TESSERA_DESKTOP_RELEASE_URL', raising=False)
