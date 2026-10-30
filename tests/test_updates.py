@@ -146,6 +146,7 @@ def test_git_install_reinstalls_with_its_own_interpreter_and_ref(monkeypatch, co
 
     def run(command, **kwargs):
         calls.append(command)
+        assert kwargs['stdin'] == subprocess.DEVNULL
         assert kwargs['env']['GIT_TERMINAL_PROMPT'] == '0'
         return SimpleNamespace(returncode=code, stderr='installation refused', stdout='')
 
@@ -156,6 +157,40 @@ def test_git_install_reinstalls_with_its_own_interpreter_and_ref(monkeypatch, co
     assert result['updated'] is (code == 0)
     if code:
         assert 'installation refused' in result['reason']
+
+
+def test_checkout_origin_subprocesses_do_not_borrow_the_owner_lifetime_pipe(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    (tmp_path / '.git').mkdir()
+    package = tmp_path / 'tessera'
+    package.mkdir()
+    monkeypatch.setattr(updates, '__file__', str(package / 'updates.py'))
+    replies = iter(['https://github.com/example/repo.git', 'fixture-commit', 'main'])
+    calls = []
+    def run(command, **kwargs):
+        assert kwargs['stdin'] == subprocess.DEVNULL
+        calls.append(command)
+        return SimpleNamespace(stdout=next(replies), returncode=0)
+    monkeypatch.setattr(updates.subprocess, 'run', run)
+    report = updates._checkout_origin()
+    assert report['commit'] == 'fixture-commit'
+    assert report['branch'] == 'main'
+    assert len(calls) == 3
+
+
+def test_git_and_github_auth_subprocesses_use_no_interactive_stdin(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.delenv('GH_TOKEN', raising=False)
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    calls = []
+    def run(command, **kwargs):
+        assert kwargs['stdin'] == subprocess.DEVNULL
+        calls.append(command)
+        return SimpleNamespace(stdout='fixture-token', returncode=0)
+    monkeypatch.setattr(updates.subprocess, 'run', run)
+    updates._git('fixture-root', 'fetch', 'origin', timeout=10)
+    assert updates._token() == 'fixture-token'
+    assert calls == [['git', '-C', 'fixture-root', 'fetch', 'origin'], ['gh', 'auth', 'token']]
 
 
 def test_git_install_check_compares_the_installed_commit_to_its_requested_ref(monkeypatch):

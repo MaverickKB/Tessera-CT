@@ -380,6 +380,13 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
         shutil.copytree(ROOT / name, source / name,
                         ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copyfile(ROOT / 'config.example.toml', source / 'config.example.toml')
+    if os.name == 'nt':
+        # Diagnose a Windows-only worker stall at its actual blocked frame.
+        # Keep this exclusively in the cloned fixture, not production startup.
+        entrypoint = source / 'tessera/__main__.py'
+        entrypoint.write_text('import faulthandler\n'
+                              'faulthandler.dump_traceback_later(20, repeat=True)\n'
+                              + entrypoint.read_text())
     git(source, 'init', '--initial-branch=main')
     commit_all(source, 'initial runnable harness')
     git(tmp_path, 'init', '--bare', '--initial-branch=main', str(origin))
@@ -404,8 +411,10 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
         command = [sys.executable, '-u', '-c', script, str(home), mode.split('-')[0]]
     if mode == 'start':
         command.append('--no-browser')
+    diagnostic_path = tmp_path / 'core-stderr.log'
+    diagnostics = diagnostic_path.open('wb')
     process = subprocess.Popen(command, cwd=clone, env=env, stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=diagnostics,
                                start_new_session=mode == 'serve-owner')
     try:
         url = ready_url(process, mode)
@@ -467,6 +476,12 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
             process.terminate()
         process.wait(timeout=10)
         assert process.returncode == (-signal.SIGTERM if mode == 'serve-owner' else 0)
+    except BaseException:
+        diagnostics.flush()
+        tail = diagnostic_path.read_bytes()[-16000:].decode('utf-8', errors='replace')
+        if tail:
+            print('Core failure diagnostics (bounded stderr tail):\n' + tail)
+        raise
     finally:
         if mode == 'serve-owner':
             try:
@@ -474,5 +489,9 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
             except ProcessLookupError:
                 pass
         if process.poll() is None:
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/T', '/F', '/PID', str(process.pid)],
+                               stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
             process.kill()
         process.communicate(timeout=5)
+        diagnostics.close()

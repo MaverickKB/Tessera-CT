@@ -58,11 +58,11 @@ def _checkout_origin():
         if (root / '.git').exists():
             try:
                 remote = subprocess.run(['git', '-C', str(root), 'remote', 'get-url', 'origin'],
-                                        capture_output=True, text=True, timeout=10)
+                                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
                 commit = subprocess.run(['git', '-C', str(root), 'rev-parse', 'HEAD'],
-                                        capture_output=True, text=True, timeout=10)
+                                        stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
                 branch = subprocess.run(['git', '-C', str(root), 'rev-parse', '--abbrev-ref', 'HEAD'],
-                                         capture_output=True, text=True, timeout=10)
+                                         stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
                 url = (remote.stdout or '').strip()
                 if url.endswith('.git'):
                     url = url[:-4]
@@ -121,14 +121,18 @@ def _token():
         if value:
             return value
     try:
-        result = subprocess.run(['gh', 'auth', 'token'], capture_output=True, text=True, timeout=5)
+        result = subprocess.run(['gh', 'auth', 'token'], stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.SubprocessError):
         return ''
     return (result.stdout or '').strip() if result.returncode == 0 else ''
 
 
 def _git(root, *args, timeout):
-    return subprocess.run(['git', '-C', root, *args], capture_output=True, text=True, timeout=timeout)
+    # A desktop core's stdin is its native owner's lifetime pipe. Updates are
+    # HTTP transactions and cannot answer prompts or borrow that shared handle.
+    return subprocess.run(['git', '-C', root, *args], stdin=subprocess.DEVNULL,
+                          capture_output=True, text=True, timeout=timeout)
 
 
 def _resolve_update_branch(root, fallback, timeout):
@@ -302,7 +306,8 @@ def apply(timeout=600):
     env = dict(os.environ)
     env['GIT_TERMINAL_PROMPT'] = '0'
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=env)
+        result = subprocess.run(command, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, timeout=timeout, env=env)
     except (OSError, subprocess.SubprocessError) as error:
         return {'updated': False, 'reason': f'The reinstall could not run: {type(error).__name__}.'}
     if result.returncode != 0:
