@@ -131,7 +131,7 @@ fn main() {
                         let mut done = reported.lock().unwrap();
                         if *done { return; }
                         *done = true;
-                        println!("{}", serde_json::json!({
+                        let _ = writeln!(std::io::stdout(), "{}", serde_json::json!({
                             "event": "tessera-desktop.window-ready",
                             "startup_ms": started.elapsed().as_millis() as u64,
                             "shell_pid": std::process::id(), "core_pid": core_pid,
