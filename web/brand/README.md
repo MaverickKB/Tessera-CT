@@ -20,11 +20,13 @@ older artwork for these locked assets. Keep marks on identity surfaces.
 
 All paths are local to the static asset directory. The manifest only supplies
 app identity and icon metadata; it adds no worker, background process, or cache.
-The header adds a Tessera-CT wordmark beside the tree art. `gremlin-logo.svg`
-is the sticker used in the header and the favicon when the gremlin set is
-showing. `f-it-gremlin.svg` is the only drawing of the F-it button cartoon.
-The header crew is drawn once in the page, in the same trail as the tree, and
-is not copied into this directory. Settings selects `cairn` or `gremlin`; the
-gremlin set is shown only while the F-it button setting is on. The manifest
-icons stay the tree PNGs. Native dock and home-screen icons are not switched.
-The iOS example has no native trail. Custom skins are a future update.
+The header adds a Tessera-CT wordmark beside the tree art. `goblin/` holds the
+goblin avatar set: one folder per avatar with `avatar-64.png` and
+`avatar-256.png` (square and transparent), plus `manifest.json` naming each one.
+The F-it button mark and the header icon use the avatar chosen in Goblin Mode,
+so this set replaced the single gremlin sticker. The header crew is drawn once
+in the page, in the same trail as the tree, and is not copied into this
+directory. Settings selects `cairn` or `gremlin` for the mark; the goblin set is
+shown while the mark is `gremlin` or the F-it setting is on. The manifest icons
+stay the tree PNGs. Native dock and home-screen icons are not switched. The iOS
+example has no native trail. Custom skins are a future update.

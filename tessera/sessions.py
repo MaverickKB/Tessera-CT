@@ -2088,6 +2088,7 @@ class SessionManager:
                 'approval': self.approval_status(),
                 'ui': {'yolo_banner': self.config.ui.yolo_banner,
                        'easter_egg_f_it': self.config.ui.easter_egg_f_it,
+                       'goblin_avatar': self.config.ui.goblin_avatar,
                        'error_banner_seconds': self.config.ui.error_banner_seconds, 'history_page': self.config.ui.history_page, 'item_body_chars': self.config.ui.item_body_chars, 'item_summary_chars': self.config.ui.item_summary_chars, 'long_press_ms': self.config.ui.long_press_ms, 'approval_poll_ms': self.config.ui.approval_poll_ms,
                        'view_page_lines': self.config.ui.view_page_lines,
                        'theme': self.config.ui.theme, 'mark': self.config.ui.mark, 'skin': self.config.ui.skin, 'accent_color': self.config.ui.accent_color,

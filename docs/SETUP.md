@@ -149,21 +149,23 @@ for architecture and install/run commands.
 
 The Settings page is catalog-driven, and the catalog does not cover the whole
 file. Of the 46 top-level configuration attributes,
-**18 are reachable from the page** and **28 are not**.
+**19 are reachable from the page** and **27 are not**.
 That split is not a bug report; it is the shape of the product today, and this
 paragraph exists so nobody has to infer it from a missing control.
 
 Reachable from the page (`ui`, `aethermind`, `jev`, `identity`, `voice`,
 `autonomy`, `computer_use`, `hosts`, `systems`, `roles`, `credentials`, `mcp_servers`,
-`backends`, `accounts`, `swarm`, `agent_name`, `operator_name`, `codex`).
+`backends`, `accounts`, `swarm`, `agent_name`, `operator_name`, `codex`, `tools`).
 `hosts`, `systems`, `credentials` and `mcp_servers` are record editors: you can add,
-edit and remove rows. `backends` is reached by the Providers editor and `accounts` by
-Worker pools, so those two have named-entry controls rather than a single field.
+edit and remove rows. `backends` is reached by the Models editor and `accounts` by
+Service accounts, so those two have named-entry controls rather than a single field.
 `swarm` is reached only partially: the page edits the two local-engine admission
 fields, and the rest of the table still means editing `config.toml`.
+`tools` is reached only partially too: the page edits the Safe policy, and the
+rest of the table is tool limits.
 
 Not reachable from the page: `home`, `cwd`, `config_missing`, `workspace`,
-`user_instructions`, `compactor`, `view`, `tools`, `hooks`, `agents`, `server`,
+`user_instructions`, `compactor`, `view`, `hooks`, `agents`, `server`,
 `daemon`, `status`, `channels`, `board`, `intake`, `remotes`,
 `infrastructure`, `grafana`, `companions`, `inspector`, `cua`, `prompt`, `skills`,
 `inspector_error`, `identity_file`, `identity_max_bytes`, `retired_settings`.

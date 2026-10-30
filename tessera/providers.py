@@ -171,6 +171,52 @@ class ResponsesAdapter(ProviderAdapter):
                 payload["tools"].append(definition)
         return payload
 
+    def assemble(self, lines, on_delta):
+        """Fold a Responses event stream into the object a plain call returns.
+
+        The ChatGPT Codex backend refuses a non-streamed request with 400
+        "Stream must be set to true", so this path is the only way to reach it.
+        The final `response.completed` event carries the whole response, which
+        is what decode() already knows how to read.
+        """
+        final = None
+        for raw in lines:
+            line = raw.decode("utf-8", "replace").strip() if isinstance(raw, bytes) else raw.strip()
+            if not line or not line.startswith("data:"):
+                continue
+            body = line[5:].strip()
+            if not body:
+                # A keepalive frame carries no payload. Parsing it as JSON was
+                # an empty-body error, not a provider fault.
+                continue
+            if body == "[DONE]":
+                break
+            chunk = json.loads(body)
+            kind = chunk.get("type") or ""
+            if kind == "error":
+                detail = chunk.get("error") or {}
+                raise ValueError(detail.get("message") or "Provider reported a stream error")
+            if kind in ("response.completed", "response.incomplete"):
+                final = chunk.get("response") or chunk
+                continue
+            if kind == "response.output_text.delta":
+                text = chunk.get("delta")
+                if isinstance(text, str) and text:
+                    on_delta("text", text)
+                continue
+            if kind in ("response.reasoning_text.delta", "response.reasoning_summary_text.delta"):
+                thought = chunk.get("delta")
+                if isinstance(thought, str) and thought:
+                    on_delta("thought", thought)
+                continue
+            if kind == "response.output_item.added":
+                item = chunk.get("item") or {}
+                if item.get("type") == "function_call" and item.get("name"):
+                    on_delta("tool", item["name"])
+        if final is None:
+            raise ValueError("Provider stream ended without a response")
+        return final
+
     def decode(self, data):
         status = data["status"]
         if status not in ("completed", "incomplete"):

@@ -27,7 +27,7 @@ SECTIONS = (
     ('models', 'Models'),
     ('credentials', 'Credentials'),
     ('identity', 'Identity'),
-    ('accounts', 'Accounts'),
+    ('accounts', 'Service accounts'),
     ('integrations', 'Integrations'),
     ('hosts', 'Hosts'),
     ('systems', 'Systems'),
@@ -35,6 +35,7 @@ SECTIONS = (
     ('computer', 'Computer use'),
     ('voice', 'Voice'),
     ('appearance', 'Appearance'),
+    ('goblin', 'Goblin Mode'),
     ('permissions', 'Permissions'),
     ('autonomy', 'Autonomy'),
     ('judge', 'Session judge (Jev)'),
@@ -43,7 +44,8 @@ SECTIONS = (
 # Keep setup guidance beside the registry so every client sees the same starting point.
 SECTION_START = {
     'identity': 'Start here: choose your companion name and how it addresses you.',
-    'accounts': 'Start here: accounts are for services that are not model hosts. Sign-ins are on Providers.',
+    'accounts': ('Start here: a service account gives a worker pool its own connection and budget. '
+                 'It is not a sign-in; sign-ins are on Accounts.'),
     'providers': 'Start here: connect a provider first. Sign in, add an API key, or add a local model server.',
     'models': 'Start here: pick the chat model from a connected provider. Failover is optional.',
     'credentials': 'Start here: saved credentials. A value is never shown. A model uses its provider connection.',
@@ -61,6 +63,8 @@ SECTION_START = {
     'voice': ('Start here: connect a duplex account, or add a speech-to-text and a '
               'text-to-speech service. A pipe choice appears only when both are ready.'),
     'appearance': 'Start here: choose a theme and an icon and logo set; the remaining display preferences are optional.',
+    'goblin': ('Start here: turn F-it on and pick the goblin that represents this install. '
+               'The roster, schedules and workbenches are the Goblin Mode build, not this page.'),
     'permissions': 'Start here: choose the approval policy for tool actions.',
     'autonomy': 'Start here: choose whether autonomy runs and describe what matters in World view.',
     'judge': 'Start here: review the judge and action gate switches, then supply the judge credential.',
@@ -69,6 +73,10 @@ SECTION_START = {
                'repository URL and restarts the core.'),
 }
 SAFE_FACT = {'ask': 'Safe asks', 'deny_risky': 'Safe blocks', 'never': 'Safe allows'}
+# The avatar ids in web/brand/goblin/manifest.json. Order is the roster order a
+# person sees, so the list is explicit rather than read from the filesystem.
+GOBLIN_AVATARS = ('courier', 'guard', 'lookout', 'medic', 'nerd', 'rookie',
+                  'scout', 'scribe', 'smith', 'tinkerer', 'veteran')
 _TIER_RANK = {'required': 0, 'optional': 1, 'advanced': 2}
 
 # The config table each record editor writes. A named-entry editor reaches its whole
@@ -176,7 +184,7 @@ VENDORS = ('codex', 'claude', 'grok')
 class Spec:
     def __init__(self, id, section, type, label, apply, path=(), *, hint='', write='set', options=(),
                  minimum=None, maximum=None, status='', lines=False, empty_removes=False, inline=False, key='',
-                 inert=False, tier='required'):
+                 inert=False, tier='required', kinds=(), group='', hidden_when=None):
         self.id = id
         self.section = section
         self.type = type
@@ -205,6 +213,17 @@ class Spec:
         # comes first, and that ordering has to be visible. Default is 'required' so an
         # unranked field is never pushed out of sight.
         self.tier = tier
+        # Which values of the record's own selector make this field apply. Empty
+        # means every value. A form that shows a Prometheus instance on an SSH
+        # connection is asking for a value nothing reads.
+        self.kinds = tuple(kinds)
+        # A heading inside one form, so nine fields read as three short groups
+        # instead of one long column.
+        self.group = group
+        # Hide this row when other fields hold these values, e.g. the duplex
+        # controls when the local speech pipe is selected. Hiding beats a
+        # disabled control that does nothing on the running pipe.
+        self.hidden_when = dict(hidden_when or {})
 
 
 def _options(pairs):
@@ -236,6 +255,12 @@ def dump_field(spec, value):
         payload['options'] = _options(spec.options)
     if spec.inline:
         payload['inline'] = True
+    if spec.kinds:
+        payload['kinds'] = list(spec.kinds)
+    if spec.group:
+        payload['group'] = spec.group
+    if spec.hidden_when:
+        payload['hidden_when'] = dict(spec.hidden_when)
     constraints = {}
     if spec.minimum is not None:
         constraints['min'] = spec.minimum
@@ -386,11 +411,12 @@ def _voice_specs(config):
     model_options = _voice_model_options(connection, voice.model)
     if connection is None:
         model_spec = Spec('voice.model', 'voice', 'display', 'Duplex model', 'live', ('voice', 'model'),
-                          write='display', inert=True, status='Choose an account first.')
+                          write='display', inert=True, status='Choose an account first.',
+                          hidden_when={'voice.pipe': 'local'})
         model_value = voice.model or 'Not chosen'
     else:
         model_spec = Spec('voice.model', 'voice', 'enum', 'Duplex model', 'live', ('voice', 'model'),
-                          options=model_options, key='model',
+                          options=model_options, key='model', hidden_when={'voice.pipe': 'local'},
                           hint='A full-duplex model this account offers. The model carries the voice.')
         model_value = voice.model
     specs = [
@@ -398,12 +424,13 @@ def _voice_specs(config):
               status=_voice_status(config, connection)), voice.enabled),
         (Spec('voice.account', 'voice', 'enum', 'Account', 'live', ('voice', 'credential_ref'),
               options=account_options, key='credential_ref', status=_voice_account_status(connection),
+              hidden_when={'voice.pipe': 'local'},
               hint='The account that mints the voice session. Sign-ins and providers live under Providers.'),
          voice.credential_ref),
         (model_spec, model_value),
         # The endpoint is the account profile's, not a field to type.
         (Spec('voice.websocket_url', 'voice', 'display', 'Realtime endpoint', 'live', ('voice', 'websocket_url'),
-              write='display', inert=True,
+              write='display', inert=True, hidden_when={'voice.pipe': 'local'},
               status='Set by the account. Voice connects here.' if voice.websocket_url
                      else 'Set when an account is chosen.'),
          voice.websocket_url),
@@ -509,12 +536,15 @@ def catalog(config, approval):
               hint='How the companion addresses you in prompts, notes and wakes. Leave it empty and it says "the operator".',
               empty_removes=True), config.operator_name),
         (Spec('autonomy.floor_name', 'identity', 'string', 'Floor display name', 'restart',
-              ('autonomy', 'floor_name'), tier='advanced',
+              ('autonomy', 'floor_name'), tier='optional',
               hint='The name shown for the autonomy session. Its address is a separate setting: Floor session slug. Empty means "Autonomy".',
               empty_removes=True), config.autonomy.floor_name),
+        # Ownership is the record layer the board reads, so it is not optional:
+        # off leaves every card owner a free string, and a typo wakes nobody. It
+        # sits first because the names below are the records it turns on.
         (Spec('identity.enabled', 'identity', 'bool', 'Identity records', 'restart',
-              ('identity', 'enabled'), tier='optional',
-              hint='Record who a card belongs to, so an owner resolves to a person or a session instead of a free string. Off, ownership accepts any name-shaped value and a typo wakes nobody. On, an owner must name someone real, and the board shows which kind it is. This is the record layer; sign-in comes later.'),
+              ('identity', 'enabled'), tier='required',
+              hint='Record who a card belongs to, so an owner resolves to a person or a session instead of a free string. Off, ownership accepts any name-shaped value and a typo wakes nobody. On, an owner must name someone real, and the board shows which kind it is. The operator and the companion are recorded automatically; anyone else is added as a person below.'),
          config.identity.enabled),
         (Spec('swarm.pressure_hold_enabled', 'models', 'bool', 'Hold local workers under pressure', 'restart',
               ('swarm', 'pressure_hold_enabled'), tier='advanced',
@@ -570,6 +600,20 @@ def catalog(config, approval):
     if current_provider and current_provider not in {value for value, _label in providers}:
         providers.append((current_provider, current_provider))
     jev = config.computer_use.jev
+    # Screen questions use a saved credential, chosen here. With nothing saved
+    # the row says where to add one instead of naming a config key.
+    credential_choices = tuple(_credential_options(config))
+    if credential_choices:
+        computer_credential = Spec('computer_use.jev.credential_ref', 'computer', 'enum', 'Credential',
+                                   'restart', ('computer_use', 'jev', 'credential_ref'),
+                                   options=credential_choices, key='credential_ref',
+                                   hint='The credential screen questions use. A saved credential from Saved credentials.')
+    else:
+        computer_credential = Spec('computer_use.jev.credential_ref', 'computer', 'string', 'Credential',
+                                   'restart', ('computer_use', 'jev', 'credential_ref'),
+                                   write='display', inert=True, key='credential_ref',
+                                   status='No saved credential yet. Add one on Saved credentials.',
+                                   hint='Screen questions use a saved credential, not an environment variable.')
     items.extend([
         (Spec('computer_use.provider', 'computer', 'enum', 'Provider', 'restart', ('computer_use', 'provider'),
               options=tuple(providers)), current_provider),
@@ -578,10 +622,7 @@ def catalog(config, approval):
         (Spec('computer_use.jev.enabled', 'computer', 'bool', 'Use Jev for screen questions', 'restart', ('computer_use', 'jev', 'enabled'),
               hint='Native computer use asks Jev to find screen elements and check results. Session judge (Jev) configures its separate action-judging role.',
               key='enabled'), jev.enabled),
-        (Spec('computer_use.jev.credential_ref', 'computer', 'string', 'Credential in use', 'restart',
-              ('computer_use', 'jev', 'credential_ref'), write='display', inert=True, key='credential_ref',
-              hint='Edited in config.toml. Screen questions use this credential.'),
-         binding_source(config, jev.credential_ref, jev.api_key_env, oauth_clears_env=False)['label']),
+        (computer_credential, jev.credential_ref),
         (Spec('computer_use.jev.base_url', 'computer', 'string', 'Jev base URL', 'restart',
               ('computer_use', 'jev', 'base_url'), key='base_url', tier='advanced'), jev.base_url),
         (Spec('computer_use.jev.model', 'computer', 'string', 'Jev model', 'restart',
@@ -619,9 +660,6 @@ def catalog(config, approval):
                       'precedence. Clear that list to use this field.'
                       if memory.endpoints else ''),
               inert=bool(memory.endpoints)), memory.url),
-        (Spec('aethermind.endpoints', 'integrations', 'list', 'Ordered endpoints', 'restart',
-              ('aethermind', 'endpoints'), lines=True, tier='optional',
-              hint='One MCP endpoint per line, in the order they are tried. When this list is non-empty it overrides the URL above, and the URL field refuses a save. Leave empty to use the URL.'), '\n'.join(memory.endpoints or [])),
         (Spec('aethermind.project', 'integrations', 'string', 'Memory project root', 'restart',
               ('aethermind', 'project'),
               hint='Project root on the AetherMind service host. Existing projects are used without creating a store.'), memory.project),
@@ -674,6 +712,20 @@ def catalog(config, approval):
               hint='Minimum seconds between trial checks, shared by autonomy ticks and turn completions. Zero checks on every call; it does not start a timer.'), autonomy.trial_poll_seconds),
     ])
     jev = config.jev
+    # The judge key is a saved credential. An enum with no options is a dead
+    # end, so with nothing saved the row says where to add one instead.
+    credential_options = tuple(_credential_options(config))
+    if credential_options:
+        jev_credential = Spec('jev.credential_ref', 'judge', 'enum', 'Jev credential', 'restart',
+                              ('jev', 'credential_ref'),
+                              hint='A credential saved on Saved credentials. The judge service uses this '
+                                   'instead of an environment variable.',
+                              options=credential_options)
+    else:
+        jev_credential = Spec('jev.credential_ref', 'judge', 'string', 'Jev credential', 'restart',
+                              ('jev', 'credential_ref'), write='display', inert=True,
+                              hint='The judge key is a saved credential, not an environment variable.',
+                              status='No saved credential yet. Add one on Saved credentials.')
     items.extend([
         (Spec('jev.enabled', 'judge', 'bool', 'Judge session actions', 'restart',
               ('jev', 'enabled'),
@@ -696,12 +748,10 @@ def catalog(config, approval):
               hint='Model the judge service should use, when the service takes a model name.',
               tier='advanced'), jev.model),
         (Spec('jev.api_key_env', 'judge', 'string', 'Jev API key env var', 'restart',
-              ('jev', 'api_key_env'),
-              hint='Name of the environment variable holding the Jev service key. Prefer a configured credential.'), jev.api_key_env),
-        (Spec('jev.credential_ref', 'judge', 'string', 'Jev credential', 'restart',
-              ('jev', 'credential_ref'),
-              hint='Name of a configured credential to use for the Jev service instead of an env var.',
-              tier='advanced'), jev.credential_ref),
+              ('jev', 'api_key_env'), tier='advanced',
+              hint='Fallback only. Name of an environment variable holding the judge key, used when no credential is chosen above. A name here is not a key; it is looked up in the process environment.',
+              status=('Environment fallback: ' + jev.api_key_env if jev.api_key_env else '')), jev.api_key_env),
+        (jev_credential, jev.credential_ref),
         (Spec('jev.timeout', 'judge', 'float', 'Judge timeout', 'restart',
               ('jev', 'timeout'), minimum=0.1,
               hint='Seconds one judge call may take before the session falls back to its default policy.',
@@ -744,10 +794,11 @@ def catalog(config, approval):
             voice_options.append((current_voice, current_voice))
         voice_spec = Spec('voice.voice', 'voice', 'enum', 'Voice', 'live', ('voice', 'session_options', 'voice'),
                           options=tuple(voice_options), key='voice', tier='optional',
+                          hidden_when={'voice.pipe': 'local'},
                           hint='Used on the next voice start. An explicit Voice page choice overrides it for that tab until this setting changes.')
     else:
         voice_spec = Spec('voice.voice', 'voice', 'string', 'Voice', 'live', ('voice', 'session_options', 'voice'),
-                          key='voice', tier='optional',
+                          key='voice', tier='optional', hidden_when={'voice.pipe': 'local'},
                           hint='Used on the next voice start. An explicit Voice page choice overrides it for that tab until this setting changes.')
     items.extend(_voice_specs(config))
     items.extend([
@@ -775,10 +826,9 @@ def catalog(config, approval):
               options=(('system', 'System'), ('light', 'Light'), ('dark', 'Dark')), key='theme'), ui.theme),
         (Spec('ui.mark', 'appearance', 'enum', 'Icon and logo', 'live', ('ui', 'mark'),
               tier='optional',
-              options=(('cairn', 'Tessera'), ('gremlin', 'Gremlin')),
-              hint='Chooses the logo art and follows the theme. The default includes the Tessera-CT wordmark and the tree. The F-it button adds the gremlin favicon and the goblin crew.',
-              status=('F-it button is on, so the gremlin logo, favicon and crew are showing.' if ui.easter_egg_f_it
-                      else 'Showing the gremlin logo.' if ui.mark == 'gremlin'
+              options=(('cairn', 'Tessera'), ('gremlin', 'Goblin')),
+              hint='Chooses the logo art and follows the theme. The default includes the Tessera-CT wordmark and the tree. The goblin pack shows the avatar picked in Goblin Mode.',
+              status=('Showing the goblin pack.' if ui.mark == 'gremlin' or ui.easter_egg_f_it
                       else 'Showing the Tessera art with the Tessera-CT wordmark.'),
               key='mark'), ui.mark),
         (Spec('ui.skin', 'appearance', 'enum', 'Skin', 'live', ('ui', 'skin'),
@@ -792,10 +842,15 @@ def catalog(config, approval):
               tier='optional', key='show_thoughts'), ui.show_thoughts),
         (Spec('ui.yolo_banner', 'appearance', 'bool', 'Show Unleashed banner', 'live', ('ui', 'yolo_banner'),
               tier='optional', hint='Show the banner while Unleashed mode is on.', key='yolo_banner'), ui.yolo_banner),
-        (Spec('ui.easter_egg_f_it', 'appearance', 'bool', 'F-it button', 'live', ('ui', 'easter_egg_f_it'),
+        (Spec('ui.easter_egg_f_it', 'goblin', 'bool', 'F-it button', 'live', ('ui', 'easter_egg_f_it'),
               tier='optional',
-              hint='When on, the button reads F-it and shows the cartoon, and the gremlin logo, favicon and goblin crew turn on. The stored mode stays yolo.',
+              hint='When on, the approval button reads F-it and shows the chosen goblin, and the goblin logo, favicon and crew turn on. The stored mode stays yolo.',
               key='easter_egg_f_it'), ui.easter_egg_f_it),
+        (Spec('ui.goblin_avatar', 'goblin', 'enum', 'Goblin', 'live', ('ui', 'goblin_avatar'),
+              tier='optional',
+              options=tuple((item, item.title()) for item in GOBLIN_AVATARS),
+              hint='The goblin shown on the F-it button and in the logo slot. Each one is a square avatar with a transparent cutout.',
+              key='goblin_avatar'), ui.goblin_avatar),
         (Spec('ui.send_shortcut', 'appearance', 'enum', 'Send with', 'live', ('ui', 'send_shortcut'),
               tier='optional',
               options=(('enter', 'Enter'), ('modifier', 'Ctrl or Command + Enter')), key='send_shortcut'),
@@ -819,6 +874,18 @@ def catalog(config, approval):
     items.append((Spec('permissions.mode', 'permissions', 'enum', 'Mode', 'live', write='approval',
                        options=(('safe', 'Safe'), ('yolo', 'Unleashed')),
                        status=SAFE_FACT.get(safe_mode, ''), hint=hint, key='mode'), mode))
+    # What Safe means is a policy in config.toml, not a label. The switch above
+    # only chooses between Safe and Unleashed; this chooses what Safe does.
+    configured_policy = configured or 'ask'
+    items.append((Spec('permissions.safe_policy', 'permissions', 'enum', 'Safe policy', 'restart',
+                       ('tools', 'approval'),
+                       options=(('ask', 'Safe asks before a risky action'),
+                                ('deny_risky', 'Safe blocks risky actions'),
+                                ('never', 'Safe allows every action, same as Unleashed')),
+                       hint='What Safe means for tool actions. The Mode switch decides whether Safe or '
+                            'Unleashed is running; this decides what Safe does. Applies after the core restarts.',
+                       status=('In config.toml now: ' + SAFE_FACT.get(configured_policy, configured_policy))),
+                 configured_policy))
     return items
 
 
@@ -1053,12 +1120,14 @@ def accounts_field(config):
     blank = [dump_field(Spec('accounts.new.name', 'accounts', 'string', 'Name', 'restart', key='name'), '')]
     blank.extend(dump_field(spec, defaults[spec.key]) for spec in _account_specs(config, 'new'))
     return {
-        'id': 'named_accounts', 'section': 'integrations', 'type': 'list-of-records', 'label': 'Worker pools',
-        'tier': 'advanced',
+        'id': 'named_accounts', 'section': 'accounts', 'type': 'list-of-records',
+        'label': 'Service accounts',
         'value': records, 'write': 'records', 'apply': 'restart', 'actions': ['add', 'edit', 'remove'],
         'blank': blank, 'records': records,
         'hint': 'A pool shares a credential and budgets. It does not cap how many agents run. '
                 'Each model has its own max concurrent requests. This is not a sign-in.',
+        'empty': ('No service accounts yet. Add one to give a worker pool its own connection '
+                  'and budget. This is not a sign-in; sign-ins are on Accounts.'),
     }
 
 
@@ -1141,6 +1210,34 @@ def _provider_group(config, name, backend):
     return name
 
 
+def _provider_source_options(config):
+    """The accounts a model can be added from, plus a custom endpoint.
+
+    The page asks which account a new model belongs to before it asks for a
+    model id. Without this the Add-model form defaulted to the first sign-in
+    provider and built an xAI model for a person who wanted their Codex one.
+    """
+    options = []
+    for key, spec in OAUTH_MODELS.items():
+        report = grant_report(config.home, spec['oauth'])
+        label = 'xAI Grok' if key == 'xai' else 'ChatGPT or Codex'
+        if report['state'] != 'current':
+            status = _grant_status(report)
+            if status:
+                label = label + ' · ' + status
+        options.append((key, label))
+    options.append(('other', 'Custom endpoint'))
+    return tuple(options)
+
+
+def _provider_source_default(config):
+    """The first signed-in account, so the common case needs no choice."""
+    for key, spec in OAUTH_MODELS.items():
+        if grant_report(config.home, spec['oauth'])['state'] == 'current':
+            return key
+    return 'other'
+
+
 def providers_field(config):
     records = []
     for name, backend in config.backends.items():
@@ -1155,8 +1252,16 @@ def providers_field(config):
             'source_kind': source['source'],
         })
     blank = [
+        # Which account the model belongs to is the first question, not a hidden
+        # default. A sign-in account supplies its endpoint and credential, so
+        # those fields disappear; a custom endpoint keeps them.
+        dump_field(Spec('providers.new.account', 'providers', 'enum', 'Account', 'live', key='account',
+                        options=_provider_source_options(config),
+                        hint='A sign-in account supplies the endpoint and the credential, so neither is typed here. '
+                             'A custom endpoint is any OpenAI-compatible server you run yourself.'),
+                   _provider_source_default(config)),
         dump_field(Spec('providers.new.name', 'providers', 'string', 'Name', 'live', key='name',
-                        hint='A short name. Spaces are saved as dashes, and the id is shown here before you save.'), ''),
+                        hint='A short name, used as the id. Spaces are saved as dashes.'), ''),
         dump_field(Spec('providers.new.kind', 'providers', 'enum', 'HTTP protocol', 'live',
                         options=(('openai_chat', 'OpenAI-compatible chat'),
                                  ('openai_responses', 'OpenAI Responses')),
@@ -1321,6 +1426,23 @@ def _dated(value):
 
 def _credential_meta(config, name, reference, keychain=None):
     """Where a saved credential lives. The value itself is never included."""
+    # A sign-in credential's state is its grant, not a stored value. Calling it
+    # "Not connected" while Accounts reports "Signed in, token expired" puts two
+    # answers on adjacent pages for the same account.
+    oauth = (getattr(reference, 'oauth', '') or '').strip()
+    if oauth:
+        report = grant_report(config.home, oauth)
+        state = report['state']
+        pill = 'Connected'
+        if state == 'expired':
+            pill = 'Sign-in expired'
+        elif state != 'current':
+            pill = 'Not connected'
+        return {
+            'source_kind': 'oauth', 'type_tag': 'Sign-in', 'stored': 'Sign-in grant',
+            'added': '', 'pill': pill, 'line': 'Sign-in: ' + name,
+            'status': report['status'],
+        }
     fact = _credential_resolution(config, name, reference, keychain)
     meta = {key: fact[key] for key in ('source_kind', 'type_tag', 'stored', 'added', 'pill')}
     meta['added'] = _dated(meta.get('added'))
@@ -1405,10 +1527,13 @@ HOST_NAME_HINT = 'Stable identifier used in config and thresholds, e.g. builder.
 HOST_LABEL_HINT = 'Name shown on the board. Empty shows "Host N".'
 HOST_KIND_HINT = ('prometheus: metrics from the Prometheus URL. local: a probe_command run here. '
                   'ssh: an ssh_command run against ssh_alias. agent: an agent_url endpoint.')
-HOST_ADDRESS_HINT = 'Address for a local probe, e.g. probe.example.com:8765. Empty when the kind does not need one.'
+HOST_ADDRESS_HINT = 'SSH target when no alias is set, e.g. probe.example.com. Empty otherwise.'
 HOST_INSTANCE_HINT = 'Prometheus instance label, e.g. node-exporter:9100. Required for kind=prometheus.'
-HOST_PROBE_HINT = 'Command to run for kind=local, one argument per line.'
-HOST_SSH_HINT = 'Alias ssh uses, for kind=ssh.'
+HOST_PROBE_HINT = 'Command to run for kind=local (here) or kind=ssh (on the host), one argument per line.'
+HOST_SSH_HINT = 'Alias ssh uses, for kind=ssh. Takes precedence over Address.'
+HOST_AGENT_HINT = 'HTTP endpoint of an agent on that machine, for kind=agent.'
+HOST_SSH_COMMAND_HINT = ("The ssh program and its options, one argument per line. Empty uses `ssh`. "
+                         "For example -i, then the key path.")
 # Named for what it describes rather than for the field it sits beside: the tunable
 # gate treats any module constant whose name carries a policy word as a config default,
 # and this is prose shown next to the field, not a value anything reads.
@@ -1517,34 +1642,54 @@ def systems_field(config):
         'id': 'systems', 'section': 'systems', 'type': 'list-of-records', 'label': 'Systems',
         'value': records, 'write': 'records', 'apply': 'restart', 'actions': ['add', 'edit', 'remove'],
         'blank': blank, 'records': records, 'hint': SYSTEMS_LIST_HINT,
+        'empty': ('No systems yet. Add one to say what a machine or service is for and which '
+                  'reading should wake you.'),
     }
 
 
 HOST_KEYS = {'name', 'enabled', 'kind', 'label', 'address', 'prometheus_instance', 'ssh_alias',
-             'timeout', 'probe_command'}
+             'ssh_command', 'agent_url', 'timeout', 'probe_command'}
 
 
 def _host_fields(name, host):
+    """One row per value the loader reads, each tied to the kinds that use it.
+
+    A form that offers a Prometheus instance label on an SSH connection is
+    asking for a value nothing reads, and one that omits `ssh_command` and
+    `agent_url` cannot configure the connection it claims to support. The
+    `kinds` list is what the page filters on; the loader still accepts every
+    key on every kind.
+    """
     return [
         dump_field(Spec(f'hosts.{name}.enabled', 'hosts', 'bool', 'Watched', 'restart',
                         inline=True, key='enabled'), host.enabled),
         dump_field(Spec(f'hosts.{name}.label', 'hosts', 'string', 'Label', 'restart', key='label',
-                        hint=HOST_LABEL_HINT), host.label),
+                        hint=HOST_LABEL_HINT, group='Identity'), host.label),
         dump_field(Spec(f'hosts.{name}.kind', 'hosts', 'enum', 'Kind', 'restart', key='kind',
-                        hint=HOST_KIND_HINT,
+                        hint=HOST_KIND_HINT, group='Identity',
                         options=tuple((kind, kind or '(none)') for kind in HOST_KINDS)), host.kind),
         dump_field(Spec(f'hosts.{name}.address', 'hosts', 'string', 'Address', 'restart', key='address',
-                        hint=HOST_ADDRESS_HINT), host.address),
+                        hint=HOST_ADDRESS_HINT, group='Connection', kinds=('ssh',)), host.address),
+        dump_field(Spec(f'hosts.{name}.agent_url', 'hosts', 'string', 'Agent URL', 'restart',
+                        key='agent_url', hint=HOST_AGENT_HINT, group='Connection',
+                        kinds=('agent',)), host.agent_url),
         dump_field(Spec(f'hosts.{name}.prometheus_instance', 'hosts', 'string', 'Prometheus instance',
-                        'restart', key='prometheus_instance', hint=HOST_INSTANCE_HINT),
+                        'restart', key='prometheus_instance', hint=HOST_INSTANCE_HINT,
+                        group='Connection', kinds=('prometheus',)),
                    host.prometheus_instance),
         dump_field(Spec(f'hosts.{name}.ssh_alias', 'hosts', 'string', 'SSH alias', 'restart',
-                        key='ssh_alias', hint=HOST_SSH_HINT), host.ssh_alias),
+                        key='ssh_alias', hint=HOST_SSH_HINT, group='Connection',
+                        kinds=('ssh',)), host.ssh_alias),
+        dump_field(Spec(f'hosts.{name}.ssh_command', 'hosts', 'string', 'SSH command', 'restart',
+                        key='ssh_command', lines=True, hint=HOST_SSH_COMMAND_HINT,
+                        group='Connection', kinds=('ssh',)),
+                   '\n'.join(host.ssh_command or [])),
         dump_field(Spec(f'hosts.{name}.probe_command', 'hosts', 'string', 'Probe command', 'restart',
-                        key='probe_command', lines=True, hint=HOST_PROBE_HINT),
+                        key='probe_command', lines=True, hint=HOST_PROBE_HINT,
+                        group='Connection', kinds=('local', 'ssh')),
                    '\n'.join(host.probe_command or [])),
-        dump_field(Spec(f'hosts.{name}.timeout', 'hosts', 'number', 'Timeout (seconds)', 'restart',
-                        key='timeout', hint=HOST_DEADLINE_HINT), host.timeout),
+        dump_field(Spec(f'hosts.{name}.timeout', 'hosts', 'float', 'Timeout (seconds)', 'restart',
+                        key='timeout', minimum=0.1, hint=HOST_DEADLINE_HINT, group='Health'), host.timeout),
     ]
 
 
@@ -1563,28 +1708,39 @@ def hosts_field(config):
         })
     blank = [
         dump_field(Spec('hosts.new.name', 'hosts', 'string', 'Name', 'restart', key='name',
-                        hint=HOST_NAME_HINT), ''),
+                        hint=HOST_NAME_HINT, group='Identity'), ''),
         dump_field(Spec('hosts.new.enabled', 'hosts', 'bool', 'Watched', 'restart', key='enabled'), True),
         dump_field(Spec('hosts.new.label', 'hosts', 'string', 'Label', 'restart', key='label',
-                        hint=HOST_LABEL_HINT), ''),
+                        hint=HOST_LABEL_HINT, group='Identity'), ''),
         dump_field(Spec('hosts.new.kind', 'hosts', 'enum', 'Kind', 'restart', key='kind',
-                        hint=HOST_KIND_HINT,
+                        hint=HOST_KIND_HINT, group='Identity',
                         options=tuple((kind, kind or '(none)') for kind in HOST_KINDS)), ''),
         dump_field(Spec('hosts.new.address', 'hosts', 'string', 'Address', 'restart', key='address',
-                        hint=HOST_ADDRESS_HINT), ''),
+                        hint=HOST_ADDRESS_HINT, group='Connection', kinds=('ssh',)), ''),
+        dump_field(Spec('hosts.new.agent_url', 'hosts', 'string', 'Agent URL', 'restart',
+                        key='agent_url', hint=HOST_AGENT_HINT, group='Connection',
+                        kinds=('agent',)), ''),
         dump_field(Spec('hosts.new.prometheus_instance', 'hosts', 'string', 'Prometheus instance',
-                        'restart', key='prometheus_instance', hint=HOST_INSTANCE_HINT), ''),
+                        'restart', key='prometheus_instance', hint=HOST_INSTANCE_HINT,
+                        group='Connection', kinds=('prometheus',)), ''),
         dump_field(Spec('hosts.new.ssh_alias', 'hosts', 'string', 'SSH alias', 'restart',
-                        key='ssh_alias', hint=HOST_SSH_HINT), ''),
+                        key='ssh_alias', hint=HOST_SSH_HINT, group='Connection',
+                        kinds=('ssh',)), ''),
+        dump_field(Spec('hosts.new.ssh_command', 'hosts', 'string', 'SSH command', 'restart',
+                        key='ssh_command', lines=True, hint=HOST_SSH_COMMAND_HINT,
+                        group='Connection', kinds=('ssh',)), ''),
         dump_field(Spec('hosts.new.probe_command', 'hosts', 'string', 'Probe command', 'restart',
-                        key='probe_command', lines=True, hint=HOST_PROBE_HINT), ''),
-        dump_field(Spec('hosts.new.timeout', 'hosts', 'number', 'Timeout (seconds)', 'restart',
-                        key='timeout', hint=HOST_DEADLINE_HINT), 3.0),
+                        key='probe_command', lines=True, hint=HOST_PROBE_HINT,
+                        group='Connection', kinds=('local', 'ssh')), ''),
+        dump_field(Spec('hosts.new.timeout', 'hosts', 'float', 'Timeout (seconds)', 'restart',
+                        key='timeout', minimum=0.1, hint=HOST_DEADLINE_HINT, group='Health'), 3.0),
     ]
     return {
         'id': 'hosts', 'section': 'hosts', 'type': 'list-of-records', 'label': 'Hosts',
         'value': records, 'write': 'records', 'apply': 'restart', 'actions': ['add', 'edit', 'remove'],
         'blank': blank, 'records': records, 'hint': HOSTS_LIST_HINT,
+        'empty': 'No hosts yet. Add one to tell the floor which machine to watch and how to read it.',
+        'kind_key': 'kind',
     }
 
 MCP_URL_HINT = 'HTTP(S) endpoint of a server that is already running. Leave empty when using Command.'
@@ -1931,12 +2087,8 @@ def mcp_field(config, manager=None):
         'id': 'mcp_servers', 'section': 'plugins', 'type': 'list-of-records', 'label': 'Installed plugins',
         'value': records, 'write': 'records', 'apply': 'live', 'actions': ['add', 'edit', 'remove', 'check'],
         'blank': blank, 'records': records, 'hint': MCP_LIST_HINT,
+        'empty': 'No plugins installed. Add one by URL or by command, then check it.',
     }
-
-
-def _loopback_host(url):
-    host = (urlsplit(url or '').hostname or '').strip('[]').lower()
-    return host in ('localhost', '127.0.0.1', '::1')
 
 
 def _provider_connected(config):
@@ -1954,38 +2106,6 @@ def _setup_steps(config):
 
 def _setup_line(config):
     return '1. Connect a provider (required). 2. Pick a chat model (required). Everything else is optional.'
-
-
-def _endpoint_rows(config, groups, *, kind):
-    rows = []
-    for group in groups.values():
-        names = [item['name'] for item in group['models']]
-        source = credential_source(config, names[0]) if names else {'source': 'none', 'label': 'No credential'}
-        protocol = group.get('protocol') or ''
-        if protocol == 'openai_chat':
-            protocol_label = 'OpenAI-compatible chat'
-        elif protocol == 'openai_responses':
-            protocol_label = 'OpenAI Responses'
-        else:
-            protocol_label = protocol
-        count = len(group['models'])
-        if len(names) == 1:
-            group['name'] = names[0]
-        url = group.get('base_url') or ''
-        host = urlsplit(url).netloc or ''
-        where = (host + ' · ') if host and host != group.get('name') else ''
-        place = 'Local · ' if kind == 'local' else ''
-        group['line'] = where + place + source['label'] + ' · ' + protocol_label + ' · ' + str(count) + (' model' if count == 1 else ' models')
-        pill, reason = _probe_models(url)
-        group['pill'] = pill
-        if reason and pill != 'Connected':
-            group['line'] += ' · ' + reason
-        group['source'] = source['label']
-        group['kind'] = kind
-        group['removable'] = False
-        group['actions'] = ['add-model']
-        rows.append(group)
-    return rows
 
 
 def provider_pages(config, keychain=None):
@@ -2009,72 +2129,12 @@ def provider_pages(config, keychain=None):
             'preset': {'account': key},
             'status': shown,
         })
-    keys = []
-    for name, reference in config.credentials.items():
-        if (reference.oauth or '').strip():
-            continue
-        meta = _credential_meta(config, name, reference, keychain)
-        keys.append({
-            'id': name, 'name': name, 'pill': meta['pill'], 'line': meta['line'],
-            'stored': meta['stored'], 'added': meta['added'],
-            'source_kind': meta['source_kind'],
-            'removable': True, 'actions': ['edit', 'remove'], 'kind': 'key',
-        })
-    local_groups = {}
-    custom_groups = {}
-    cli_groups = {}
-    for name, backend in config.backends.items():
-        kind = _kind(config, backend)
-        cli = (backend.extra or {}).get('cli') or {}
-        source = credential_source(config, name)
-        model_row = {
-            'name': name, 'title': backend.model or name, 'source': source['label'],
-            'removable': True, 'enabled': bool(backend.enabled),
-        }
-        if kind == 'cli_worker':
-            vendor = cli.get('vendor') if isinstance(cli.get('vendor'), str) and cli.get('vendor') else 'CLI'
-            bucket = cli_groups.setdefault(vendor, {
-                'id': 'cli-' + vendor, 'name': vendor + ' CLI', 'models': [], 'kind': 'cli', 'actions': [],
-            })
-            bucket['models'].append(model_row)
-            continue
-        reference = backend.credential_ref
-        pool = config.accounts.get(backend.account) if backend.account else None
-        if pool is not None and pool.credential_ref:
-            reference = pool.credential_ref
-        cred = config.credentials.get(reference) if reference else None
-        if cred is not None and (cred.oauth or '') in OAUTH_MODELS:
-            continue
-        url = backend.base_url or ''
-        loopback = _loopback_host(url)
-        target = local_groups if loopback else custom_groups
-        group = target.setdefault(name, {
-            'id': name,
-            'name': name,
-            'base_url': url,
-            'protocol': kind,
-            'models': [],
-            'preset': {
-                'account': 'other', 'base_url': url, 'kind': kind,
-                'credential': reference or '', 'api_key_env': backend.api_key_env or '',
-            },
-        })
-        group['models'].append(model_row)
-    local_rows = _endpoint_rows(config, local_groups, kind='local')
-    custom = _endpoint_rows(config, custom_groups, kind='custom')
-    for group in cli_groups.values():
-        enabled = any(item['enabled'] for item in group['models'])
-        group['pill'] = 'Saved' if enabled else 'Not connected'
-        group['line'] = group['models'][0]['source'] if group['models'] else 'CLI login'
-        group['source'] = group['line']
-        group['removable'] = False
-        group['actions'] = []
-        custom.append(group)
     return {
         'accounts': {
             'crumb': ['Settings', 'Providers', 'Accounts'],
             'title': 'Connect an account',
-            'help': 'Sign in with the provider account you already use.',
+            'help': ('Sign in with the provider account you already use. A model is added from '
+                     'a connected account on Models, where its model list is read from the service.'),
             'api_key_link': 'Have an API key instead?',
             'local_row': {
                 'name': 'Run models locally',
@@ -2083,24 +2143,55 @@ def provider_pages(config, keychain=None):
             'connected': [row for row in signin if row['pill'] == 'Connected'],
             'available': [row for row in signin if row['pill'] != 'Connected'],
         },
-        'keys': {
-            'crumb': ['Settings', 'Providers', 'API keys'],
-            'title': 'API keys',
-            'help': 'A key is an environment variable name or a keychain item. The value is never shown.',
-            'records': keys,
-        },
-        'endpoints': {
-            'crumb': ['Settings', 'Providers', 'Endpoints'],
-            'title': 'Endpoints',
-            'help': 'A local server and any other address are both endpoints. A local one is on this machine.',
-            'records': local_rows + custom,
-        },
-        'local': {
-            'crumb': ['Settings', 'Providers', 'Endpoints'],
-            'title': 'Endpoints',
-            'help': 'A local server and any other address are both endpoints. A local one is on this machine.',
-            'records': local_rows,
-        },
+    }
+
+
+def _group_fields(fields, default, rules):
+    """Put a section's fields into named blocks by id prefix.
+
+    The heading is data, not a second copy of the section list: a field added
+    later inherits the block it belongs to from its id.
+    """
+    for field in fields:
+        name = default
+        for prefix, label in rules:
+            if str(field.get('id', '')).startswith(prefix):
+                name = label
+                break
+        field['group'] = name
+
+
+def endpoints_field(config):
+    """The ordered MCP endpoints, as rows a person can add, edit and remove.
+
+    One text box holding one URL per line was the wrong control. The order is
+    the failover order, so a row has a position, and a line list cannot remove
+    one entry without retyping the rest.
+    """
+    hint = ('An http(s) MCP address, or mcp:<name> for a plugin listed on Plugins.')
+    values = [item for item in (config.aethermind.endpoints or []) if isinstance(item, str)]
+    records = []
+    for index, value in enumerate(values):
+        records.append({
+            'name': value,
+            'title': value,
+            'status': 'First choice' if index == 0 else 'Failover ' + str(index),
+            'actions': ['edit', 'remove'],
+            'fields': [dump_field(Spec('aethermind_endpoints.value', 'integrations', 'string', 'Endpoint',
+                                       'restart', key='value', hint=hint), value)],
+        })
+    return {
+        'id': 'aethermind_endpoints', 'section': 'integrations', 'type': 'list-of-records',
+        'label': 'Ordered endpoints', 'tier': 'optional',
+        'value': records, 'write': 'records', 'apply': 'restart',
+        'actions': ['add', 'edit', 'remove'],
+        'blank': [dump_field(Spec('aethermind_endpoints.new.value', 'integrations', 'string', 'Endpoint',
+                                  'restart', key='value', hint=hint), '')],
+        'records': records,
+        'hint': ('Tried in order until one answers. When this list has a row, the single '
+                 'AetherMind service URL above is not used.'),
+        'empty': 'No ordered endpoints. The AetherMind service URL above is used on its own.',
+        'show_label': True,
     }
 
 
@@ -2116,14 +2207,8 @@ def project(config, approval, manager=None, keychain=None):
     grouped['providers'].append(oauth_accounts_field(config))
     grouped['providers'].append(providers_field(config))
     grouped['models'].append(worker_policy_field(config))
-    grouped['integrations'].append(accounts_field(config))
-    grouped['accounts'].append({
-        'id': 'service_accounts', 'section': 'accounts', 'type': 'list-of-records',
-        'label': 'Accounts', 'value': [],
-        'records': [],
-        'write': 'records', 'apply': 'live', 'actions': [], 'blank': [],
-        'hint': 'Accounts are for services that are not model hosts. None are listed yet. Sign-ins are on Providers. Keys are in Credentials.',
-    })
+    grouped['integrations'].insert(2, endpoints_field(config))
+    grouped['accounts'].append(accounts_field(config))
     grouped['credentials'].append(credentials_field(config, keychain))
     grouped['hosts'].append(hosts_field(config))
     grouped['systems'].append(systems_field(config))
@@ -2135,6 +2220,17 @@ def project(config, approval, manager=None, keychain=None):
                  'behind upstream, and what changed. Check contacts the repository '
                  'read-only; Update reinstalls in place and restarts the core.'),
     })
+    # Two long sections read better in named blocks. The split lives here, once,
+    # so a field added later inherits the heading of the block it belongs to.
+    _group_fields(grouped['voice'], 'Duplex', (
+        ('voice.stt', 'Speech-to-text'),
+        ('voice.tts', 'Text-to-speech'),
+        ('voice.dedicated', 'Voice session'),
+        ('voice.max_session_seconds', 'Voice session'),
+    ))
+    _group_fields(grouped['computer'], 'Computer use', (
+        ('computer_use.jev', 'Screen questions'),
+    ))
     sections = []
     for section, label in SECTIONS:
         fields = grouped[section]
@@ -3043,34 +3139,6 @@ def _env_var_name(value, label):
     return value
 
 
-def _probe_models(url):
-    """Ask the endpoint for its model list.
-
-    Connected means the host answered with something other than 401 or 403.
-    Those two are Reachable, key rejected. A network failure is Unreachable.
-    """
-    from urllib import error, request
-    parsed = urlsplit(url or '')
-    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
-        return 'Unreachable', 'No model list address'
-    target = url.rstrip('/') + '/models'
-    try:
-        req = request.Request(target, method='GET')
-        with request.urlopen(req, timeout=0.6) as response:
-            response.read(32)
-            code = getattr(response, 'status', 200) or 200
-        if code in (401, 403):
-            return 'Reachable, key rejected', ''
-        return 'Connected', ''
-    except error.HTTPError as exc:
-        if exc.code in (401, 403):
-            return 'Reachable, key rejected', ''
-        return 'Connected', ''
-    except Exception as exc:
-        text = getattr(exc, 'reason', None) or str(exc) or type(exc).__name__
-        return 'Unreachable', str(text)[:180]
-
-
 class SettingsService:
     def __init__(self, manager, *, keychain=None):
         self.manager = manager
@@ -3308,9 +3376,55 @@ class SettingsService:
         result['approval'] = status
         return result
 
+    def _endpoint_value(self, value):
+        """Normalize one ordered endpoint, and refuse what the loader would refuse."""
+        text = value.strip() if isinstance(value, str) else ''
+        if text.startswith('mcp:'):
+            name = text[4:]
+            if name not in self.manager.config.mcp_servers:
+                raise ValueError('No plugin is named ' + name)
+            return text
+        parsed = urlsplit(text)
+        if parsed.scheme not in ('http', 'https') or not parsed.netloc or parsed.username is not None:
+            raise ValueError('An endpoint is an http(s) address or mcp:<plugin name>')
+        return text
+
+    def _endpoint_list(self):
+        return [item for item in (self.manager.config.aethermind.endpoints or []) if isinstance(item, str)]
+
+    def _endpoint_add(self, record):
+        _check_keys(record, {'value'})
+        value = self._endpoint_value((record or {}).get('value'))
+        current = self._endpoint_list()
+        if value in current:
+            raise ValueError('That endpoint is already in the list')
+        return commit(self.manager, [{'path': ['aethermind', 'endpoints'], 'value': current + [value]}], True)
+
+    def _endpoint_edit(self, body):
+        _check_keys(body.get('record'), {'value'})
+        current = self._endpoint_list()
+        old = body.get('name')
+        if not isinstance(old, str) or old not in current:
+            raise ValueError('Unknown endpoint')
+        value = self._endpoint_value((body.get('record') or {}).get('value'))
+        if value != old and value in current:
+            raise ValueError('That endpoint is already in the list')
+        updated = [value if item == old else item for item in current]
+        return commit(self.manager, [{'path': ['aethermind', 'endpoints'], 'value': updated}], True)
+
+    def _endpoint_remove(self, body):
+        current = self._endpoint_list()
+        name = body.get('name')
+        if not isinstance(name, str) or name not in current:
+            raise ValueError('Unknown endpoint')
+        kept = [item for item in current if item != name]
+        return commit(self.manager, [{'path': ['aethermind', 'endpoints'], 'value': kept}], True)
+
     def _add(self, body):
         record = body.get('record')
         ident = body['id']
+        if ident == 'aethermind_endpoints':
+            return self._endpoint_add(record)
         if ident == 'identities':
             _check_keys(record, {'name', 'display_name'})
             name = record.get('name')
@@ -3359,8 +3473,10 @@ class SettingsService:
 
     def _edit(self, body):
         record = body.get('record')
-        name = _require_name(body.get('name'))
         ident = body['id']
+        if ident == 'aethermind_endpoints':
+            return self._endpoint_edit(body)
+        name = _require_name(body.get('name'))
         if ident == 'worker_policy':
             _check_keys(record, {'capability', 'cost_rank'})
             rows = worker_policy_field(self.manager.config)['records']
@@ -3421,8 +3537,10 @@ class SettingsService:
         raise ValueError('Unknown setting')
 
     def _remove(self, body):
-        name = _require_name(body.get('name'))
         ident = body['id']
+        if ident == 'aethermind_endpoints':
+            return self._endpoint_remove(body)
+        name = _require_name(body.get('name'))
         config = self.manager.config
         if ident == 'named_accounts':
             if name not in config.accounts:
@@ -3527,7 +3645,7 @@ class SettingsService:
         # **values), so a `name` key in the table is an unknown option and the load is
         # refused. The table key IS the name. Measured against the live config: no
         # [hosts.<id>] table carries a name key.
-        for field in ('label', 'address', 'prometheus_instance', 'ssh_alias'):
+        for field in ('label', 'address', 'prometheus_instance', 'ssh_alias', 'agent_url'):
             if field in record:
                 value = record[field]
                 if not isinstance(value, str):
@@ -3545,6 +3663,8 @@ class SettingsService:
             if not math.isfinite(timeout) or timeout <= 0:
                 raise ValueError('Timeout must be positive and finite')
             put('timeout', float(timeout))
+        if 'ssh_command' in record:
+            put('ssh_command', _lines(record['ssh_command']))
         if 'probe_command' in record:
             put('probe_command', _lines(record['probe_command']))
 
@@ -3698,6 +3818,45 @@ class SettingsService:
         if chat and kind != 'cli_worker' and not (config.roles.get('main') or '').strip():
             edits.append({'path': ['roles', 'main'], 'value': name})
         return edits
+
+    def set_model_state(self, account, model, chat=None, make_default=None):
+        """Turn one model's chat-listing and default state on or off.
+
+        Listing a model never changes which model answers chat. Only
+        make_default does that. A model that is the default cannot be removed
+        from the chat list until another one takes over, so a person never ends
+        up with a default that is not in the picker.
+        """
+        from .account_models import account_backend_name
+
+        config = self.manager.config
+        if account not in OAUTH_MODELS:
+            raise ValueError('Unknown account')
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError('A model id is required')
+        chosen = model.strip()
+        backend_name = account_backend_name(config, account, chosen)
+        existing = config.backends.get(backend_name)
+        if existing is not None and existing.model != chosen:
+            raise ValueError('That name is already used by another model')
+        edits = []
+        if existing is None:
+            if chat is False and make_default is not True:
+                return commit(self.manager, [], False)
+            record = {'name': backend_name, 'account': account, 'model': chosen, 'chat': True}
+            edits.extend(self._provider_add(record))
+        is_default = (config.roles.get('main') or '') == backend_name
+        if chat is not None:
+            if chat is False and is_default:
+                raise ValueError('Choose another default model before removing this one from the chat list')
+            if existing is not None and chat is True and not existing.enabled:
+                edits.append({'path': ['backends', backend_name, 'enabled'], 'value': True})
+            edits.append({'path': ['backends', backend_name, 'chat'], 'value': bool(chat)})
+        if make_default is True:
+            edits.append({'path': ['roles', 'main'], 'value': backend_name})
+        if make_default is False and is_default:
+            raise ValueError('Pick the model that should answer chat instead')
+        return commit(self.manager, edits, False)
 
     def _provider_edit(self, name, record):
         config = self.manager.config

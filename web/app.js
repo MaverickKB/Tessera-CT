@@ -7057,7 +7057,8 @@
     if (typeof ui.theme === "string") applyTheme(ui.theme);
     if (typeof ui.skin === "string") applySkin(ui.skin);
     if (typeof ui.mark === "string" || typeof ui.easter_egg_f_it === "boolean") {
-      applyMark(typeof ui.mark === "string" ? ui.mark : (document.documentElement.dataset.markChoice || "cairn"), ui.easter_egg_f_it === true);
+      applyMark(typeof ui.mark === "string" ? ui.mark : (document.documentElement.dataset.markChoice || "cairn"),
+      ui.easter_egg_f_it === true, typeof ui.goblin_avatar === "string" ? ui.goblin_avatar : "");
     }
     if (typeof ui.accent_color === "string") applyAccent(ui.accent_color);
     if (typeof ui.show_thoughts === "boolean") applyThoughts(ui.show_thoughts);
@@ -7077,18 +7078,19 @@
     }
   }
 
-  function applyMark(mark, egg) {
+  function applyMark(mark, egg, avatar) {
     const stored = mark === "gremlin" ? "gremlin" : "cairn";
     const api = window.TesseraUnleashed;
     const eggOn = egg === true;
-    const pack = api ? api.packOn({easter_egg_f_it: eggOn}) : eggOn;
-    const active = api ? api.activeMark({mark: stored, easter_egg_f_it: eggOn}) : stored;
+    const ui = {mark: stored, easter_egg_f_it: eggOn, goblin_avatar: avatar || ""};
+    const pack = api ? api.packOn(ui) : eggOn;
+    const active = api ? api.activeMark(ui) : stored;
     document.documentElement.dataset.mark = active;
     document.documentElement.dataset.markChoice = stored;
     document.documentElement.dataset.pack = pack ? "gremlin" : "off";
     const slot = $("design-asset-slot");
     if (slot) slot.setAttribute("aria-label", active === "gremlin" && api && api.LOGO_ALT ? api.LOGO_ALT : "Tessera");
-    const choice = api ? api.iconFor(pack ? "gremlin" : "cairn") : null;
+    const choice = api ? api.iconFor(pack ? "gremlin" : "cairn", ui) : null;
     const links = typeof document.querySelectorAll === "function"
       ? document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]')
       : [];
@@ -7168,7 +7170,7 @@
     const saved = localStorage.getItem("tessera-theme") || "system";
     if (["light", "dark", "system"].includes(saved)) $("theme-choice").value = saved;
     applySkin(localStorage.getItem("tessera-skin") || "strata");
-    applyMark(localStorage.getItem("tessera-mark") || "cairn", false);
+    applyMark(localStorage.getItem("tessera-mark") || "cairn", false, localStorage.getItem("tessera-goblin") || "");
     applyAccent(localStorage.getItem("tessera-accent") || "");
   } catch (_) { /* Theme preferences are optional when storage is unavailable. */ }
   applyTheme($("theme-choice").value);
@@ -7491,7 +7493,8 @@
         state.status = state.status || {};
         state.status.ui = Object.assign({}, state.status.ui, patch);
         const ui = state.status.ui;
-        applyMark(typeof ui.mark === "string" ? ui.mark : (document.documentElement.dataset.markChoice || "cairn"), ui.easter_egg_f_it === true);
+        applyMark(typeof ui.mark === "string" ? ui.mark : (document.documentElement.dataset.markChoice || "cairn"),
+      ui.easter_egg_f_it === true, typeof ui.goblin_avatar === "string" ? ui.goblin_avatar : "");
         if (typeof patch.easter_egg_f_it === "boolean") paintApprovalLabel(ui);
       }
     },

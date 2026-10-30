@@ -136,28 +136,6 @@ const settingsData = {
         actions: ["sign-in"], kind: "signin",
       }],
     },
-    keys: {
-      crumb: ["Settings", "Providers", "API keys"],
-      title: "API keys",
-      help: "A key is an environment variable name or a keychain item.",
-      records: [{
-        id: "slot",
-        name: "slot",
-        pill: "Keychain item missing",
-        line: "Keychain item: slot",
-        type_tag: "Keychain",
-        added: "Not recorded",
-        kind: "key",
-        removable: true,
-        actions: ["edit", "remove"],
-      }],
-    },
-    endpoints: {
-      crumb: ["Settings", "Providers", "Endpoints"],
-      title: "Endpoints",
-      help: "A local server and any other address are both endpoints.",
-      records: [],
-    },
   },
   sections: [
     {id: "models", label: "Models", fields: [
@@ -166,6 +144,21 @@ const settingsData = {
       {id: "roles.failover", type: "enum", label: "Failover", value: "",
         hint: "Used when the chat model is unreachable.",
         options: [{value: "", label: "Off"}]},
+    ]},
+    {id: "voice", label: "Voice", fields: [
+      {id: "voice.pipe", type: "display", label: "Pipe", value: "local"},
+      {id: "voice.account", type: "enum", label: "Account", value: "xai",
+        options: [{value: "xai", label: "xAI Grok"}], hint: "The account that mints the voice session.",
+        hidden_when: {"voice.pipe": "local"}},
+      {id: "voice.stt.base_url", type: "string", label: "Speech-to-text endpoint", value: "",
+        hint: "The base URL of a local server."},
+    ]},
+    {id: "credentials", label: "Credentials", fields: [
+      {id: "credentials", type: "list-of-records", label: "Credentials",
+        actions: ["add", "edit", "remove"], records: [{
+          name: "slot", title: "slot", pill: "Keychain item missing",
+          line: "Keychain item: slot", added: "Not recorded", actions: ["edit", "remove"],
+        }], blank: []},
     ]},
     {id: "providers", label: "Providers", fields: [
       {id: "providers", type: "list-of-records", label: "Models", actions: ["add", "edit", "remove"],
@@ -185,6 +178,9 @@ const settingsData = {
           ],
         }],
         blank: [
+          {key: "account", type: "enum", label: "Account", value: "other",
+            options: [{value: "other", label: "Custom endpoint"}],
+            hint: "A sign-in account supplies the endpoint and the credential."},
           {key: "name", type: "string", label: "Name", value: "", hint: "A short name. Spaces are saved as dashes."},
           {key: "kind", type: "enum", label: "HTTP protocol", value: "openai_chat",
             options: [{value: "openai_chat", label: "OpenAI-compatible chat"}],
@@ -250,7 +246,7 @@ test("model fields put the tier and disclosure on the label line", async () => {
   const chat = rowFor(root, "Chat model");
   const line = chat.label.parent;
   assert.equal(line.className, "settings-label-line");
-  assert.ok(line.children.some((node) => node.textContent === "What goes here"));
+  assert.ok(line.children.some((node) => node.textContent === "Details"));
   assert.ok(line.children.some((node) => node.textContent === "Required"));
   const control = chat.row.children.find((node) => node.className === "set-control");
   const hint = chat.row.children.find((node) => node.className === "set-hint");
@@ -260,7 +256,7 @@ test("model fields put the tier and disclosure on the label line", async () => {
   const failover = rowFor(root, "Failover");
   const failoverLine = failover.label.parent;
   assert.ok(failoverLine.children.some((node) => node.textContent === "Optional"));
-  assert.equal(failoverLine.children.some((node) => node.textContent === "What goes here"), false);
+  assert.equal(failoverLine.children.some((node) => node.textContent === "Details"), false);
   const failoverHint = failover.row.children.find((node) => node.className === "set-hint");
   const failoverControl = failover.row.children.find((node) => node.className === "set-control");
   assert.equal(failoverHint.hidden, false);
@@ -269,11 +265,15 @@ test("model fields put the tier and disclosure on the label line", async () => {
   assert.ok(failover.row.children.indexOf(failoverControl) < failover.row.children.indexOf(failoverHint));
 });
 
-test("endpoint add form puts one help line under each field and Find models under Model", async () => {
+test("add model asks which account first and keeps help under each field", async () => {
   const {root, view} = mount();
   await view.load();
-  clickText(root, "Endpoints");
-  clickText(root, "Add endpoint");
+  clickText(root, "Models");
+  clickText(root, "Add model");
+  const account = rowFor(root, "Account");
+  assert.ok(account, "the account picker is the first question");
+  const form = all(root).find((node) => node.tag === "form");
+  assert.equal(form.children[0], account.row);
   for (const [label, help] of [
     ["Name", "A short name. Spaces are saved as dashes."],
     ["Base URL", "The server address, with http:// and the port."],
@@ -293,8 +293,6 @@ test("endpoint add form puts one help line under each field and Find models unde
   const discover = model.row.children.find((node) => node.className === "set-discover");
   assert.ok(model.row.children.indexOf(hint) < model.row.children.indexOf(discover));
   assert.equal(discover.children[0].textContent, "Find models");
-  const choices = discover.children.find((node) => node.className === "set-model-choices");
-  assert.ok(discover.children.indexOf(discover.children[0]) < discover.children.indexOf(choices));
 });
 
 test("model edit keeps help under the control and actions at the end", async () => {
@@ -317,14 +315,16 @@ test("model edit keeps help under the control and actions at the end", async () 
   assert.ok(fallback.row.children.indexOf(fallbackLine) < fallback.row.children.indexOf(fallbackHelp));
   const cap = rowFor(root, "Max concurrent requests");
   const capLine = cap.label.parent;
-  assert.ok(capLine.children.some((node) => node.textContent === "What goes here"));
+  // A form never folds its help: the sentence that says what to type stays on
+  // the page beside the field.
+  assert.equal(capLine.children.some((node) => node.textContent === "Details"), false);
   const control = cap.row.children.find((node) => node.className === "set-control");
   const fact = cap.row.children.find((node) => node.classNames().includes("set-fact"));
   const hint = cap.row.children.find((node) => node.className === "set-hint");
   assert.ok(cap.row.children.indexOf(capLine) < cap.row.children.indexOf(control));
   assert.ok(cap.row.children.indexOf(control) < cap.row.children.indexOf(fact));
   assert.ok(cap.row.children.indexOf(fact) < cap.row.children.indexOf(hint));
-  assert.equal(hint.hidden, true);
+  assert.equal(hint.hidden, false);
   assert.match(fact.textContent, /In effect/);
   const form = all(root).find((node) => node.tag === "form");
   const actions = form.children[form.children.length - 1];
@@ -336,7 +336,7 @@ test("model edit keeps help under the control and actions at the end", async () 
 test("a keychain row shows the existence phrase once", async () => {
   const {root, view} = mount();
   await view.load();
-  clickText(root, "API keys");
+  clickText(root, "Saved credentials");
   assert.ok(all(root).some((node) => node.textContent === "Keychain item: slot"));
   assert.ok(all(root).some((node) => node.textContent === "Keychain item missing"));
   assert.equal(all(root).some((node) => node.textContent === "Keychain"), false);
@@ -351,25 +351,31 @@ test("the models row shows the full id and one credential line", async () => {
   assert.ok(all(root).some((node) => node.textContent === "llama-3.1-8b-demo"));
   assert.ok(all(root).some((node) => node.textContent === "Credential: none"));
   assert.equal(all(root).some((node) => String(node.textContent).includes("Credential in use")), false);
-  const summaries = all(root).filter((node) => node.tag === "summary" && node.textContent === "What goes here");
+  const summaries = all(root).filter((node) => node.tag === "summary" && node.textContent === "Details");
   assert.equal(summaries.length, 1);
   const models = all(root).find((node) => node.tag === "button" && node.textContent === "Models");
   const accounts = all(root).find((node) => node.tag === "button" && node.textContent === "Accounts");
   assert.equal(models.className, accounts.className);
 });
 
-test("accounts and endpoints each use one plain row", async () => {
+test("accounts use one plain row and offer no endpoint add", async () => {
   const {root, view} = mount();
   await view.load();
   clickText(root, "Accounts");
   assert.ok(all(root).some((node) => node.textContent === "Run models locally"));
   assert.ok(all(root).some((node) => node.textContent === "A model server on this machine."));
   assert.ok(all(root).some((node) => node.textContent === "xAI Grok sign-in."));
-  assert.equal(all(root).some((node) => node.tag === "button" && node.textContent === "sign-in"), false);
-  clickText(root, "Endpoints");
   const labels = all(root).filter((node) => node.tag === "button").map((node) => node.textContent);
-  assert.ok(labels.includes("Add endpoint"));
-  assert.equal(labels.includes("Add an endpoint"), false);
-  assert.equal(labels.includes("Add a local server"), false);
+  assert.equal(labels.includes("Add endpoint"), false);
   assert.equal(labels.includes("Add model"), false);
+});
+
+test("a duplex control hides itself under the local speech pipe", async () => {
+  const {root, view} = mount();
+  await view.load();
+  clickText(root, "Voice");
+  const account = rowFor(root, "Account");
+  assert.equal(account.row.hidden, true, "the duplex account does not apply to the local pipe");
+  const endpoint = rowFor(root, "Speech-to-text endpoint");
+  assert.equal(endpoint.row.hidden, false, "the local endpoint is the point of that pipe");
 });
