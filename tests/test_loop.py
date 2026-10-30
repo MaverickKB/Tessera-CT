@@ -233,16 +233,32 @@ def test_session_start_shell_hook_context_is_delivered(tmp_path):
     assert 'session hook instructions' in backend.calls[0]['messages'][3]['content']
 
 
-def test_judgement_is_logged_and_flags_capture_advisorially(tmp_path):
+def test_capture_flags_advisorially_without_a_configured_judge(tmp_path):
+    # A judge is off by default. An honest "I cannot finish" must not become a
+    # captured failure, and no judge scoring should be recorded for a judge that
+    # was never configured.
     backend = FakeBackend(['I cannot finish this request.'])
     with Session(session_config(tmp_path), backend=backend) as session:
         session.run_turn('Hello')
         reply = session.log.get(1)
-        assert 0 <= reply.meta['judge_score'] < .5
-        assert reply.meta['judge_source'] == 'heuristic'
+        assert 'judge_score' not in reply.meta
+        assert 'judge_source' not in reply.meta
         layer = session.capture.debt()[0]['layer']
         assert '?' not in layer['markers']
         assert 'Failure recorded' not in layer['body']
+
+
+def test_no_judge_leaves_no_scoring_or_output_gate_on_a_turn(tmp_path):
+    # The reported bug: a fresh build with no Jev endpoint still recorded a
+    # heuristic judge score and an output-gate refusal on every turn, which the
+    # infrastructure board reported as "Judge fell back" and "denied". With the
+    # judge and session gate both off, a turn must carry no judge metadata.
+    backend = FakeBackend(['Done, tests passed.'])
+    with Session(session_config(tmp_path), backend=backend) as session:
+        assert session.run_turn('Run tests') == 'Done, tests passed.'
+        reply = session.log.get(1)
+        for key in ('judge_score', 'judge_source', 'verification', 'output_gate'):
+            assert key not in reply.meta, key
 
 
 def test_memory_decision_causes_read_before_answer(tmp_path):

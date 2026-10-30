@@ -137,3 +137,52 @@ def test_the_real_session_manager_credits_a_pinned_skill_end_to_end(tmp_path):
         assert row['fails'] == 0
     finally:
         manager.close()
+
+
+def test_the_real_session_manager_keeps_a_pinned_lesson_open_after_a_failed_tool(tmp_path):
+    write_skill(tmp_path / 'skills', 'board-count', 'Read the live board before counting.')
+    config = config_for(tmp_path)
+    config.jev.enabled = False
+    config.jev.session_gates_enabled = False
+    backend = FakeBackend([
+        {'tool_calls': [{'id': 'a', 'name': 'skill_load', 'arguments': {'name': 'board-count'}}]},
+        'Loaded it.',
+        {'tool_calls': [{'id': 'b', 'name': 'shell', 'arguments': {'command': 'exit 1'}}]},
+        'The build failed; I cannot finish.',
+    ])
+    manager = SessionManager(config, backend_factory=lambda slug, name: backend)
+    try:
+        slug = manager.create('Home')['slug']
+        manager.autonomy.learning.record_lesson(
+            slug, TRIGGER, 'answered from the ordinal', 'read the live board first',
+            skill='board-count')
+        lesson_id = manager.autonomy.learning.list_lessons(slug)[0]['id']
+
+        manager.submit(slug, 'Load the board-count skill')
+        assert manager.wait(slug, timeout=10)
+        row = manager.autonomy.learning._lessons[lesson_id]
+        assert row['status'] == 'written'
+        assert row['checks'] == []
+
+        manager.submit(slug, 'Now ' + TRIGGER)
+        assert manager.wait(slug, timeout=10)
+        row = manager.autonomy.learning._lessons[lesson_id]
+        assert row['status'] == 'written'
+        assert row['fails'] == 0
+        last = row['checks'][-1]
+        assert last['passed'] is False
+        assert last['tools_failed'] is True
+        assert last['pinned'] is True
+        assert last['loaded'] is False
+        assert last['note'] == 'tools failed'
+        assert 'Open lesson' in manager.autonomy.learning.context_for(slug, 'Now ' + TRIGGER)
+
+        session = manager.get(slug)
+        messages = list(session.log.iter())
+        last_agent = messages[-1]
+        assert last_agent.kind == 'agent'
+        for key in ('judge_score', 'judge_source', 'verification', 'output_gate'):
+            assert key not in last_agent.meta
+        assert session.last_turn_success is True
+    finally:
+        manager.close()

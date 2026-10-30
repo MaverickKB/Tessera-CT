@@ -702,7 +702,8 @@ class LearningStore:
             lines.append(line)
         return '\n'.join(lines)
 
-    def observe_turn(self, slug, message, tools, judge_score, success, is_wake, pinned=None):
+    def observe_turn(self, slug, message, tools, judge_score, success, is_wake, pinned=None,
+                     tools_failed=False):
         self._note_skill_writes(slug, tools or [])
         if is_wake or not message or message.lstrip().startswith('[wake]'):
             return None
@@ -740,7 +741,7 @@ class LearningStore:
                 judge_failed = judge_score is not None and judge_score < self.pass_score
                 if judge_failed and self._bind_improvement(lesson):
                     changed = True
-                self._record_match(lesson, loaded, judge_score, pinned)
+                self._record_match(lesson, loaded, judge_score, success, pinned, tools_failed)
                 changed = True
             if changed:
                 self._save()
@@ -799,7 +800,7 @@ class LearningStore:
                 found.append(lesson)
         return found
 
-    def _record_match(self, lesson, loaded, judge_score, pinned=None):
+    def _record_match(self, lesson, loaded, judge_score, success, pinned=None, tools_failed=False):
         skill = lesson.get('skill') or ''
         loaded_this = bool(skill) and skill in loaded
         pinned_this = bool(skill) and skill in (pinned or [])
@@ -809,7 +810,12 @@ class LearningStore:
         # the record says which way the skill reached the turn.
         entry = {'at': self.clock(), 'loaded': loaded_this, 'pinned': pinned_this,
                  'judge_score': judge_score, 'passed': False, 'source': 'turn'}
-        passed = available and judge_score is not None and judge_score >= self.pass_score
+        # With no configured judge the turn has no completion score, so the turn's own
+        # success flag and tool outcomes determine whether the procedure passed.
+        # Requiring a score here would prevent judge-less sessions from absorbing lessons.
+        passed = available and success and not tools_failed and (judge_score is None or judge_score >= self.pass_score)
+        if tools_failed:
+            entry['tools_failed'] = True
         missed = False
         if passed:
             entry['passed'] = True
@@ -821,6 +827,8 @@ class LearningStore:
         elif judge_score is not None and judge_score < self.pass_score:
             missed = True
             entry['note'] = 'check missed'
+        elif available and tools_failed:
+            entry['note'] = 'tools failed'
         if missed:
             lesson['fails'] = int(lesson.get('fails') or 0) + 1
             if lesson['fails'] >= self.fail_limit:
