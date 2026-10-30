@@ -1,6 +1,6 @@
 [project]
 name = "tessera"
-version = "0.1.1"
+version = "0.1.2"
 description = "A small, generic agent harness with summary-tree memory and harness-owned capture"
 readme = "README.md"
 requires-python = ">=3.11"

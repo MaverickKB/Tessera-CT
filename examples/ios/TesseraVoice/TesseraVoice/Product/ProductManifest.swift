@@ -11,7 +11,7 @@ enum ProductManifest {
     static var bundleIdentifier: String {
         Bundle.main.bundleIdentifier ?? "com.example.tessera.voice"
     }
-    static let version = "0.1.1"
+    static let version = "0.1.2"
     static let buildNumber = "7"
     static let minimumIOSVersion = "17.0"
 

@@ -171,7 +171,7 @@ class Terminal:
         return result
 
     def initialize(self):
-        result = self.call('initialize', {'clientInfo': {'name': 'tessera-terminal', 'version': '0.1.1'}})
+        result = self.call('initialize', {'clientInfo': {'name': 'tessera-terminal', 'version': '0.1.2'}})
         info = result.get('serverInfo')
         if not isinstance(info, dict) or info.get('protocolVersion') != 1:
             raise RpcError('This client requires daemon protocol version 1.')
