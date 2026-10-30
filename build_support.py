@@ -76,7 +76,9 @@ class BuildPy(build_py):
 
     def runtime_files(self):
         root = Path(__file__).resolve().parent
-        sources = [root / 'config.example.toml']
+        sources = [root / 'config.example.toml', root / 'README.md']
+        sources.extend(path for path in (root / 'docs').rglob('*.md') if path.is_file())
+        sources.extend(path for path in (root / 'orientation').rglob('*.md') if path.is_file())
         sources.extend(path for path in (root / 'web').iterdir()
                        if path.is_file() and path.suffix in {'.html', '.css', '.js', '.webmanifest'})
         sources.extend(path for path in (root / 'web' / 'brand').rglob('*')

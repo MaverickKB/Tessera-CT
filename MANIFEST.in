@@ -6,3 +6,6 @@ include docs/packaging/aethermind-mcp-requirements.lock
 graft seeds
 graft tessera/_assets/aethermind-engine
 include tessera/_assets/aethermind-engine/.gitignore
+
+recursive-include docs *.md
+graft orientation

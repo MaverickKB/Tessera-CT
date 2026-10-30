@@ -148,6 +148,7 @@ class TesseraServer(ThreadingHTTPServer):
             settings.restart_capable = self.restart_capable
         self.web_root = Path(web_root).resolve()
         self.oauth_login = LoginDesk(Path(config.home) / 'oauth-login')
+        manager.oauth_login = self.oauth_login
         self.stopping = threading.Event()
         self._restart_lock = threading.Lock()
         self._update_lock = threading.Lock()
@@ -1226,7 +1227,7 @@ class Handler(BaseHTTPRequestHandler):
             if method == 'GET':
                 self._json(200, manager.list_sessions())
             elif method == 'POST':
-                body = self._body(('title', 'backend', 'workspace'), ('title',))
+                body = self._body(('title', 'backend', 'workspace', 'purpose'), ('title',))
                 self._json(201, manager.create(**body))
             else:
                 raise ApiError(405, 'Method not allowed')
@@ -1276,6 +1277,21 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) != 5:
             raise ApiError(404, 'Not found')
         resource = parts[4]
+        if resource == 'credential-prompts':
+            if method == 'GET':
+                self._json(200, {'requests': manager.credential_prompts.pending(slug)})
+            elif method == 'POST':
+                body = self._body(('request_id', 'value', 'cancel'), ('request_id',))
+                if not isinstance(body.get('cancel', False), bool):
+                    raise ApiError(400, 'Cancel must be true or false')
+                try:
+                    result = manager.credential_prompts.resolve(slug, body['request_id'], body.get('value'), body.get('cancel', False))
+                except ValueError as error:
+                    raise ApiError(400, str(error)) from None
+                self._json(200, result)
+            else:
+                raise ApiError(405, 'Method not allowed')
+            return
         if resource == 'speech' and method == 'POST':
             body = self._body(('message_i', 'offset', 'limit', 'encoding'), ('message_i',))
             try:
