@@ -37,6 +37,31 @@ def test_tool_loop_logs_and_uses_constant_prompt_prefix(tmp_path):
         assert session.capture.debt()
 
 
+def test_the_turn_prompt_is_capped_at_the_settle_budget(tmp_path):
+    """A session that outgrows its view still sends a bounded prompt.
+
+    The conversation view is the gist the model reads. It is capped at the view's
+    settle budget; older spans stay in the tree and remain zoomable. Without the cap
+    a session sends its whole rendered view every turn, so an over-budget view turns
+    into an over-budget prompt on every single call.
+    """
+    backend = FakeBackend(['Acknowledged.'])
+    config = session_config(tmp_path)
+    with Session(config, backend=backend) as session:
+        limit = config.view.low_bytes
+        line = 'y' * 400
+        seeded = (limit // 400) + 40
+        for index in range(seeded):
+            session.log.append('user', f'{index} {line}')
+        assert len(session.view.render().encode()) > limit
+        run_turn(session, 'Continue')
+        gist = backend.calls[0]['messages'][1]['content']
+        # The wrapper and the omission notice are outside the line budget.
+        assert len(gist.encode()) <= limit + 200
+        assert gist.startswith('<chat>')
+        assert 'Older coverage is omitted' in gist
+
+
 def test_hook_block_prevents_side_effect_and_still_captures(tmp_path):
     hooks = HookBus()
     events = []

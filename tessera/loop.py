@@ -1089,7 +1089,11 @@ class Session:
             self._pinned_skills = []
             # Render before appending: the current user message appears exactly once.
             snapshot_count = self.log.count()
-            gist = self.view.render()
+            # The view is the conversation, and the prompt carries it up to the
+            # settle budget. Past that the newest window is sent and the older
+            # spans stay zoomable, so a session cannot grow its prompt without
+            # bound while compaction catches up.
+            gist = self.view.prompt_render(self.config.view.low_bytes)
             attached = self.turn_meta.pop('attachments', None) or []
             user_meta = {'turn': self.turn, 'session_id': self.session_id, **self.turn_meta}
             if attached:
