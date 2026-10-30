@@ -39,7 +39,9 @@ def unused_port():
 def stop(process, ready, port):
     shell_pid = ready.get('shell_pid', process.pid)
     try:
-        if os.name == 'nt' and ready:
+        if not ready:
+            return  # Startup already failed; only forced cleanup is applicable.
+        if os.name == 'nt':
             import ctypes
             from ctypes import wintypes
             user32 = ctypes.windll.user32
@@ -78,11 +80,18 @@ def stop(process, ready, port):
     finally:
         # Forced process-tree cleanup is separate from the lifecycle assertion.
         if os.name == 'nt':
-            for pid in {ready.get('shell_pid'), ready.get('core_pid')} - {None}:
-                subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            owned = {ready.get('shell_pid'), ready.get('core_pid')} - {None}
             if process.poll() is None:
-                process.terminate()
+                owned.add(process.pid)
+            for pid in owned:
+                subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                except PermissionError:
+                    if process.poll() is None:
+                        raise
         else:
             try:
                 from tessera.desktop_install import _signal_native_group
