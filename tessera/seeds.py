@@ -424,9 +424,13 @@ def install(store_root, skills_dir=None, pack=None, dry_run=False):
 def _write(store_root, layers, textures, skills_dir, result):
     """Append the payloads that are not present yet, then stage the skills."""
     skills_source = Path(pack_path()).parent / SKILL_DIR
-    known_layers = present_layer_hashes(store_root)
-    known_textures = present_texture_hashes(store_root)
     aether = _aethermind(store_root, engine_lib_dir())
+    # A matching body in raw TOML is not proof of a valid engine record.
+    # Read even when every seed appears present, so relaunch detects damaged
+    # IDs, receipts and other schema fields and reaches the quarantine path.
+    known_layers = {hashlib.sha256(layer.body.encode()).hexdigest()
+                    for layer in aether.read_layers()}
+    known_textures = present_texture_hashes(store_root)
     for layer in layers:
         if hashlib.sha256(layer['body'].encode()).hexdigest() in known_layers:
             result['layers_skipped'] += 1
@@ -444,6 +448,12 @@ def _write(store_root, layers, textures, skills_dir, result):
                              author=texture['author'])
         known_textures.add(hashlib.sha256(texture['body'].encode()).hexdigest())
         result['textures_written'] += 1
+
+    readable = {hashlib.sha256(layer.body.encode()).hexdigest()
+                for layer in aether.read_layers()}
+    if any(hashlib.sha256(layer['body'].encode()).hexdigest() not in readable
+           for layer in layers):
+        raise SeedUnavailable('the engine could not read back the complete seed pack')
 
     shelf = Path(skills_dir or Path(store_root).expanduser() / SKILL_DIR).expanduser()
     if skills_source.is_dir():

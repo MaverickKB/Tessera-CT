@@ -14,7 +14,9 @@ Passes only when:
   3. a configured url wins: the launcher refuses to start the bundle,
   4. the launcher starts the engine on an OS-chosen local port,
   5. the engine answers capabilities as the pinned aethermind-python adapter-v1,
-  6. the engine answers status and a polite no-tree read for a fresh project.
+  6. the configured store exposes every seed rule on first launch,
+  7. a stopped engine relaunches with identical seed-store bytes,
+  8. the engine answers status and a polite no-tree read for a fresh project.
 """
 
 import argparse
@@ -33,6 +35,16 @@ if str(REPO_ROOT) not in sys.path:
 from tessera.aethermind import AetherMindClient
 from tessera.bundled_engine import ensure_bundled_engine, stop_bundled_engine
 from tessera.config import load_config
+from tessera import seeds
+
+
+def verify_seed(client, config):
+    expected, _ = seeds.normalize(seeds.load_pack())
+    result = client.read_layers(str(seeds.store_path(config)))
+    actual = result.get('layers', []) if isinstance(result, dict) else []
+    if not {layer['body'] for layer in expected} <= {layer.get('body') for layer in actual}:
+        fail('configured store did not expose the complete seed pack: ' + str(result))
+    print('ok: configured store exposes all ' + str(len(expected)) + ' seed layers')
 
 
 def fail(message):
@@ -90,6 +102,19 @@ def main():
 
         client = AetherMindClient(endpoints=[url], timeout=15)
         try:
+            verify_seed(client, config)
+            store = seeds.store_path(config) / '.aethermind'
+            before = {name: (store / name).read_bytes()
+                      for name in ('layers.aem', 'texture.aem')}
+            stop_bundled_engine(config)
+            url = ensure_bundled_engine(config)
+            if not url:
+                fail('relaunch returned no engine url')
+            client = AetherMindClient(endpoints=[url], timeout=15)
+            verify_seed(client, config)
+            if any((store / name).read_bytes() != body for name, body in before.items()):
+                fail('relaunch changed an already complete seed store')
+            print('ok: relaunch validated the pack without changing its bytes')
             # The no-tree error above is the ENGINE answering through the production
             # client: a fresh project has no tree yet, reported politely.
             read_state = client.tree_view(str(home / "projects" / "fresh"))
