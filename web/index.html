@@ -30,6 +30,7 @@
   <script src="/static/work-intake.js" defer></script>
   <script src="/static/unleashed-label.js" defer></script>
   <script src="/static/gremlin-trail.js" defer></script>
+  <script src="/static/credential-prompt.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body class="no-session" data-refresh-seconds="15" data-navigation-collapse-below="1100" data-sessions-collapse-below="900" data-drawer-below="760" data-board-artifact-labels="6" data-proof-max-bytes="262144" data-proof-max-workers="32" data-voice-worklet="/static/voice-worklet.js" data-voice-chunk-frames="2048" data-voice-buffer-bytes="262144" data-voice-pending-events="32" data-voice-connect-seconds="20" data-voice-playback-seconds="15">
@@ -226,6 +227,7 @@
         <button id="load-earlier" class="load-earlier" type="button" hidden>Earlier messages</button>
         <div id="messages" class="messages" role="log" aria-label="Messages" aria-live="polite" aria-relevant="additions"></div>
       </div>
+      <section id="credential-prompt" aria-label="Protected credential entry" hidden></section>
       <section id="queue-list" class="queue-list" aria-label="Waiting prompts" hidden></section>
       <div class="composer-area">
         <button id="jump-latest" class="jump-latest" type="button" hidden>Latest</button>

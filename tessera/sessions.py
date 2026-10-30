@@ -279,6 +279,7 @@ class _Runtime:
     def __init__(self, manager, meta):
         self.manager = manager
         self.slug = meta['slug']
+        self.orientation = meta.get('purpose') == 'orientation'
         self.root = manager.path(self.slug)
         self.condition = threading.Condition(threading.RLock())
         self.intake_lock = threading.RLock()
@@ -328,6 +329,9 @@ class _Runtime:
                                pool=manager.agent_pool,
                                approve=self._approve, configure_tools=self._register_tools,
                                judge_human=self._human if manager.human_request else None)
+        if self.orientation and getattr(self.session, 'shelf', None) is not None:
+            from .assets import asset_path
+            self.session.shelf.session_roots = (asset_path('orientation/skills'),)
         self.session._parent_cancelled = self.operator_cancelled
         if hasattr(self.session, 'refresh_attached_memory'):
             self.session._refresh_peers = self.manager.refresh_open_memory
@@ -369,6 +373,9 @@ class _Runtime:
         self.session.queue_backend(name, built)
 
     def _register_tools(self, registry):
+        if self.orientation:
+            from .orientation import register_tools
+            register_tools(self, registry)
         self.manager.board_tools.register_tools(self, registry)
         if self.manager.config.swarm.enabled:
             def swarm_job(action, objective='', workers=None, job_id=''):
@@ -541,6 +548,11 @@ class _Runtime:
         message = payload.get('message') or payload.get('user') or ''
         text = self.manager.autonomy.learning.context_for(self.slug, message)
         context = [text] if text else []
+        if self.orientation:
+            shelf = getattr(self.session, 'shelf', None)
+            if shelf is not None and any(skill['name'] == 'getting-started' for skill in shelf.skills()):
+                context.append(shelf.load('getting-started', self.manager.config.tools.clip_chars))
+                self.session._loaded_skills['getting-started'] = shelf.stamp('getting-started')
         if self.active and self.active.get('project_id'):
             from .project_canvas import planning_context
             project = self.manager.board.get_project(self.active['project_id'])
@@ -774,6 +786,8 @@ class SessionManager:
             self.config_journal_error = type(error).__name__ + ': ' + str(error)
         from .settings_model import SettingsService
         self.settings = SettingsService(self)
+        from .orientation import CredentialPrompts
+        self.credential_prompts = CredentialPrompts(self)
         self.grafana = GrafanaClient(config.grafana, credentials=CredentialResolver(config.credentials))
         # Bounded A/B trials, the measurement an 'auto' oversight policy waits for.
         self.trials = TrialStore(Path(self.config.home) / 'trials' / 'trials.json')
@@ -906,6 +920,8 @@ class SessionManager:
             result['infinity'] = True
         if meta.get('voice'):
             result['voice'] = True
+        if meta.get('purpose') == 'orientation':
+            result['purpose'] = 'orientation'
         return result
 
     def resolve_session(self, handle):
@@ -955,13 +971,15 @@ class SessionManager:
             path = Path(self.config.cwd) / path
         return str(path.resolve())
 
-    def create(self, title, backend=None, *, agent=None, workspace=None):
+    def create(self, title, backend=None, *, agent=None, workspace=None, purpose=None):
         if not isinstance(title, str) or not title.strip() or len(title) > 200:
             raise ValueError('Title must be 1..200 characters')
         if backend is not None and (not isinstance(backend, str) or backend not in self.config.backends):
             raise ValueError('Unknown backend')
         if backend is not None and agent is None and not offered_for_chat(backend, self.config.backends[backend]):
             raise ValueError('Backend is not offered as a chat brain')
+        if purpose not in (None, 'orientation'):
+            raise ValueError('Unknown session purpose')
         backend_override = backend is not None
         if backend is None:
             backend = self.config.roles.get('main')
@@ -985,6 +1003,8 @@ class SessionManager:
             meta = {'id': uuid.uuid4().hex, 'slug': slug, 'title': title.strip(), 'created': timestamp,
                     'updated': timestamp, 'messages': 0, 'archived': False, 'backend': backend, 'backend_override': backend_override,
                     'debt': 0, 'workspace': chosen or ''}
+            if purpose is not None:
+                meta['purpose'] = purpose
             if agent is not None:
                 meta['agent'] = dict(agent)
             atomic_json(path / 'meta.json', meta)
@@ -1225,7 +1245,10 @@ class SessionManager:
                     runtime.session.thinking_budget = thinking_budget
             meta['updated'] = now()
             atomic_json(self.path(slug) / 'meta.json', meta)
-            return self._public(meta)
+            result = self._public(meta)
+        if archived is True:
+            self.credential_prompts.cancel(slug)
+        return result
 
     def delete(self, slug):
         """Remove a session and its files for good. A session with work in flight is refused."""
@@ -1240,6 +1263,7 @@ class SessionManager:
                 raise ValueError('Session is busy; stop it before deleting')
             self._metadata.pop(slug)
             self._runtimes.pop(slug, None)
+        self.credential_prompts.cancel(slug)
         if runtime is not None:
             runtime.close()
         shutil.rmtree(path)
@@ -1394,6 +1418,7 @@ class SessionManager:
             for item in cancelled:
                 runtime._set_state(item, 'cancelled', 'Stopped by operator')
             runtime.events.append('interrupt', {'turn_id': active['id'] if active else None})
+        self.credential_prompts.cancel(slug)
         # Announce before cancellation so every client acknowledges Stop even
         # while a transport is being torn down. No queued turn replaces it.
         interrupted = runtime.session.interrupt()

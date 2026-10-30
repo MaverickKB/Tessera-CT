@@ -37,7 +37,7 @@ test('first-use testing sends a normal chat turn only on an explicit request', a
   const {calls, open} = firstChat();
   assert.equal(calls.length, 0);
   await open('chosen-model');
-  assert.deepEqual(calls[0], ['/api/sessions', 'POST', {title: 'Getting started', backend: 'chosen-model'}]);
+  assert.deepEqual(calls[0], ['/api/sessions', 'POST', {title: 'Getting started', backend: 'chosen-model', purpose: 'orientation'}]);
   assert.equal(calls[1][0], '/api/sessions/getting-started-1/messages');
   assert.equal(calls[1][1], 'POST');
   assert.match(calls[1][2].text, /first Tessera connection test/);
