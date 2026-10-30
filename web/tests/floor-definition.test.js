@@ -185,3 +185,62 @@ test("every rule field is editable and saved", async () => {
   assert.equal(rule.enabled, true);
   assert.equal(rule.wake, true);
 });
+
+for (const removedIndex of [0, 1, 2]) {
+  test(`deleting rule ${removedIndex + 1} preserves unsaved edits elsewhere in the floor definition`, async () => {
+    const source = readFileSync(resolve(__dirname, "..", "floor-definition.js"), "utf8");
+    const context = {window: {}};
+    vm.runInNewContext(source, context);
+    const current = view();
+    current.definition.rules = [0, 1, 2].map(index => ({
+      id: `rule-${index}`, name: `Rule ${index}`, enabled: true, signal: "host", when: "true",
+      template: "Original template", score: 1, wake: true, pressure: true, emit: "each", sort: "input",
+      name_limit: 5, name_field: "label", owner: "", note: "", hold_seconds: null,
+      missing_priority: null, title_priority_pattern: "", guard: false, last_fired: null,
+    }));
+    const saved = [];
+    const host = new Element("div");
+    const status = new Element("p");
+    function element(tag, className, text) {
+      const node = new Element(tag);
+      if (className) node.className = className;
+      if (text != null) node.textContent = String(text);
+      return node;
+    }
+    async function api(path, method, body) {
+      if (method === "PUT") saved.push(JSON.parse(JSON.stringify(body.definition)));
+      return current;
+    }
+    function find(root, predicate) {
+      const nodes = [];
+      walk(root, node => { if (predicate(node)) nodes.push(node); });
+      return nodes;
+    }
+    const input = (root, label) => find(root, node => node.attrs["aria-label"] === label)[0];
+    const buttons = label => find(host, node => node.tag === "button" && node.textContent === label);
+    context.window.TesseraFloor.mount(host, {api, element, status});
+    await new Promise(resolve => setImmediate(resolve));
+    const survivorIndex = (removedIndex + 1) % 3;
+    const survivorId = `rule-${survivorIndex}`;
+    input(host, "World view").value = "Keep this unfinished world view.";
+    host.querySelector("#floor-source-host").checked = false;
+    const cards = find(host, node => node.tag === "fieldset");
+    input(cards[survivorIndex], "Rule name").value = "Edited surviving rule";
+    input(cards[survivorIndex], "Template").value = "Keep this unfinished template.";
+
+    await buttons("Delete")[removedIndex].fire("click");
+
+    assert.equal(saved.length, 0, "deletion stays a draft until Save");
+    assert.equal(input(host, "World view").value, "Keep this unfinished world view.");
+    assert.equal(host.querySelector("#floor-source-host").checked, false);
+    const remaining = find(host, node => node.tag === "fieldset");
+    const survivor = remaining.find(card => card.children.some(node => node.tag === "legend" && node.textContent === survivorId));
+    assert.equal(input(survivor, "Rule name").value, "Edited surviving rule");
+    assert.equal(input(survivor, "Template").value, "Keep this unfinished template.");
+    await buttons("Save floor definition")[0].fire("click");
+    assert.deepEqual(saved[0].rules.map(rule => rule.id), [0, 1, 2].filter(index => index !== removedIndex).map(index => `rule-${index}`));
+    assert.equal(saved[0].compose.world_view, "Keep this unfinished world view.");
+    assert.equal(saved[0].sources.host, false);
+    assert.equal(saved[0].rules.find(rule => rule.id === survivorId).template, "Keep this unfinished template.");
+  });
+}
