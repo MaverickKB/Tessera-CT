@@ -297,6 +297,8 @@
         down.addEventListener("click", () => move(index, 1));
         copy.addEventListener("click", () => duplicate(index));
         remove.addEventListener("click", () => {
+          // Preserve edits before removing a rule changes the control-to-rule indexes.
+          capture();
           definition.rules.splice(index, 1);
           render(view);
         });
