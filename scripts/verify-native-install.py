@@ -95,7 +95,7 @@ def stop(process, ready, port):
             process.wait(timeout=5)
 
 
-def exercise(command, home, work, browser_marker, env, port):
+def exercise(command, home, work, browser_marker, env, port, label):
     records = queue.Queue()
     output = []
     ready = {}
@@ -135,7 +135,7 @@ def exercise(command, home, work, browser_marker, env, port):
         session = request(port, '/api/sessions', {'title': 'Native install acceptance', 'backend': 'smoke'})
         assert (home / 'sessions' / session['slug']).is_dir(), 'The app used a different Tessera home'
         assert not browser_marker.exists(), 'The default command opened a browser'
-        print(json.dumps({'command': command[command.index('tessera') + 3],
+        print(json.dumps({'command': label,
                           'window_ready': True, 'core_answered': True,
                           'selected_home': True, 'browser_opened': False}), flush=True)
     finally:
@@ -176,8 +176,19 @@ def main():
             env['TESSERA_DESKTOP_CORE_PORT'] = str(port)
             if command[-1] == 'start':
                 command += ['--port', str(port)]
-            exercise(command, home, work, browser_marker, env, port)
-    print('Native package install and subsequent native start passed.', flush=True)
+            label = command[command.index('tessera') + 3]
+            exercise(command, home, work, browser_marker, env, port, label)
+        from tessera.desktop_install import find_binary
+        binary = find_binary()
+        assert binary is not None, 'The installed app is not discoverable'
+        direct_env = dict(env)
+        for key in ('TESSERA_HOME', 'TESSERA_DESKTOP_HOME', 'TESSERA_DESKTOP_PYTHON',
+                    'TESSERA_DESKTOP_CORE_ROOT'):
+            direct_env.pop(key, None)
+        port = unused_port()
+        direct_env['TESSERA_DESKTOP_CORE_PORT'] = str(port)
+        exercise([str(binary)], home, work, browser_marker, direct_env, port, 'direct-installed-app')
+    print('Native package install, public start, and direct installed app passed.', flush=True)
 
 
 if __name__ == '__main__':

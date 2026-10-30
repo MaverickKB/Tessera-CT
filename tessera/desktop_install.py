@@ -32,7 +32,7 @@ BIN_NAME = 'tessera-desktop'
 _SHA256_RE = __import__('re').compile(r'^[0-9a-fA-F]{64}$')
 
 
-class NativeShellNotFound(Exception):
+class NativeShellNotFound(RuntimeError):
     """No installed binary, and none could be obtained or launched."""
 
 
