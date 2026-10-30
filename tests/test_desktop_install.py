@@ -83,17 +83,13 @@ def test_launch_execs_binary_with_home_on_posix(monkeypatch, tmp_path):
     monkeypatch.setattr(native.sys, 'platform', 'linux')
     calls = {}
 
-    def fake_execve(path, args, env):
+    def fake_launch(path, env, timeout):
         calls['path'] = path
-        calls['args'] = args
         calls['home_env'] = env.get('TESSERA_HOME')
-        raise SystemExit(0)
 
-    monkeypatch.setattr(native.os, 'execve', fake_execve)
-    with pytest.raises(SystemExit):
-        launch(tmp_path / 'the-home')
-    assert calls['path'] == str(fake)
-    assert calls['args'] == [str(fake)]
+    monkeypatch.setattr(native, '_launch_native', fake_launch)
+    launch(tmp_path / 'the-home')
+    assert calls['path'] == fake
     assert calls['home_env'] == str(tmp_path / 'the-home')
 
 

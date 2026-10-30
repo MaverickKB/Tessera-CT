@@ -71,11 +71,11 @@ def find_binary() -> Path | None:
 
 
 def launch(home: Path, *, port: int | None = None, startup_timeout: float | None = None) -> None:
-    """Open the native window with this installation's exact home/interpreter.
+    """Open and acknowledge the actual native window on every platform.
 
-    POSIX executes the native binary directly, including the executable within
-    a macOS app bundle. This retains the selected environment and ownership.
-    Windows returns only after the shell reports its loaded native window.
+    The shell always owns its Python core. The short-lived public launcher
+    waits for the shell's ready record rather than assuming exec success means
+    a window opened. A failed launch is cleaned up before browser recovery.
     """
     binary = find_binary()
     if binary is None:
@@ -84,32 +84,25 @@ def launch(home: Path, *, port: int | None = None, startup_timeout: float | None
     home.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env['TESSERA_HOME'] = str(home)
+    env['TESSERA_DESKTOP_HOME'] = str(home)
     env.setdefault('TESSERA_DESKTOP_PYTHON', sys.executable)
     env.setdefault('TESSERA_DESKTOP_CORE_ROOT', str(home))
     if port is not None:
         env['TESSERA_DESKTOP_CORE_PORT'] = str(port)
-    if sys.platform.startswith('win'):
-        if startup_timeout is None:
-            from .config import Config
-            startup_timeout = Config().desktop_startup_timeout
-        _launch_windows(binary, env, startup_timeout)
-    else:
-        # Running Contents/MacOS/tessera-desktop directly still opens the native
-        # app window. `open` would lose this explicit home/venv handoff, and
-        # could activate an older instance instead of launching this one.
-        try:
-            os.execve(str(binary), [str(binary)], env)
-        except OSError as error:
-            raise NativeShellNotFound(f'Could not launch {binary}: {error}') from error
+    if startup_timeout is None:
+        from .config import Config
+        startup_timeout = Config().desktop_startup_timeout
+    _launch_native(binary, env, startup_timeout)
 
 
-def _launch_windows(binary, env, startup_timeout):
+def _launch_native(binary, env, startup_timeout):
     import json
     import queue
     import threading
     try:
         process = subprocess.Popen([str(binary)], env=env, close_fds=True,
-                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   start_new_session=os.name != 'nt')
     except OSError as error:
         raise NativeShellNotFound(f'Could not launch {binary}: {error}') from error
     ready = queue.Queue()
@@ -136,29 +129,37 @@ def _launch_windows(binary, env, startup_timeout):
     except queue.Empty:
         loaded = False
     if loaded and process.poll() is None:
+        loaded = {key: loaded[key] for key in ('event', 'startup_ms', 'shell_pid', 'core_pid') if key in loaded}
+        loaded['native_owner_pid'] = process.pid
         print(json.dumps(loaded), flush=True)
         return
-    # A failed detached launch must not keep a competing core alive while
-    # _start recovers to the browser. Closing the native process closes its
-    # owned core's stdin; normal native shutdown/lifetime handling remains.
-    if process.poll() is None:
-        if os.name == 'nt':
-            # Kill this failed launch's owned process tree before browser
-            # recovery; an inherited lifetime pipe can take time to unwind.
-            try:
-                subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
-                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                               stderr=subprocess.DEVNULL, timeout=startup_timeout)
-            except (OSError, subprocess.SubprocessError):
-                if process.poll() is None:
-                    process.terminate()
-        else:
-            process.terminate()
+    # Each POSIX launch has a private process group. Even if the native shell
+    # exits first, clean its owned children before a recovery core can start.
+    if os.name != 'nt':
+        import signal
         try:
-            process.wait(timeout=startup_timeout)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait()
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    elif process.poll() is None:
+        try:
+            subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=startup_timeout)
+        except (OSError, subprocess.SubprocessError):
+            if process.poll() is None:
+                process.terminate()
+    try:
+        process.wait(timeout=startup_timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+    if os.name != 'nt':
+        import signal
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     reader.join(timeout=startup_timeout)
     raise NativeShellNotFound('The native desktop window did not become ready')
 

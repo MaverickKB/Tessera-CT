@@ -293,9 +293,8 @@ def _start(config, args):
                 print(f'Installed native desktop shell to {binary}')
         if binary is not None:
             try:
-                # launch() execs and never returns on POSIX; it returns only after
-                # a detached launch on Windows. A clean return therefore always
-                # means the shell owns the core and this process must stop.
+                # Return only after the native window actually loads. The shell
+                # owns the core, so this launcher must not start a second one.
                 desktop_install.launch(home, port=getattr(args, 'port', None),
                                        startup_timeout=config.desktop_startup_timeout)
             except desktop_install.NativeShellNotFound as error:
