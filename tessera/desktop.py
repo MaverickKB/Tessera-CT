@@ -220,8 +220,18 @@ def _wait_for_stdin_eof():
 def run(config):
     _drop_leaked_stdin_writer()
     previous = signal.signal(signal.SIGTERM, _terminate)
+    restart = None
     try:
         with create_server(config) as server:
+            server.self_supervised = True
+            owner_closed = threading.Event()
+
+            def watch_owner():
+                try:
+                    _wait_for_stdin_eof()
+                finally:
+                    owner_closed.set()
+
             worker = threading.Thread(target=server.serve_forever, name='desktop-core', daemon=True)
             worker.start()
             try:
@@ -229,12 +239,19 @@ def run(config):
                           'url': server.url, 'pid': os.getpid()}
                 print(json.dumps(record), flush=True)
                 # The desktop shell owns this pipe. EOF also handles an unexpected parent exit.
-                _wait_for_stdin_eof()
+                threading.Thread(target=watch_owner, name='desktop-owner', daemon=True).start()
+                while worker.is_alive() and not owner_closed.wait(0.1):
+                    pass
+                if server._restarting and not owner_closed.is_set():
+                    restart = (server.config, server.server_address[1])
             finally:
                 # shutdown must run outside the serve_forever thread.
                 server.shutdown()
                 worker.join()
     except KeyboardInterrupt:
-        pass
+        restart = None
     finally:
         signal.signal(signal.SIGTERM, previous)
+    if restart is not None:
+        from .updates import restart_process
+        restart_process(restart[0], 'desktop', restart[1])

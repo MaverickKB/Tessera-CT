@@ -81,6 +81,14 @@ def install_report():
     return _direct_url() or _checkout_origin()
 
 
+def restart_process(config, command, port):
+    """Replace an owned core with fresh imports, retaining its home and origin."""
+    os.execv(sys.executable, [
+        sys.executable, '-m', 'tessera', '--home', str(config.home), command,
+        '--host', config.server.host, '--port', str(port),
+    ])
+
+
 def _repo_slug(url):
     """owner/name from an https github URL, or None."""
     marker = 'github.com/'
@@ -215,11 +223,11 @@ def check(timeout=10):
         return {'available': False,
                 'reason': 'This install did not come from a git URL or a checkout, so upstream cannot be compared. Reinstall with pip from the repository to enable updates.'}
     slug = _repo_slug(origin['url'])
+    if origin.get('kind') == 'checkout':
+        return _checkout_check(origin, timeout)
     if slug is None:
         return {'available': False, 'reason': f'The install origin {origin["url"]!r} is not a GitHub repository.'}
     branch = origin.get('branch') or 'main'
-    if origin.get('kind') == 'checkout':
-        return _checkout_check(origin, timeout)
     api = f'https://api.github.com/repos/{slug}/compare/{origin["commit"]}...{branch}'
     headers = {'Accept': 'application/vnd.github+json', 'User-Agent': 'tessera-update-check'}
     token = _token()

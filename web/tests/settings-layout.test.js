@@ -48,6 +48,7 @@ class El {
     node.parent = this;
   }
   replaceChildren(...nodes) {
+    for (const child of this.children) child.parent = null;
     this.children = [];
     this._text = "";
     this.append(...nodes);
@@ -197,7 +198,8 @@ const settingsData = {
   ],
 };
 
-function mount(api) {
+function mount(overrides = {}) {
+  if (typeof overrides === "function") overrides = {api: overrides};
   const source = fs.readFileSync(path.join(__dirname, "..", "settings.js"), "utf8");
   const root = new El("div");
   const document = {
@@ -215,14 +217,15 @@ function mount(api) {
     document,
     navigator: {},
     console,
-    setTimeout: () => 0,
+    setTimeout: overrides.setTimeout || (() => 0),
     clearTimeout: () => {},
     getComputedStyle: () => ({color: "rgb(0,0,0)"}),
     window: {},
   });
   vm.runInContext(source, context);
+  const status = new El("p");
   const view = context.window.TesseraSettings.mount({
-    api: api || (async () => settingsData),
+    api: overrides.api || (async () => settingsData),
     element: (tag, cls, text) => {
       const node = new El(tag);
       node.document = document;
@@ -231,14 +234,62 @@ function mount(api) {
       return node;
     },
     root,
-    status: new El("p"),
+    status,
     restartButton: new El("button"),
-    onRestarted() {},
+    onRestarted: overrides.onRestarted || (() => {}),
     onAppearance() {},
     onApproval() {},
     onChanged() {},
   });
-  return {root, view, document};
+  return {root, view, status, document};
+}
+
+for (const outcome of ["restarted", "failed", "manual", "stalled"]) {
+  test("Update verifies its restart and reports " + outcome, async () => {
+    const data = JSON.parse(JSON.stringify(settingsData));
+    data.sections.push({id: "update", label: "Update", fields: []});
+    let polls = 0;
+    let restarted = 0;
+    const api = async (route) => {
+      if (route === "/api/settings") return data;
+      if (route === "/api/update/check") return {available: true, behind: 1, origin: {url: "upstream"}};
+      if (route === "/api/update/apply") return {
+        updated: outcome !== "failed", restarting: outcome !== "manual", reason: "install refused",
+      };
+      if (route === "/api/status?shape=connection") {
+        polls += 1;
+        // Before applying, the old core answers. It also answers while
+        // draining, followed by a brief outage before the fresh core starts.
+        if (polls === 3 && outcome === "restarted") throw new Error("restarting");
+        return {generation: outcome === "restarted" && polls >= 4 ? "new-core" : "old-core"};
+      }
+      throw new Error("unexpected route " + route);
+    };
+    const {root, view, status} = mount({api,
+      setTimeout: (fn) => { setImmediate(fn); return 0; },
+      onRestarted: () => { restarted += 1; },
+    });
+    await view.load();
+    clickText(root, "Update");
+    clickText(root, "Check upstream");
+    await new Promise(setImmediate);
+    const apply = all(root).find((node) => node.tag === "button" && node.textContent === "Update now");
+    assert.equal(apply.disabled, false);
+    apply.click();
+    for (let attempt = 0; attempt < 70; attempt += 1) await new Promise(setImmediate);
+
+    if (outcome === "restarted") {
+      assert.equal(restarted, 1);
+      assert.equal(polls, 4);
+      assert.equal(status.textContent, "Core updated and restarted");
+    } else {
+      assert.equal(restarted, 0);
+      assert.match(root.textContent, outcome === "failed" ? /install refused/
+        : outcome === "manual" ? /Restart the core where it was launched/ : /restart could not be verified/);
+      const check = all(root).find((node) => node.tag === "button" && node.textContent === "Check upstream");
+      assert.equal(check.disabled, false);
+    }
+  });
 }
 
 test("model fields put the tier and disclosure on the label line", async () => {
