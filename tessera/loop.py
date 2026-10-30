@@ -1004,6 +1004,7 @@ class Session:
             success = False
             route = {}
             tool_records = []
+            tools_failed = False
             progress_steps = []
             failure = None
             judge_score = None
@@ -1121,6 +1122,7 @@ class Session:
                     if response.get('reasoning'):
                         metadata['thought'] = response['reasoning']
                     if not calls:
+                        tools_failed = self.router._tools_failed(tool_records)
                         # Turn scoring and the output gate are separate, opt-in judge
                         # features. With jev.enabled off there is no judge and no turn
                         # scoring; with session_gates_enabled off the approval policy
@@ -1130,7 +1132,7 @@ class Session:
                         judge_on = self.config.jev.enabled
                         gates_on = self.config.jev.session_gates_enabled
                         if judge_on or gates_on:
-                            if self.router._tools_failed(tool_records):
+                            if tools_failed:
                                 verification = self.router.verify_outputs([{'request': message, 'reply': content,
                                                                             'tool_outputs': tool_records}])[0]
                             else:
@@ -1221,7 +1223,8 @@ class Session:
                 flagged = not success
                 self._emit('turn_end', {'message': message, 'user': message, 'reply': reply,
                                        'response': reply, 'success': success, 'failed': flagged, 'judge_score': judge_score, 'error': failure,
-                                       'tools': tool_records, 'pinned_skills': list(self._pinned_skills),
+                                       'tools': tool_records, 'tools_failed': tools_failed,
+                                       'pinned_skills': list(self._pinned_skills),
                                        'route': route, 'verification': verification})
                 self._emit('compaction', {'phase': 'scheduled', 'upto_i': self.log.count() - 1, 'view_bytes': len(self.view.render().encode('utf-8'))})
 

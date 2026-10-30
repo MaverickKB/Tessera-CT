@@ -557,7 +557,8 @@ class _Runtime:
         self.manager.autonomy.learning.observe_turn(
             self.slug, message, payload.get('tools') or [], payload.get('judge_score'),
             bool(payload.get('success')), is_wake,
-            pinned=payload.get('pinned_skills') or [])
+            pinned=payload.get('pinned_skills') or [],
+            tools_failed=payload.get('tools_failed', False))
         # A trial measures turns, so a turn ending is the moment to move it.
         # Throttled inside; a failure here must not fail the turn.
         try:
