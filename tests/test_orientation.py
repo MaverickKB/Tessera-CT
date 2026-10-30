@@ -214,3 +214,27 @@ def test_archive_cancels_private_entry_even_after_restore(tmp_path):
         with pytest.raises(ValueError):
             manager.credential_prompts.resolve(slug, request['id'], 'synthetic-key')
         assert manager.settings.keychain.items == {}
+
+
+@pytest.mark.parametrize('resume', [False, True])
+def test_stop_invalidates_request_before_prompt_cancellation(tmp_path, monkeypatch, resume):
+    with core(tmp_path) as (server, backend):
+        manager = server.manager
+        slug = orientation(server)
+        runtime = manager.runtime(slug)
+        request = manager.credential_prompts.request(slug, 'key', 'Connect provider')
+        # Reproduce the window after Stop changes its generation but before
+        # cancellation can acquire the protected-prompt lock.
+        monkeypatch.setattr(manager.credential_prompts, 'cancel', lambda _: None)
+        manager.interrupt(slug)
+        if resume:
+            manager.submit(slug, 'Continue our conversation')
+            assert manager.wait(slug, 5)
+        turns = len(backend.calls)
+        with pytest.raises(ValueError, match='predates operator Stop'):
+            manager.credential_prompts.resolve(slug, request['id'], 'synthetic-private-value')
+        assert runtime.operator_stopped is (not resume)
+        assert manager.settings.keychain.items == {}
+        assert 'key' not in manager.config.credentials
+        assert len(backend.calls) == turns
+        assert not runtime.pending

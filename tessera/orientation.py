@@ -70,9 +70,10 @@ class CredentialPrompts:
         existing = self.manager.config.credentials.get(name)
         if existing and existing.oauth:
             raise ValueError('Use browser sign-in for an OAuth connection')
-        with self.lock:
+        runtime = self.manager.runtime(slug)
+        with self.lock, runtime.intake_lock, runtime.condition:
             self._prune()
-            if self.manager.runtime(slug).operator_stopped:
+            if runtime.operator_stopped:
                 raise ValueError('Session was stopped; continue the conversation before requesting a credential')
             pending = next((item for item in self.requests.values()
                             if item['slug'] == slug and item['state'] == 'pending'), None)
@@ -84,7 +85,8 @@ class CredentialPrompts:
                 raise ValueError('Too many protected requests; finish an existing request first')
             item = {'id': uuid.uuid4().hex, 'slug': slug, 'name': name, 'purpose': purpose.strip(),
                     'state': 'pending', 'created': self.clock(), 'replacing': existing is not None,
-                    'binding': self.binding(existing)}
+                    'binding': self.binding(existing),
+                    'stop_generation': runtime.operator_stop_generation}
             self.requests[item['id']] = item
         self.manager.runtime(slug).events.append('credential_request', self.public(item))
         return {**self.public(item), 'note': 'Use the protected form, never chat. Save and continue sends a value-free continuation; end this turn while waiting.'}
@@ -115,8 +117,9 @@ class CredentialPrompts:
         if not isinstance(request_id, str) or not re.fullmatch(r'[a-f0-9]{32}', request_id):
             raise ValueError('Invalid protected request identity')
         runtime = self.manager.runtime(slug)
-        stop_generation = runtime.operator_stop_generation
-        with self.lock:
+        # Order saving and continuation against Stop, using the generation from
+        # request creation rather than accepting a newer post-Stop generation.
+        with self.lock, runtime.intake_lock, runtime.condition:
             self._prune()
             item = self.requests.get(request_id)
             if not item or item['slug'] != slug:
@@ -128,6 +131,8 @@ class CredentialPrompts:
             if cancel:
                 item['state'] = 'cancelled'
                 return self.public(item)
+            if runtime.operator_stopped or runtime.operator_stop_generation != item['stop_generation']:
+                raise ValueError('Protected request predates operator Stop; request a new form')
             if not isinstance(value, str) or not value or '\x00' in value or len(value) > 4096:
                 raise ValueError('Enter a credential value of 1-4096 characters')
             reference = self.manager.config.credentials.get(item['name'])
@@ -154,7 +159,7 @@ class CredentialPrompts:
                 self.manager.submit(slug, 'Protected credential entry completed for connection '
                                     + item['name'] + '. The value was stored securely and is not available in chat. '
                                     'Continue the setup using its reference, and verify the configuration.',
-                                    expected_stop_generation=stop_generation)
+                                    expected_stop_generation=item['stop_generation'])
             except Exception:
                 return {**self.public(item), 'note': 'Saved securely. Send a message to continue setup.'}
             return self.public(item)
