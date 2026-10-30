@@ -112,18 +112,32 @@ def _git(root, *args, timeout):
     return subprocess.run(['git', '-C', root, *args], capture_output=True, text=True, timeout=timeout)
 
 
+def _tracked_branch(root, fallback, timeout):
+    """The branch this checkout moves along: its upstream, else the remote default.
+
+    A work branch has no remote branch of its own, so its upstream is the line
+    it follows. Check and apply both resolve the branch here, or Check could
+    report commits from one branch while Update pulls another.
+    """
+    tracking = _git(root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}', timeout=timeout)
+    name = (tracking.stdout or '').strip()
+    if tracking.returncode == 0 and name.startswith('origin/'):
+        return name[len('origin/'):]
+    head = _git(root, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD', timeout=timeout)
+    default = (head.stdout or '').strip()
+    if default.startswith('origin/'):
+        return default[len('origin/'):]
+    return fallback
+
+
 def _checkout_check(origin, timeout):
     """Ask the checkout's own git, which already holds the credentials."""
     root = origin.get('root') or ''
     branch = origin.get('branch') or 'main'
     if not root:
         return None
-    # A work branch has no remote branch of its own; it tracks one. Compare
-    # against the tracked branch, which is the line this checkout moves along.
-    tracking = _git(root, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}', timeout=timeout)
-    name = (tracking.stdout or '').strip()
-    if tracking.returncode == 0 and name.startswith('origin/'):
-        branch = name[len('origin/'):]
+    # Compare against the branch this checkout actually follows.
+    branch = _tracked_branch(root, branch, timeout)
     try:
         fetch = _git(root, 'fetch', '--quiet', 'origin', branch, timeout=timeout)
     except (OSError, subprocess.SubprocessError):
@@ -231,6 +245,8 @@ def apply(timeout=600):
     if origin.get('kind') == 'checkout':
         root = origin.get('root') or ''
         branch = origin.get('branch') or 'main'
+        if root:
+            branch = _tracked_branch(root, branch, timeout)
         if root:
             try:
                 result = _git(root, 'pull', '--ff-only', 'origin', branch, timeout=timeout)

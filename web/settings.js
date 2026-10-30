@@ -69,6 +69,9 @@
     }
 
     function applyResult(result) {
+      // Any settings change can change an account's grant or a model's state,
+      // so the roster is re-read rather than kept for the life of the page.
+      view.accounts = null;
       if (result?.settings) {
         if (result.settings.provider_pages) view.data = result.settings;
         else view.data = Object.assign({}, view.data, result.settings);
@@ -1452,7 +1455,6 @@
       status.textContent = "Saving " + model.id + "…";
       try {
         const result = await api("/api/models/state", "POST", body);
-        view.accounts = null;
         applyResult(result);
         status.textContent = model.id + " saved.";
       } catch (error) {
@@ -1969,6 +1971,8 @@
     async function load() {
       const data = await api("/api/settings");
       view.data = data;
+      // A sign-in or a refresh can change what an account serves.
+      view.accounts = null;
       view.form = null;
       view.confirm = "";
       if (!sectionChosen) {

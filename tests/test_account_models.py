@@ -213,3 +213,20 @@ def test_responses_assemble_refuses_a_stream_without_a_response():
         assert 'without a response' in str(error)
     else:
         raise AssertionError('a stream with no completed event must be refused')
+
+
+def test_choosing_default_restores_chat_eligibility(tmp_path):
+    """A default the picker does not offer is a state nobody can use."""
+    (tmp_path / 'config.toml').write_text(AUTO_HOME)
+    manager = SessionManager(load_config(tmp_path))
+    try:
+        manager.settings.set_model_state('openai-codex', 'gpt-6.1-sol', chat=True)
+        manager.settings.set_model_state('openai-codex', 'gpt-6.1-sol', chat=False)
+        assert manager.config.backends['codex-gpt-6-1-sol'].chat is False
+        manager.settings.set_model_state('openai-codex', 'gpt-6.1-sol', make_default=True)
+        backend = manager.config.backends['codex-gpt-6-1-sol']
+        assert manager.config.roles['main'] == 'codex-gpt-6-1-sol'
+        assert backend.chat is True, 'the default is in the picker'
+        assert backend.enabled is True
+    finally:
+        manager.close()

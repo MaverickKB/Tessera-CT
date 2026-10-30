@@ -48,8 +48,14 @@ def test_file_only_behavior_values_are_live_and_leave_out_a_retired_key():
     config.agents.token_budget = 12
     report = file_only(config, APPROVAL)
     tables = {row['name']: row for row in report['rows']}
-    for name in ('agents', 'prompt', 'compactor', 'tools', 'board', 'server'):
+    for name in ('agents', 'prompt', 'compactor', 'board', 'server'):
         assert tables[name]['values'], name
+    # `tools` is reached in part now: the Safe policy is the approval control, and
+    # the rest of the table is listed under uncovered rather than as a dead table.
+    tools = {item['key']: item for item in next(row['values'] for row in report['uncovered']
+                                                if row['name'] == 'tools')}
+    assert tools, 'the tool limits are still shown'
+    assert 'approval' not in tools, 'the approval key has its own control'
     swarm = {item['key']: item for item in next(row['values'] for row in report['uncovered'] if row['name'] == 'swarm')}
     assert swarm['max_attempts'] == {'key': 'max_attempts', 'secret': False, 'value': 3}
     for owned in ('pressure_hold_enabled', 'pressure_soft_threshold', 'max_job_tasks', 'distinct_workers'):

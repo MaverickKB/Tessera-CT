@@ -3386,7 +3386,8 @@ class SettingsService:
             return text
         parsed = urlsplit(text)
         if parsed.scheme not in ('http', 'https') or not parsed.netloc or parsed.username is not None:
-            raise ValueError('An endpoint is an http(s) address or mcp:<plugin name>')
+            raise ValueError('An endpoint must be an http(s) address without credentials, '
+                             'or mcp:<plugin name>')
         return text
 
     def _endpoint_list(self):
@@ -3845,13 +3846,24 @@ class SettingsService:
                 return commit(self.manager, [], False)
             record = {'name': backend_name, 'account': account, 'model': chosen, 'chat': True}
             edits.extend(self._provider_add(record))
+            current_chat = True
+            current_enabled = True
+        else:
+            current_chat = bool(existing.chat)
+            current_enabled = bool(existing.enabled)
         is_default = (config.roles.get('main') or '') == backend_name
-        if chat is not None:
-            if chat is False and is_default:
+        # A default that is not in the picker is a state nobody can use, so
+        # choosing Default also restores chat eligibility and the switch.
+        wanted_chat = chat
+        if make_default is True:
+            wanted_chat = True
+        if wanted_chat is not None:
+            if wanted_chat is False and is_default:
                 raise ValueError('Choose another default model before removing this one from the chat list')
-            if existing is not None and chat is True and not existing.enabled:
+            if wanted_chat is True and not current_enabled:
                 edits.append({'path': ['backends', backend_name, 'enabled'], 'value': True})
-            edits.append({'path': ['backends', backend_name, 'chat'], 'value': bool(chat)})
+            if bool(wanted_chat) != current_chat:
+                edits.append({'path': ['backends', backend_name, 'chat'], 'value': bool(wanted_chat)})
         if make_default is True:
             edits.append({'path': ['roles', 'main'], 'value': backend_name})
         if make_default is False and is_default:
