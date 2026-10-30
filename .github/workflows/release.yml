@@ -53,7 +53,13 @@ jobs:
             native_python="$PWD/.venv/Scripts/python.exe"
           fi
           "$native_python" -m pip install -e ".[test]"
-          "$native_python" -m pip install --require-hashes -r docs/packaging/aethermind-mcp-requirements.lock
+          # Embedded AetherMind needs POSIX file locking. Native Windows keeps
+          # the documented memory refusal and runs its stdlib Python UI core;
+          # installing its unused MCP dependencies would require an unrelated
+          # OpenSSL source build on ARM64. Keep the required lock on POSIX.
+          if [[ "$RUNNER_OS" != "Windows" ]]; then
+            "$native_python" -m pip install --require-hashes -r docs/packaging/aethermind-mcp-requirements.lock
+          fi
           echo "NATIVE_PYTHON=$native_python" >> "$GITHUB_ENV"
       - name: Linux prerequisites (native architecture)
         if: matrix.platform == 'linux'
