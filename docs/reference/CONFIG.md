@@ -8,7 +8,7 @@ Do not edit by hand. Regenerate from the repository root:
 .venv/bin/python scripts/gen-config-reference.py
 ```
 
-35 top-level tables and 8 top-level scalar keys.
+35 top-level tables and 9 top-level scalar keys.
 
 Defaults below are declared defaults, before validation or runtime discovery.
 No host config, environment values, credential values or runtime paths are read.
@@ -43,6 +43,7 @@ Retired keys remain accepted for compatibility but are ignored.
 | `identity_file` | `""` | `TESSERA_IDENTITY_FILE` | file-only: no Settings row — set this in config.toml |
 | `identity_max_bytes` | `65536` | `TESSERA_IDENTITY_MAX_BYTES` | file-only: no Settings row — set this in config.toml |
 | `desktop_install_timeout` | `600.0` | `TESSERA_DESKTOP_INSTALL_TIMEOUT` | file-only: no Settings row — set this in config.toml |
+| `desktop_startup_timeout` | `60.0` | `TESSERA_DESKTOP_STARTUP_TIMEOUT` | file-only: no Settings row — set this in config.toml |
 
 ## `accounts`
 

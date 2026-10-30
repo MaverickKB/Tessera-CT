@@ -126,6 +126,7 @@ FILE_ONLY_REASONS = {
     'skills': 'The skills shelf path and its limits.',
     'identity_file': 'Paths the identity layer reads directly.',
     'identity_max_bytes': 'A cap the identity layer reads directly.',
+    'desktop_startup_timeout': 'How long to wait for the native desktop window to become ready.',
     'desktop_install_timeout': 'How long the desktop-shell download may take.',
 }
 PROVIDER_KEYS = {'name', 'kind', 'account', 'base_url', 'model', 'credential', 'chat', 'enabled', 'vendor', 'command',

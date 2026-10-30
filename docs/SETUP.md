@@ -206,8 +206,8 @@ Configure private networking on the host before connecting from the phone.
 ### What the Settings page edits, and what it does not
 
 The Settings page is catalog-driven, and the catalog does not cover the whole
-file. Of the 47 top-level configuration attributes,
-**19 are reachable from the page** and **28 are not**.
+file. Of the 48 top-level configuration attributes,
+**19 are reachable from the page** and **29 are not**.
 That split is not a bug report; it is the shape of the product today, and this
 paragraph exists so nobody has to infer it from a missing control.
 
@@ -226,7 +226,7 @@ Not reachable from the page: `home`, `cwd`, `config_missing`, `workspace`,
 `user_instructions`, `compactor`, `view`, `hooks`, `agents`, `server`,
 `daemon`, `status`, `channels`, `board`, `intake`, `remotes`,
 `infrastructure`, `grafana`, `companions`, `inspector`, `cua`, `prompt`, `skills`,
-`inspector_error`, `identity_file`, `identity_max_bytes`, `desktop_install_timeout`,
+`inspector_error`, `identity_file`, `identity_max_bytes`, `desktop_install_timeout`, `desktop_startup_timeout`,
 `retired_settings`.
 
 Editing those means editing `config.toml` and restarting the core. Five of them

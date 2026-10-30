@@ -296,7 +296,8 @@ def _start(config, args):
                 # launch() execs and never returns on POSIX; it returns only after
                 # a detached launch on Windows. A clean return therefore always
                 # means the shell owns the core and this process must stop.
-                desktop_install.launch(home)
+                desktop_install.launch(home, port=getattr(args, 'port', None),
+                                       startup_timeout=config.desktop_startup_timeout)
             except desktop_install.NativeShellNotFound as error:
                 print(f'tessera: native shell failed to launch: {error}', file=sys.stderr)
                 print('tessera: opening the web UI instead.', file=sys.stderr)
@@ -602,7 +603,7 @@ def main(argv=None):
             checksum = desktop_install._required_checksum(checksum)
             binary = desktop_install.install(url, checksum, timeout=config.desktop_install_timeout)
             print(f'Installed native desktop shell to {binary}')
-            desktop_install.launch(config.home)
+            desktop_install.launch(config.home, startup_timeout=config.desktop_startup_timeout)
             return 0
         if args.command in ('serve', 'desktop'):
             if args.host is not None:

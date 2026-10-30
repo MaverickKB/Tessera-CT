@@ -41,14 +41,18 @@ def candidates() -> list[Path]:
     found: list[Path] = []
     explicit = os.environ.get('TESSERA_DESKTOP_BIN')
     if explicit:
-        found.append(Path(explicit).expanduser())
+        selected = Path(explicit).expanduser()
+        if selected.suffix == '.app' and selected.is_dir():
+            selected = selected / 'Contents' / 'MacOS' / BIN_NAME
+        found.append(selected)
     if sys.platform == 'darwin':
         # The bundle's executable inside Tessera.app, in per-user and system
         # Applications, is the canonical macOS install location.
         for base in (Path.home() / 'Applications', Path('/Applications')):
             found.append(base / 'Tessera.app' / 'Contents' / 'MacOS' / BIN_NAME)
     elif sys.platform.startswith('win'):
-        found.append(Path.home() / 'AppData' / 'Local' / 'Programs' / 'Tessera' / (BIN_NAME + '.exe'))
+        local = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local')
+        found.append(local / 'Programs' / 'Tessera' / (BIN_NAME + '.exe'))
         found.append(Path.home() / '.local' / 'bin' / (BIN_NAME + '.exe'))
     else:
         found.append(Path.home() / '.local' / 'bin' / BIN_NAME)
@@ -66,51 +70,97 @@ def find_binary() -> Path | None:
     return None
 
 
-def launch(home: Path) -> None:
-    """Hand off to the native shell, which owns the core from here on.
+def launch(home: Path, *, port: int | None = None, startup_timeout: float | None = None) -> None:
+    """Open the native window with this installation's exact home/interpreter.
 
-    The shell reads TESSERA_HOME (or its desktop.toml) and spawns the Python
-    core itself, so this process does not serve. On POSIX and macOS this execs
-    and never returns; on Windows it detaches and returns after a clean start.
-    A missing binary or a failed start raises NativeShellNotFound.
+    POSIX executes the native binary directly, including the executable within
+    a macOS app bundle. This retains the selected environment and ownership.
+    Windows returns only after the shell reports its loaded native window.
     """
     binary = find_binary()
     if binary is None:
         raise NativeShellNotFound('Tessera desktop shell is not installed')
-    home = Path(home).expanduser()
+    home = Path(home).expanduser().resolve()
     home.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env['TESSERA_HOME'] = str(home)
-    # The installed shell must not resolve the core through its compile-time
-    # checkout path or a Finder/app-menu PATH that lacks `python3`. Name the
-    # exact interpreter and a real working directory so the spawned core runs
-    # wherever this package is installed.
     env.setdefault('TESSERA_DESKTOP_PYTHON', sys.executable)
     env.setdefault('TESSERA_DESKTOP_CORE_ROOT', str(home))
-    if sys.platform == 'darwin':
-        # Launch the .app so the window is owned by LaunchServices rather than
-        # this terminal process.
-        app = binary.parents[2]
-        try:
-            os.execvp('open', ['open', str(app)])
-        except OSError as error:
-            raise NativeShellNotFound(f'Could not launch {app}: {error}')
-    elif sys.platform.startswith('win'):
-        try:
-            subprocess.Popen([str(binary)], env=env, close_fds=True)
-        except OSError as error:
-            raise NativeShellNotFound(f'Could not launch {binary}: {error}')
+    if port is not None:
+        env['TESSERA_DESKTOP_CORE_PORT'] = str(port)
+    if sys.platform.startswith('win'):
+        if startup_timeout is None:
+            from .config import Config
+            startup_timeout = Config().desktop_startup_timeout
+        _launch_windows(binary, env, startup_timeout)
     else:
-        # Replace the current process: the shell becomes the supervisor. execve
-        # carries the inherited environment plus this process's TESSERA_HOME, so
-        # the shell reads the exact home the operator asked for.
+        # Running Contents/MacOS/tessera-desktop directly still opens the native
+        # app window. `open` would lose this explicit home/venv handoff, and
+        # could activate an older instance instead of launching this one.
         try:
             os.execve(str(binary), [str(binary)], env)
         except OSError as error:
-            raise NativeShellNotFound(f'Could not launch {binary}: {error}')
-    # Reaching here without exec'ing (Windows) is a successful detached launch.
-    if sys.platform.startswith('win'):
+            raise NativeShellNotFound(f'Could not launch {binary}: {error}') from error
+
+
+def _launch_windows(binary, env, startup_timeout):
+    import json
+    import queue
+    import threading
+    try:
+        process = subprocess.Popen([str(binary)], env=env, close_fds=True,
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
+    except OSError as error:
+        raise NativeShellNotFound(f'Could not launch {binary}: {error}') from error
+    ready = queue.Queue()
+
+    def read_events():
+        try:
+            for line in iter(process.stdout.readline, b''):
+                try:
+                    event = json.loads(line)
+                except (ValueError, UnicodeError):
+                    continue
+                if isinstance(event, dict) and event.get('event') == 'tessera-desktop.window-ready':
+                    ready.put(event)
+                    # Keep draining while this launcher is alive. The shell's
+                    # stdout is diagnostic only, never its lifetime pipe.
+            ready.put(False)
+        finally:
+            process.stdout.close()
+
+    reader = threading.Thread(target=read_events, daemon=True)
+    reader.start()
+    try:
+        loaded = ready.get(timeout=startup_timeout)
+    except queue.Empty:
+        loaded = False
+    if loaded and process.poll() is None:
+        print(json.dumps(loaded), flush=True)
         return
+    # A failed detached launch must not keep a competing core alive while
+    # _start recovers to the browser. Closing the native process closes its
+    # owned core's stdin; normal native shutdown/lifetime handling remains.
+    if process.poll() is None:
+        if os.name == 'nt':
+            # Kill this failed launch's owned process tree before browser
+            # recovery; an inherited lifetime pipe can take time to unwind.
+            try:
+                subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=startup_timeout)
+            except (OSError, subprocess.SubprocessError):
+                if process.poll() is None:
+                    process.terminate()
+        else:
+            process.terminate()
+        try:
+            process.wait(timeout=startup_timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+    reader.join(timeout=startup_timeout)
+    raise NativeShellNotFound('The native desktop window did not become ready')
 
 
 def _package_version() -> str:

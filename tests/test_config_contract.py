@@ -52,6 +52,7 @@ SCALARS = {
     "identity_file",
     "identity_max_bytes",
     "desktop_install_timeout",
+    "desktop_startup_timeout",
 }
 
 
