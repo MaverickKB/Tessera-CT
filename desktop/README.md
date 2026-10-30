@@ -146,3 +146,30 @@ then `TESSERA_DESKTOP_<KEY>` environment variables. Unknown keys are rejected.
 - Bundles still run the Python core from a checkout (`core_root`); shipping a
   frozen Python sidecar inside the bundle is a later step. Builds are unsigned unless
   `APPLE_SIGNING_IDENTITY` is set.
+
+### Menu and Finder launch selection
+
+After public `start` or `install-desktop`, the native app remembers the selected
+Tessera home, exact Python interpreter, and caller working directory in a separate
+nonsecret `desktop-bootstrap.json`. It lives in `%APPDATA%/tessera` on Windows
+and `~/.config/tessera` on Linux/macOS. A later direct app/menu launch reads that
+selection and the selected home's `desktop.toml`, so it uses the same installation
+and workspace without depending on a terminal's environment. Interpreter symlinks
+are retained so a virtual environment keeps its installed packages.
+
+This record supplies only absent/empty home, interpreter, and core-root fields.
+Explicit desktop environment overrides and existing `desktop.toml` fields retain
+precedence; installation does not rewrite the operator's desktop settings.
+Malformed records report a repair instruction: run `tessera --home <home> start`
+to write a complete record atomically. The record contains no account credentials.
+
+
+The Python `start` and `install-desktop` commands remember the selected home,
+interpreter, and working directory for subsequent native menu/Finder launches.
+This nonsecret record is stored at `~/.config/tessera/desktop-bootstrap.json`
+on Linux/macOS or `%APPDATA%\tessera\desktop-bootstrap.json` on Windows.
+The remembered home selects its own `desktop.toml`; explicit environment and
+operator desktop settings retain their existing precedence. Installation leaves
+`desktop.toml` intact. If the remembered selection is damaged or its Python
+installation moved, run `tessera --home <home> start` from the desired Python
+installation and working directory to repair it.

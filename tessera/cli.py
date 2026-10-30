@@ -210,9 +210,11 @@ def _start(config, args):
 
     init and seed are setup steps a person has to know about and run in order.
     This composes them: a missing config is created, an empty store is seeded,
-    the OS launcher is written when asked, and then the core runs with the UI
-    opened in a browser. The first turn of a fresh install happens in a window,
-    not in a terminal.
+    the OS launcher is written when asked, and then the native desktop app
+    opens (the compiled shell spawns the core and shows a real window). The web
+    UI and a headless core remain as explicit --browser / --no-browser options,
+    and a missing shell binary is downloaded and installed automatically. The
+    first turn of a fresh install happens in a native window, not a terminal.
     """
     from .bundled_engine import ensure_local_engine_bundle
     from . import seeds as seed_pack
@@ -269,6 +271,38 @@ def _start(config, args):
         from .launcher import install as install_launcher
         written = install_launcher(home)
         print(f"Launcher written: {written['entry']}")
+    # Surface choice. Native is the default: `start` hands the core to the
+    # compiled shell, which spawns `python -m tessera desktop` and opens a real
+    # window. `--browser` is the web option, `--no-browser` is headless, and both
+    # fall through to the in-process server loop below. A missing shell binary is
+    # obtained automatically when a release is named, and otherwise reported out
+    # loud before the browser fallback, never silently.
+    use_browser = bool(getattr(args, 'browser', False))
+    no_browser = bool(getattr(args, 'no_browser', False))
+    if not use_browser and not no_browser:
+        from . import desktop_install
+        binary = desktop_install.find_binary()
+        if binary is None:
+            try:
+                binary = desktop_install.ensure_installed(config)
+            except desktop_install.NativeShellNotFound as error:
+                print(f'tessera: native desktop shell not installed: {error}', file=sys.stderr)
+                print('tessera: opening the web UI instead. Run `tessera install-desktop`, '
+                      'or use --browser to stay in the browser by choice.', file=sys.stderr)
+            else:
+                print(f'Installed native desktop shell to {binary}')
+        if binary is not None:
+            try:
+                # Return only after the native window actually loads. The shell
+                # owns the core, so this launcher must not start a second one.
+                desktop_install.launch(home, port=getattr(args, 'port', None),
+                                       startup_timeout=config.desktop_startup_timeout)
+            except desktop_install.NativeShellNotFound as error:
+                print(f'tessera: native shell failed to launch: {error}', file=sys.stderr)
+                print('tessera: opening the web UI instead.', file=sys.stderr)
+            else:
+                print('Tessera desktop app launched.', flush=True)
+                return 0
     from .server import create_server
     from . import updates
     origin = updates.install_report()
@@ -393,15 +427,23 @@ def main(argv=None):
     init_parser.add_argument('--check', action='store_true',
                              help='Report whether the current config can answer, without writing or calling out')
     start_parser = commands.add_parser('start',
-                                       help='Set up what is missing, then run the desktop core and open the UI')
+                                       help='Set up what is missing, then open the native desktop app')
+    start_parser.add_argument('--browser', '--web', action='store_true', dest='browser',
+                              help='Open the web UI in a browser instead of the native desktop app')
     start_parser.add_argument('--no-browser', action='store_true',
-                              help='Start the core without opening the browser')
+                              help='Run the core with no UI at all (headless)')
     start_parser.add_argument('--port', type=int,
                               help='Serve on this port; 0 selects a free port. An update restart passes the bound port so the page reconnects to the same origin.')
     start_parser.add_argument('--install-launcher', action='store_true',
                               help='Also write the OS launcher (app menu, start menu, Applications)')
     launcher_parser = commands.add_parser('install-launcher',
-                                           help='Write the OS launcher for `tessera start` (app menu, start menu, Applications)')
+                                           help='Write the OS launcher that opens the native app')
+    desktop_install = commands.add_parser('install-desktop',
+                                          help='Download and install the native desktop shell, then open it')
+    desktop_install.add_argument('--release-url', dest='release_url', default=None,
+                                 help='Exact bundle URL for this platform; auto-derived when omitted')
+    desktop_install.add_argument('--sha256', dest='sha256', default=None,
+                                 help='Lowercase hex sha256 of the bundle; verifies the download')
     seeds = commands.add_parser('seed', help='Write the packaged seed pack into an AetherMind store')
     seeds.add_argument('--store', type=Path,
                        help='AetherMind project root to write into (default: the configured memory project)')
@@ -544,6 +586,23 @@ def main(argv=None):
             print(f"Launcher written: {written['entry']}")
             if written.get('icon'):
                 print(f"Icon: {written['icon']}")
+            return 0
+        if args.command == 'install-desktop':
+            from . import desktop_install
+            # An explicit release wins; otherwise derive it from provenance.
+            release_url = getattr(args, 'release_url', None)
+            checksum = getattr(args, 'sha256', None)
+            if release_url is None:
+                release_url = os.environ.get('TESSERA_DESKTOP_RELEASE_URL')
+            if checksum is None:
+                checksum = os.environ.get('TESSERA_DESKTOP_RELEASE_SHA256')
+            url, checksum = desktop_install._release_asset(release_url, checksum)
+            if not checksum:
+                checksum = desktop_install._fetch_checksum(url, config.desktop_install_timeout)
+            checksum = desktop_install._required_checksum(checksum)
+            binary = desktop_install.install(url, checksum, timeout=config.desktop_install_timeout)
+            print(f'Installed native desktop shell to {binary}')
+            desktop_install.launch(config.home, startup_timeout=config.desktop_startup_timeout)
             return 0
         if args.command in ('serve', 'desktop'):
             if args.host is not None:

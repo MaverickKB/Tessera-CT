@@ -171,7 +171,7 @@ class Terminal:
         return result
 
     def initialize(self):
-        result = self.call('initialize', {'clientInfo': {'name': 'tessera-terminal', 'version': '0.1.1'}})
+        result = self.call('initialize', {'clientInfo': {'name': 'tessera-terminal', 'version': '0.1.2'}})
         info = result.get('serverInfo')
         if not isinstance(info, dict) or info.get('protocolVersion') != 1:
             raise RpcError('This client requires daemon protocol version 1.')
@@ -750,7 +750,7 @@ class Terminal:
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    utility = {'init', 'seed', 'inspect', 'inspect-mcp', 'app-server', 'serve', 'desktop', 'run', 'status', 'zoom', 'swarm-create', 'swarm-run', 'swarm-show', 'start', 'install-launcher'}
+    utility = {'init', 'seed', 'inspect', 'inspect-mcp', 'app-server', 'serve', 'desktop', 'run', 'status', 'zoom', 'swarm-create', 'swarm-run', 'swarm-show', 'start', 'install-launcher', 'install-desktop'}
     position = 0
     while position < len(argv):
         if argv[position] == '--home':

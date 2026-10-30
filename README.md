@@ -20,13 +20,39 @@ python3 -m venv .venv
 .venv/bin/python -m tessera start
 ```
 
-`start` creates what is missing (config, engine bundle, seed pack), starts the
-core with AetherMind, and opens the app in a browser. A fresh landing with no
-configured chat model opens Getting started in Settings: choose sign-in, an API
-key, or an already running local model server, select a model, then explicitly
-send a test message through a normal saved chat. Example endpoints in the starter
-config do not count as configured models. Everything else is optional. `start` reruns
-cleanly; it only creates what is missing.
+`start` creates what is missing (config, engine bundle, seed pack), then opens
+the native desktop app: `start` downloads and installs the compiled shell when
+it is not there, and the shell runs the core and shows a real window. A fresh
+landing with no configured chat model opens Getting started in Settings: choose
+sign-in, an API key, or an already running local model server, select a model,
+then explicitly send a test message through a normal saved chat. Example
+endpoints in the starter config do not count as configured models. Everything
+else is optional. `start` reruns cleanly; it only creates what is missing.
+
+The native release workflow builds Linux AppImages, macOS application bundles,
+and Windows current-user installers for x86_64 and ARM64. Automatic installation
+uses the release matching the installed Python package version and requires a
+valid SHA-256 checksum before installing. Windows automatic installation uses
+the per-user NSIS package; MSI packages remain available for manual installation.
+The release checks install the actual packages and verify a loaded native window,
+the selected home, an answering core, and a subsequent native `start`.
+
+A matching published release is required for automatic download. If it is
+unavailable or installation fails, `start` reports the failure before recovering
+to the browser; this recovery does not mean the native app installed successfully.
+`install-desktop` reports a failed installation and exits without substituting a
+browser. Existing native installations continue to work without downloading.
+The public launcher remembers the selected home, exact Python interpreter, and
+working directory for later app-menu launches in a separate nonsecret bootstrap
+record. Existing desktop settings and explicit overrides retain precedence.
+
+The web UI and a headless core remain available as explicit options:
+
+```sh
+.venv/bin/python -m tessera start --browser    # web UI in a browser
+.venv/bin/python -m tessera start --no-browser # headless core
+.venv/bin/python -m tessera install-desktop    # download + install the shell, then open it
+```
 
 To put Tessera in the app menu (Linux), Applications (macOS) or the Start Menu
 (Windows), run:
@@ -35,7 +61,7 @@ To put Tessera in the app menu (Linux), Applications (macOS) or the Start Menu
 .venv/bin/python -m tessera install-launcher
 ```
 
-The launcher runs `start` with this interpreter and home; reruns update it.
+The launcher opens the native app; reruns update it.
 
 From a checkout instead of the git install:
 

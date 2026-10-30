@@ -16,11 +16,12 @@ mod menu;
 mod server;
 mod supervisor;
 
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::webview::PageLoadEvent;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 /// Tells the page which operating system this window is, and whether this
 /// process owns the core as a child or through a system service.
@@ -130,7 +131,7 @@ fn main() {
                         let mut done = reported.lock().unwrap();
                         if *done { return; }
                         *done = true;
-                        println!("{}", serde_json::json!({
+                        let _ = writeln!(std::io::stdout(), "{}", serde_json::json!({
                             "event": "tessera-desktop.window-ready",
                             "startup_ms": started.elapsed().as_millis() as u64,
                             "shell_pid": std::process::id(), "core_pid": core_pid,
@@ -191,10 +192,42 @@ fn main() {
         });
     }
 
-    app.run(move |_handle, event| {
-        if let RunEvent::Exit = event {
-            stopping.store(true, Ordering::SeqCst);
-            core.lock().unwrap().stop(&settings);
+    app.run(move |handle, event| {
+        match event {
+            RunEvent::WindowEvent {
+                label,
+                event: WindowEvent::CloseRequested { api, .. },
+                ..
+            } if label == "main" => {
+                // A native close request (including Windows WM_CLOSE) must
+                // stop the owned core before destroying the last WebView.
+                // Depending on platform event-loop behavior, waiting for Exit
+                // alone can leave that core alive after its window disappears.
+                api.prevent_close();
+                if !stopping.swap(true, Ordering::SeqCst) {
+                    let core = core.clone();
+                    let settings = settings.clone();
+                    let handle = handle.clone();
+                    // The launcher may have closed its readiness pipe already;
+                    // diagnostics must never prevent the shutdown below.
+                    let _ = writeln!(std::io::stderr(), "{}", serde_json::json!({"event": "tessera-desktop.window-closing"}));
+                    std::thread::spawn(move || {
+                        // Stop has the ownership policy: kept cores and cores
+                        // attached from another owner are left serving.
+                        core.lock().unwrap().stop(&settings);
+                        handle.exit(0);
+                    });
+                }
+            }
+            RunEvent::Exit => {
+                // Quit/menu/smoke exits still clean up if they did not originate
+                // from the main-window close handler. Never race a second stop
+                // against its existing graceful shutdown.
+                if !stopping.swap(true, Ordering::SeqCst) {
+                    core.lock().unwrap().stop(&settings);
+                }
+            }
+            _ => {}
         }
     });
 }

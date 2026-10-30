@@ -1,0 +1,145 @@
+name: native release
+
+# PRs and manual runs exercise the exact release build/assembly path but cannot
+# publish. Only a pushed version tag can reach the publishing job.
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Version tag matches installer and bundle versions
+        if: github.event_name == 'push'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/desktop_release.py --check-version "$RELEASE_TAG"
+      - id: targets
+        run: |
+          matrix=$(python scripts/desktop_release.py --matrix)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  bundle:
+    needs: matrix
+    name: native release (${{ matrix.platform }}, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.matrix.outputs.targets) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python core with the selected interpreter
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [[ -x .venv/bin/python ]]; then
+            native_python="$PWD/.venv/bin/python"
+          else
+            native_python="$PWD/.venv/Scripts/python.exe"
+          fi
+          "$native_python" -m pip install -e ".[test]"
+          # Embedded AetherMind needs POSIX file locking. Native Windows keeps
+          # the documented memory refusal and runs its stdlib Python UI core;
+          # installing its unused MCP dependencies would require an unrelated
+          # OpenSSL source build on ARM64. Keep the required lock on POSIX.
+          if [[ "$RUNNER_OS" != "Windows" ]]; then
+            "$native_python" -m pip install --require-hashes -r docs/packaging/aethermind-mcp-requirements.lock
+          fi
+          echo "NATIVE_PYTHON=$native_python" >> "$GITHUB_ENV"
+      - name: Linux prerequisites (native architecture)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libgtk-3-dev libfuse2t64 xvfb
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Build native bundles
+        working-directory: desktop
+        run: cargo tauri build --bundles ${{ matrix.bundles }} --target ${{ matrix.target }}
+      - name: Assemble canonical artifacts and required checksums
+        id: assemble
+        shell: bash
+        run: |
+          assets=$(python scripts/desktop_release.py --target ${{ matrix.target }})
+          asset=$(printf '%s\n' "$assets" | head -n1)
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+      - name: Verify actual installation and native startup (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: '1'
+        run: xvfb-run -a "$NATIVE_PYTHON" scripts/verify-native-install.py --asset "dist/${{ steps.assemble.outputs.asset }}" --sha256-file "dist/${{ steps.assemble.outputs.asset }}.sha256"
+      - name: Verify actual installation and native startup (macOS / Windows)
+        if: matrix.platform != 'linux'
+        shell: bash
+        run: '"$NATIVE_PYTHON" scripts/verify-native-install.py --asset "dist/${{ steps.assemble.outputs.asset }}" --sha256-file "dist/${{ steps.assemble.outputs.asset }}.sha256"'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-release-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: dist/*
+
+  verify:
+    name: verify complete native release
+    needs: bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-release-*
+          path: dist
+          merge-multiple: true
+      - name: Verify complete asset set and checksums
+        run: python scripts/desktop_release.py --verify
+
+  publish:
+    name: publish versioned native release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-release-*
+          path: dist
+          merge-multiple: true
+      - name: Create release if absent, then attach verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --verify-tag --title "$tag" --generate-notes
+          gh release upload "$tag" dist/* --clobber

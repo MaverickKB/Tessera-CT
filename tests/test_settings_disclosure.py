@@ -134,7 +134,7 @@ def test_the_page_states_a_reason_for_every_attribute_it_does_not_edit():
     data = project(C.Config(), {'yolo': False, 'safe_mode': 'deny_risky', 'configured': 'deny_risky'})
     report = data['file_only']
     assert report['count'] == len(report['rows'])
-    assert report['reachable'] + report['count'] == 46
+    assert report['reachable'] + report['count'] == 48
     for row in report['rows']:
         assert row['reason'].strip(), f'{row["name"]} has no stated reason'
     names = {row['name'] for row in report['rows']}

@@ -7,6 +7,8 @@ workspace = ""
 cwd = ""
 identity_file = ""
 identity_max_bytes = 65536
+desktop_install_timeout = 600.0
+desktop_startup_timeout = 60.0
 # cwd defaults to the directory where Tessera starts.
 # A turn is not stopped by an iteration count. Do not add one back.
 
