@@ -418,10 +418,13 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
             "self.generation = 'updated-' + uuid.uuid4().hex"))
         latest = commit_all(source, 'updated Python implementation')
         git(source, 'push', 'origin', 'main')
-        report = request(url, '/api/update/check')
+        # Git transactions can exceed the short status-probe deadline on
+        # Windows. Allow the real check/install to finish before asserting
+        # their results, fresh imports, and unchanged owner/origin below.
+        report = request(url, '/api/update/check', timeout=60)
         assert report['available'] and report['behind'] == 1, report
 
-        result = request(url, '/api/update/apply', {})
+        result = request(url, '/api/update/apply', {}, timeout=60)
         assert result['updated'] and result['restarting'], result
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
@@ -437,7 +440,7 @@ def test_update_installs_and_reexecutes_at_the_same_origin(tmp_path, monkeypatch
             pytest.fail('updated Python code never served at the original URL')
         assert status['generation'] != before
         assert git(clone, 'rev-parse', 'HEAD') == latest
-        assert request(url, '/api/update/check')['behind'] == 0
+        assert request(url, '/api/update/check', timeout=60)['behind'] == 0
         assert sentinel.read_text() == 'operator data'
         if mode.startswith('desktop') or mode == 'serve-owner':
             before_restart = status['generation']
