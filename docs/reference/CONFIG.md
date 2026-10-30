@@ -474,6 +474,13 @@ Default: `{}`. Entries live under `hosts.*`.
 | `jev.gated_tools` | `["shell", "write_file", "edit_file"]` | `TESSERA_JEV_GATED_TOOLS` | file-only: no Settings row — set this in config.toml |
 | `jev.action_gate_enabled` | `false` | `TESSERA_JEV_ACTION_GATE_ENABLED` | Settings row |
 | `jev.router_probes` | `{}` | `TESSERA_JEV_ROUTER_PROBES` | file-only: no Settings row — set this in config.toml |
+| `jev.completion_review_enabled` | `false` | `TESSERA_JEV_COMPLETION_REVIEW_ENABLED` | Settings row |
+| `jev.plan_review_enabled` | `false` | `TESSERA_JEV_PLAN_REVIEW_ENABLED` | Settings row |
+| `jev.handoff_review_enabled` | `false` | `TESSERA_JEV_HANDOFF_REVIEW_ENABLED` | Settings row |
+| `jev.summary_review_enabled` | `false` | `TESSERA_JEV_SUMMARY_REVIEW_ENABLED` | Settings row |
+| `jev.lesson_review_enabled` | `false` | `TESSERA_JEV_LESSON_REVIEW_ENABLED` | Settings row |
+| `jev.review_max_calls_per_turn` | `2` | `TESSERA_JEV_REVIEW_MAX_CALLS_PER_TURN` | Settings row |
+| `jev.review_max_input_chars` | `24000` | `TESSERA_JEV_REVIEW_MAX_INPUT_CHARS` | Settings row |
 
 ## `mcp_servers`
 

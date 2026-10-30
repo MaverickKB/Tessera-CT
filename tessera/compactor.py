@@ -13,7 +13,8 @@ from .tree import utf8_prefix
 
 class Compactor:
     def __init__(self, tree, view, backend, system_prompt, tools_schema, workers=4,
-                 *, retries=2, context_bytes=16000, judge=None, judge_threshold=.8):
+                 *, retries=2, context_bytes=16000, judge=None, judge_threshold=.8,
+                 advisory_review=None):
         if workers <= 0 or retries < 0 or context_bytes < 0:
             raise ValueError('Invalid compactor worker, retry or context budget')
         if judge is not None and not callable(judge):
@@ -30,6 +31,7 @@ class Compactor:
         self.retries = retries
         self.context_bytes = min(context_bytes, max(0, view.low_bytes // 2))
         self.judge = judge
+        self.advisory_review = advisory_review
         self.judge_threshold = float(judge_threshold)
         self.threads = []
         self._stop = threading.Event()
@@ -80,6 +82,14 @@ class Compactor:
             try:
                 if not self.tree.is_built(*key):
                     text, metadata = self._summarize(*key)
+                    if self.advisory_review is not None:
+                        try:
+                            review = self.advisory_review(text, self._source(*key))
+                            if review is not None:
+                                metadata['advisory_review'] = review
+                        except Exception as error:
+                            metadata['advisory_review'] = {'advisory': True, 'state': 'unavailable',
+                                                          'reason': type(error).__name__}
                     self.tree.set_node(*key, text, meta=metadata)
             except Exception as error:
                 # Storage failures stay visible and wake waiters. Backend

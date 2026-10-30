@@ -6,6 +6,7 @@ from unittest.mock import patch
 from tessera.config import Config
 from tessera.server import create_server
 from tessera.sessions import SessionManager
+from tessera.passive_status import judge_status
 from tessera.tasks import TaskStore
 from test_server import call
 
@@ -34,8 +35,10 @@ def test_task_and_judge_status_include_saved_unloaded_sessions_without_leaks(tmp
         monkeypatch.setattr('subprocess.Popen', forbidden)
         result = manager.status()
         assert result['task_status'] == {'enabled': True, 'configured': True, 'tasks': [{'status': 'queued', 'attempt': 0}]}
-        assert result['jev'] == {'enabled': False, 'configured': True, 'decision_log_present': True,
-                                 'decision_count': 1, 'last_decision_category': 'verification'}
+        assert result['jev']['enabled'] is False and result['jev']['state'] == 'off'
+        assert result['jev']['decision_log_present'] is True
+        assert result['jev']['decision_count'] == 1
+        assert result['jev']['last_decision_category'] == 'verification'
         assert manager._runtimes == {}
     encoded = json.dumps([result['task_status'], result['jev']])
     for private in ('private-', str(tmp_path)):
@@ -146,3 +149,46 @@ def test_symlinked_decision_file_is_neither_followed_nor_claimed_present(tmp_pat
         judge = manager.status()['jev']
         assert judge.get('decision_log_present') is not True
         assert 'decision_count' not in judge
+
+
+def test_judge_readiness_requires_complete_configuration_without_probing(tmp_path, monkeypatch):
+    config = Config(home=tmp_path)
+    monkeypatch.setattr('tessera.credentials.CredentialResolver.resolve', forbidden)
+    monkeypatch.setattr('urllib.request.OpenerDirector.open', forbidden)
+    monkeypatch.setattr('subprocess.Popen', forbidden)
+    assert judge_status(config, [])['state'] == 'off'
+    config.jev.enabled = True
+    config.jev.credential_ref = 'unused-private-reference'
+    assert judge_status(config, [])['state'] == 'not_configured'
+    config.jev.credential_ref = ''
+    config.jev.url = 'https://judge.example.invalid/evaluate'
+    config.jev.model = 'fixture-model'
+    config.jev.api_key_env = 'JEV_STATUS_TEST_KEY'
+    monkeypatch.delenv('JEV_STATUS_TEST_KEY', raising=False)
+    assert judge_status(config, [])['state'] == 'not_configured'
+    monkeypatch.setenv('JEV_STATUS_TEST_KEY', 'private-status-key')
+    report = judge_status(config, [])
+    assert report['state'] == 'ready' and report['configured'] is True
+    encoded = json.dumps(report)
+    for private in ('private-', 'fixture-model', 'judge.example', str(tmp_path)):
+        assert private not in encoded
+
+
+def test_judge_status_reports_observed_outage_without_replaying_private_errors(tmp_path, monkeypatch):
+    config = Config(home=tmp_path)
+    config.jev.enabled = True
+    config.jev.url = 'https://judge.example.invalid/evaluate'
+    config.jev.model = 'fixture-model'
+    config.jev.api_key_env = 'JEV_STATUS_TEST_KEY'
+    monkeypatch.setenv('JEV_STATUS_TEST_KEY', 'private-status-key')
+    observed = [{'state': 'unavailable', 'reason': 'private-provider-body'}]
+    report = judge_status(config, [], readiness=observed, include_decisions=False)
+    assert report['state'] == 'unavailable' and report['configured'] is True
+    assert 'private-' not in json.dumps(report)
+    assert 'decision_log_present' not in report
+    # Disabling or removing configuration wins over a stale runtime failure.
+    config.jev.enabled = False
+    assert judge_status(config, [], readiness=observed)['state'] == 'off'
+    config.jev.enabled = True
+    config.jev.model = ''
+    assert judge_status(config, [], readiness=observed)['state'] == 'not_configured'

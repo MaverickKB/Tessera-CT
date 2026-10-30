@@ -170,6 +170,8 @@ class Session:
             self.dependency_resolver = DependencyResolver(self.config.jev)
             self.capture.judgekit = self.router
             self.router.install(self.hooks)
+            from .jev_review import AdvisoryReviewer
+            self.advisory_reviews = AdvisoryReviewer(self.router, self.config.jev)
             self._register_memory_tools()
             # The shelf switch is the operator's. Unleashed does not attach skill tools
             # to a session that started with the shelf off.
@@ -212,7 +214,8 @@ class Session:
             self.compactor = Compactor(self.tree, self.view, compactor_backend, self.system_prompt, self.tools.schemas(),
                                        workers=settings.workers, retries=settings.retries, context_bytes=settings.context_bytes,
                                        judge_threshold=settings.judge_threshold,
-                                       judge=self.router.compaction_judge if settings.judge_enabled else None)
+                                       judge=self.router.compaction_judge if settings.judge_enabled else None,
+                                       advisory_review=self._review_summary if self.advisory_reviews.enabled('summary') else None)
             self.tree.subscribe(self._on_compaction)
             _, results = self._emit('session_start', {'session_id': self.session_id})
             self.turn = max(self.turn, self.capture.turn_number)
@@ -531,6 +534,94 @@ class Session:
     def _on_compaction(self, level, index):
         self._emit('compaction', {'phase': 'built', 'level': level, 'index': index})
 
+    def review_advisory(self, checkpoint, request, *, record_note=True, **evidence):
+        """Record optional review evidence without changing any execution verdict.
+
+        Review errors are observations, never failures of the work being reviewed.
+        Cancellation still belongs to the operator and is allowed to propagate.
+        """
+        reviewer = getattr(self, 'advisory_reviews', None)
+        if reviewer is None or not reviewer.enabled(checkpoint):
+            return None
+        effective_request = getattr(self, '_action_goal', '')
+        if effective_request and (checkpoint in ('completion', 'plan')
+                                  or (checkpoint == 'handoff' and record_note)):
+            if checkpoint == 'handoff' and request != effective_request:
+                request = effective_request + '\n\n[Worker assignment being reviewed]\n' + request
+            else:
+                request = effective_request
+        try:
+            report = self.log.redact(reviewer.review(checkpoint, self.log.redact(request),
+                                                    **self.log.redact(evidence)))
+        except Exception as error:
+            self.tools.check_cancelled()
+            report = {'checkpoint': checkpoint, 'advisory': True, 'state': 'unavailable',
+                      'reason': 'Review unavailable (' + type(error).__name__ + ')'}
+        if record_note:
+            # The existing note viewer renders text rather than arbitrary meta.
+            # Keep the actionable requirement, citations, and remedy visible there.
+            text = 'Jev advisory review\n' + json.dumps(report, ensure_ascii=False, sort_keys=True)
+            self.log.append('note', text, {'turn': self.turn, 'jev_review': report})
+        return report
+
+    def _review_summary(self, text, source):
+        # A background summary can finish during a later turn. Its report belongs
+        # to that summary node, never a note attributed to the current turn.
+        if not self.advisory_reviews.enabled('summary'):
+            return None
+        return self.log.redact(self.advisory_reviews.review(
+            'summary', 'Preserve the meaning and evidence of the supplied source.',
+            reply=self.log.redact(text), evidence=[{'id': 'summary-source', 'kind': 'source',
+                                                  'text': self.log.redact(source)}]))
+
+    def _review_diff(self):
+        """Read a bounded tracked-file patch, with no external Git helpers.
+
+        This is a current checkout snapshot, not proof of which turn authored it.
+        A dedicated reader limits memory even when the checkout has a huge diff.
+        """
+        limit = max(1, int(getattr(self.config.jev, 'review_max_input_chars', 24000)))
+        limitations = ['Current tracked-file diff against HEAD can include pre-existing changes.',
+                       'Untracked contents and changes already committed are not included.']
+        try:
+            process = subprocess.Popen(
+                ['git', '--no-pager', 'diff', '--no-ext-diff', '--no-textconv', '--no-color', 'HEAD', '--'],
+                cwd=self.workspace.path, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        except OSError:
+            return {'state': 'unavailable', 'text': '', 'limitations': limitations + ['Diff could not be read.']}
+        output = []
+        errors = []
+        def read():
+            try:
+                output.append(process.stdout.read(limit * 4 + 1))
+            except OSError:
+                errors.append(True)
+            finally:
+                process.stdout.close()
+        reader = threading.Thread(target=read, name='tessera-review-diff', daemon=True)
+        reader.start()
+        reader.join(timeout=2)
+        timed_out = reader.is_alive()
+        if timed_out or process.poll() is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        process.wait()
+        reader.join()
+        raw = output[0] if output else b''
+        if timed_out:
+            return {'state': 'unavailable', 'text': '', 'limitations': limitations + ['Diff read timed out.']}
+        if errors:
+            return {'state': 'unavailable', 'text': '', 'limitations': limitations + ['Diff output could not be read.']}
+        text = raw.decode('utf-8', errors='replace')
+        if len(text) > limit or len(raw) > limit * 4:
+            return {'state': 'partial', 'text': text[:limit],
+                    'limitations': limitations + ['Diff truncated; review cannot establish full coverage.']}
+        if process.returncode:
+            return {'state': 'unavailable', 'text': '', 'limitations': limitations + ['Not a readable checkout.']}
+        return {'state': 'available' if text else 'empty', 'text': text, 'limitations': limitations}
+
     def _drain_work(self, messages, since):
         while True:
             try:
@@ -594,6 +685,9 @@ class Session:
             if guidance['context']:
                 content += '\n\n' + self.log.redact(guidance['context'])
             messages.append({'role': 'user', 'content': content})
+            # Keep ordered operator corrections with the goal all optional
+            # checkpoints compare against. The original request remains visible.
+            self._action_goal = getattr(self, '_action_goal', '') + '\n\n' + content
             applied += 1
 
     @staticmethod
@@ -989,6 +1083,7 @@ class Session:
             message = self.log.redact(message)
             self._action_goal = message
             self.turn += 1
+            self.advisory_reviews.begin_turn()
             # Cleared here so a turn that never renders its state block cannot inherit
             # the previous turn's pin set.
             self._pinned_skills = []
@@ -1064,7 +1159,11 @@ class Session:
                 if (route.get('route') == 'delegate' and self.depth == 0
                         and self.config.agents.max_depth > 0 and not self.config.agents.backend_policy):
                     reply = self.agents.spawn(f'turn-{self.turn}', message)
-                    self.log.append('agent', reply, {'route': route, 'turn': self.turn})
+                    review = self.review_advisory('completion', self._action_goal, reply=reply,
+                                                   tool_outputs=tool_records,
+                                                   diff=self._review_diff() if self.advisory_reviews.enabled('completion') else '')
+                    self.log.append('agent', reply, {'route': route, 'turn': self.turn,
+                                                    **({'advisory_review': review} if review is not None else {})})
                     success = True
                     return reply
                 backend = self.fast_backend if route.get('route') == 'direct' else self.backend
@@ -1151,6 +1250,22 @@ class Session:
                         if wake:
                             self.last_turn_silent = self.rest_requested or not content.strip()
                             metadata['silent' if self.last_turn_silent else 'proactive'] = True
+                    # A draft already superseded by queued guidance is not a
+                    # completion checkpoint and must not consume its review budget.
+                    if not calls and not self._steers.empty():
+                        self.log.append('agent', content, metadata)
+                        stopped = self._interrupted()
+                        if stopped:
+                            reply = stopped
+                            return reply
+                        messages.append({'role': 'assistant', 'content': content})
+                        continue
+                    if not calls:
+                        review = self.review_advisory('completion', self._action_goal, reply=content,
+                                                       tool_outputs=tool_records,
+                                                       diff=self._review_diff() if self.advisory_reviews.enabled('completion') else '')
+                        if review is not None:
+                            metadata['advisory_review'] = review
                     self.log.append('agent', content, metadata)
                     stopped = self._interrupted()
                     if stopped:
@@ -1305,6 +1420,11 @@ class Session:
             output = 'Blocked: ' + reason
         else:
             try:
+                if name == 'board_set_steps':
+                    self.review_advisory('plan', self._action_goal,
+                                         reply=json.dumps(arguments.get('steps', []), ensure_ascii=False),
+                                         evidence=[{'id': 'plan-submission', 'kind': 'plan',
+                                                    'text': json.dumps(arguments, ensure_ascii=False)}])
                 if self.delta_sink is not None:
                     self.delta_sink('status', 'Running ' + name)
                 value = self.tools.execute(name, arguments)

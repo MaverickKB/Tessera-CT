@@ -1471,7 +1471,7 @@ async function settle() { for(let i=0;i<8;i++)await new Promise(resolve=>setImme
   for (const invalid of [null,[],privateDetail,{enabled:privateDetail,configured:privateDetail,decision_log_present:privateDetail}]) {
     statusBody.jev=invalid;
     await ids['settings-refresh'].fire('click');
-    assert(ids['status-list'].textContent.includes('Jev routingNot reported'));
+    assert(ids['status-list'].textContent.includes('JevNot reported'));
   }
   // Board cards consume only the passive numeric/boolean/enum projection.
   for (const invalid of [null,[],privateDetail,{enabled:'true',configured:'true',cards:[]},{enabled:true,configured:true,cards:[null]}]) {

@@ -33,7 +33,7 @@ type-checking and rendering the value do not count as reads.
 
 ## Summary at HEAD
 
-112 fields: 112 CONSUMED, 0 NO-READER, 0 UNRESOLVED.
+119 fields: 119 CONSUMED, 0 NO-READER, 0 UNRESOLVED.
 
 ## Partial findings, recorded as debt
 
@@ -115,6 +115,13 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `jev.batch_items` | CONSUMED | tessera/jev.py:89 JudgeKit.from_config |
 | `jev.human_gate` | CONSUMED | tessera/jev.py:89 JudgeKit.from_config; tessera/board_tools.py:91 ask_human_gate consults it |
 | `jev.session_gates_enabled` | CONSUMED | tessera/loop.py:928 and :1000 gate session tools on it (jev.py:91 pops it from the from_config dict, so the loop reads config directly) |
+| `jev.completion_review_enabled` | CONSUMED | tessera/jev_review.py AdvisoryReviewer.enabled and review select completion checkpoints |
+| `jev.plan_review_enabled` | CONSUMED | tessera/jev_review.py AdvisoryReviewer.enabled and review select plan checkpoints |
+| `jev.handoff_review_enabled` | CONSUMED | tessera/jev_review.py AdvisoryReviewer.enabled and review select handoff checkpoints |
+| `jev.summary_review_enabled` | CONSUMED | tessera/jev_review.py AdvisoryReviewer.enabled and review select summary checkpoints |
+| `jev.lesson_review_enabled` | CONSUMED | tessera/jev_review.py AdvisoryReviewer.enabled and review select lesson checkpoints |
+| `jev.review_max_calls_per_turn` | CONSUMED | tessera/jev_review.py AdvisoryReviewer.review stops optional review attempts at this turn budget |
+| `jev.review_max_input_chars` | CONSUMED | tessera/jev_review.py AdvisoryReviewer._packet bounds the serialized evidence and question payload |
 | `voice.enabled` | CONSUMED | tessera/voice.py:187, :244, :280 all branch on settings.enabled |
 | `voice.account` | CONSUMED | tessera/settings_model.py _voice_account writes voice.credential_ref; tessera/voice.py configured() requires it to mint |
 | `voice.model` | CONSUMED | tessera/voice.py:78 configured() |

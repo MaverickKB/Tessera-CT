@@ -14,6 +14,7 @@ import time
 import uuid
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from collections import OrderedDict
 from dataclasses import asdict
 
@@ -32,12 +33,73 @@ from pathlib import Path
 TRANSPORT_FAILURES = (TimeoutError, ConnectionError, http.client.HTTPException, urllib.error.URLError)
 
 
+def credential_available(resolver, reference='', env=''):
+    """Check local credential configuration without invoking helpers or refreshing OAuth.
+
+    Saved-keychain selectors cannot be verified passively. Their configured presence
+    permits a real request to resolve them; any failure is then observed, not guessed.
+    """
+    if env and resolver.environ.get(env, '').strip():
+        return True
+    seen = set()
+    while reference and reference not in seen:
+        seen.add(reference)
+        settings = resolver.references.get(reference)
+        if settings is None:
+            return False
+        if settings.env and resolver.environ.get(settings.env, '').strip():
+            return True
+        if settings.oauth:
+            from .account_oauth import grant_report
+            report = grant_report(resolver.oauth_home, settings.oauth)
+            if report['state'] == 'current' or report['has_refresh']:
+                return True
+        if settings.keychain_service and settings.keychain_account:
+            return True
+        reference = settings.config_ref
+    return False
+
+
+def connection_endpoint(value):
+    try:
+        url = urlsplit(value)
+        # Reading port also validates malformed/non-numeric port declarations.
+        port = url.port
+        return (url.scheme in ('http', 'https') and bool(url.hostname)
+                and port != 0 and url.username is None and url.password is None)
+    except (ValueError, TypeError):
+        return False
+
+
+def config_readiness(config):
+    """Project configuration into a safe status without constructing or probing a judge."""
+    if not config.jev.enabled:
+        return {'state': 'off', 'reason': 'Jev is switched off'}
+    if 'jev' in config.roles:
+        from .judge_backend import backend_configured
+        try:
+            configured = backend_configured(config.backend_for('jev'))
+        except (ValueError, KeyError):
+            configured = False
+    else:
+        settings = config.jev
+        resolver = CredentialResolver(config.credentials, oauth_home=str(config.home))
+        configured = bool(connection_endpoint(settings.url) and settings.model and
+                          credential_available(resolver, settings.credential_ref, settings.api_key_env))
+    if not configured:
+        return {'state': 'not_configured', 'reason': 'Complete the judge connection and credential settings'}
+    return {'state': 'ready', 'reason': 'Configured locally; remote availability is checked only on use'}
+
+
 class JudgeKit:
     def __init__(self, api_key_env=None, model=None, enabled=None,
                  timeout=8, risk_threshold=.7, approval="ask", approve=None, cache_size=256,
                  decision_log=None, url=None, gated_tools=None, credential_ref=None, credential_sources=None,
                  gate_threshold=.7, goal_threshold=.8, loop_window=4, batch_items=64, human_gate=False,
-                 evaluator=None, action_gate_enabled=False, router_probes=None, batch_deadline=None):
+                 evaluator=None, action_gate_enabled=False, router_probes=None, batch_deadline=None,
+                 completion_review_enabled=False, plan_review_enabled=False, handoff_review_enabled=False,
+                 summary_review_enabled=False, lesson_review_enabled=False,
+                 review_max_calls_per_turn=None, review_max_input_chars=None):
         if timeout <= 0 or not 0 <= risk_threshold <= 1 or cache_size <= 0:
             raise ValueError("Invalid Jev timeout, threshold or cache size")
         if approval not in ("ask", "never", "deny_risky", "yolo"):
@@ -84,6 +146,24 @@ class JudgeKit:
         if evaluator is not None and not callable(evaluator):
             raise ValueError('Jev evaluator must be callable')
         self.evaluator = evaluator
+        self._last_judge_unavailable = False
+        from .config import JevConfig
+        review_defaults = JevConfig()
+        if review_max_calls_per_turn is None:
+            review_max_calls_per_turn = review_defaults.review_max_calls_per_turn
+        if review_max_input_chars is None:
+            review_max_input_chars = review_defaults.review_max_input_chars
+        for checkpoint, value in (('completion', completion_review_enabled), ('plan', plan_review_enabled),
+                                  ('handoff', handoff_review_enabled), ('summary', summary_review_enabled),
+                                  ('lesson', lesson_review_enabled)):
+            if type(value) is not bool:
+                raise ValueError('Jev advisory review switches must be true or false')
+            setattr(self, checkpoint + '_review_enabled', value)
+        if (type(review_max_calls_per_turn) is not int or not 1 <= review_max_calls_per_turn <= 64
+                or type(review_max_input_chars) is not int or not 1 <= review_max_input_chars <= 1048576):
+            raise ValueError('Jev advisory review bound is outside its supported range')
+        self.review_max_calls_per_turn = review_max_calls_per_turn
+        self.review_max_input_chars = review_max_input_chars
 
     @classmethod
     def from_config(cls, config, **options):
@@ -93,7 +173,9 @@ class JudgeKit:
             from .judge_backend import BackendJudge
             settings['evaluator'] = BackendJudge(config.backend_for('jev'))
         settings.update(options)
-        return cls(credential_sources=config.credentials, **settings)
+        kit = cls(credential_sources=config.credentials, **settings)
+        kit._credentials.oauth_home = str(config.home)
+        return kit
 
     def bind_session(self, root, session_id=None, floor_slug=''):
         self.decision_log = Path(root) / "decisions.jsonl"
@@ -113,13 +195,21 @@ class JudgeKit:
         if not self.enabled:
             return False
         if self.evaluator is not None:
-            return True
-        if not (self.url and self.model and (self.api_key_env or self.credential_ref)):
+            check = getattr(self.evaluator, 'configured', None)
+            return bool(check()) if check is not None else True
+        if not (connection_endpoint(self.url) and self.model and (self.api_key_env or self.credential_ref)):
             return False
-        try:
-            return bool(self._credentials.resolve(self.credential_ref, env=self.api_key_env).value)
-        except CredentialError:
-            return False
+        return credential_available(self._credentials, self.credential_ref, self.api_key_env)
+
+    def readiness(self):
+        """A passive, secret-free local readiness snapshot; never a health probe."""
+        if not self.enabled:
+            return {'state': 'off', 'reason': 'Jev is switched off'}
+        if not self.configured():
+            return {'state': 'not_configured', 'reason': 'Complete the judge connection and credential settings'}
+        if self._last_judge_unavailable:
+            return {'state': 'unavailable', 'reason': 'The last judge request did not return valid judgments'}
+        return {'state': 'ready', 'reason': 'Configured locally; remote availability is checked only on use'}
 
     def intake(self, message, view_tail=""):
         state = {"message": message, "view_tail": view_tail}
@@ -414,18 +504,18 @@ class JudgeKit:
     def _batch(self, point, state, questions, *, strict=False, registry=None):
         if registry is None:
             registry = getattr(self, 'cancellation_registry', None)
-        use_backend = bool(self.enabled and self.evaluator is not None)
+        use_backend = bool(self.enabled and self.evaluator is not None and self.configured())
         requested_model = '' if use_backend else self.model
         serialized = json.dumps({"point": point, "state": state, "questions": questions, "model": requested_model},
                                 ensure_ascii=False, sort_keys=True, allow_nan=False)
         text_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-        configured = self.enabled and not use_backend and self.url and self.model and (self.api_key_env or self.credential_ref)
+        configured = self.configured() and not use_backend and self.url and self.model and (self.api_key_env or self.credential_ref)
         key = ''
         if configured:
             try:
                 key = self._credentials.resolve(self.credential_ref, env=self.api_key_env).value
             except CredentialError:
-                pass
+                self._last_judge_unavailable = True
         key_hash = hashlib.sha256(key.encode()).hexdigest() if key else ''
         cache_key = (text_hash, self.url, self.api_key_env, self.credential_ref, key_hash, strict,
                      bool(self.enabled), id(self.evaluator))
@@ -473,6 +563,8 @@ class JudgeKit:
                         models[name] = model if isinstance(model, str) else requested_model
                     results[name] = answer
                 ttl = 5 if (use_backend or key) and self._sources(results) != "jev" else 300
+                if use_backend or key:
+                    self._last_judge_unavailable = self._sources(results) != 'jev'
                 self._cache[cache_key] = (time.monotonic() + ttl, copy.deepcopy((results, models)))
                 while len(self._cache) > self.cache_size:
                     self._cache.popitem(last=False)
