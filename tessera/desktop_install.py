@@ -143,7 +143,7 @@ def _platform_tag() -> str:
 def _platform_asset_suffix() -> str:
     """The published bundle suffix for this platform, for a tag release."""
     if sys.platform.startswith('win'):
-        return '.msi'      # the NSIS .exe is also published; .msi is the silent path
+        return '.exe'      # per-user NSIS installer; MSI is a manual machine install
     if sys.platform == 'darwin':
         return '.app.tar.gz'
     return '.AppImage'
@@ -186,7 +186,7 @@ def _required_checksum(checksum: str | None) -> str:
     ``_SHA256_RE`` requires exactly 64 hex characters; empty, short, or
     non-hex input is malformed and raises, never downgraded to "no checksum".
     """
-    if checksum and _SHA256_RE.fullmatch(checksum.strip()):
+    if isinstance(checksum, str) and _SHA256_RE.fullmatch(checksum.strip()):
         return checksum.strip()
     raise NativeShellNotFound(
         'a valid 64-character lowercase or uppercase sha256 is required before '
@@ -196,8 +196,8 @@ def _required_checksum(checksum: str | None) -> str:
 
 def _fetch(url: str, timeout: float) -> bytes:
     """Download bytes, normalizing every network failure to NativeShellNotFound."""
-    request = urllib.request.Request(url, headers={'User-Agent': 'tessera-installer'})
     try:
+        request = urllib.request.Request(url, headers={'User-Agent': 'tessera-installer'})
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return response.read()
     except (urllib.error.URLError, OSError, ValueError) as error:
@@ -210,7 +210,10 @@ def _fetch_checksum(release_url: str, timeout: float) -> str:
     A missing or malformed sidecar is a failure here: verification is mandatory,
     not best-effort. The caller decides whether that failure is recoverable.
     """
-    data = _fetch(release_url + '.sha256', timeout=timeout).decode('utf-8').strip()
+    try:
+        data = _fetch(release_url + '.sha256', timeout=timeout).decode('utf-8').strip()
+    except UnicodeError as error:
+        raise NativeShellNotFound('desktop checksum sidecar is not UTF-8 text') from error
     return _required_checksum(data.split()[0] if data.split() else None)
 
 
@@ -262,56 +265,104 @@ def install(release_url: str, checksum: str | None, timeout: float) -> Path:
         raise NativeShellNotFound(
             f'download checksum mismatch for {release_url}: got {actual[:16]}, want {checksum[:16]}'
         )
-    if sys.platform == 'darwin':
-        return _install_macos_app(release_url, data)
-    if sys.platform.startswith('win'):
-        return _install_windows(release_url, data)
-    return _install_appimage(data)
+    try:
+        if sys.platform == 'darwin':
+            return _install_macos_app(release_url, data)
+        if sys.platform.startswith('win'):
+            return _install_windows(release_url, data, timeout)
+        return _install_appimage(data)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise NativeShellNotFound(f'could not install desktop bundle: {error}') from error
 
 
 def _install_appimage(data: bytes) -> Path:
+    """Replace the executable only after the complete verified file is ready."""
     target_dir = Path.home() / '.local' / 'bin'
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / BIN_NAME
-    target.write_bytes(data)
-    target.chmod(0o755)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=target_dir, prefix='.tessera-', delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(data)
+        temporary.chmod(0o755)
+        os.replace(temporary, target)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return target
 
 
 def _install_macos_app(_url: str, data: bytes) -> Path:
-    """A ``.app.tar.gz`` is extracted to per-user Applications and made executable."""
-    import tarfile
+    """Stage and validate the app layout before replacing an installed app."""
     import io
+    import tarfile
+    from pathlib import PurePosixPath
+
     apps = Path.home() / 'Applications'
     apps.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
-        members = archive.getmembers()
-        root = members[0].name.split('/')[0]
-        if not any(m.name == root + '.app' or m.name.startswith(root + '.app/') for m in members):
-            raise NativeShellNotFound('the macOS bundle did not contain a .app')
-        archive.extractall(apps, filter='data')
-    return apps / (root + '.app')
-
-
-def _install_windows(_url: str, data: bytes) -> Path:
-    """Run a downloaded ``.msi`` silently, then return the expected binary path.
-
-    The MSI installs to the per-user Program Files location the locator checks;
-    the return value is that expected path, verified by the caller on launch.
-    """
-    with tempfile.NamedTemporaryFile(suffix='.msi', delete=False) as handle:
-        handle.write(data)
-        msi = Path(handle.name)
+    target = apps / 'Tessera.app'
     try:
+        with tempfile.TemporaryDirectory(dir=apps, prefix='.tessera-install-') as directory:
+            stage = Path(directory)
+            with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
+                members = archive.getmembers()
+                if not members:
+                    raise NativeShellNotFound('the macOS bundle is empty')
+                for member in members:
+                    path = PurePosixPath(member.name)
+                    if (path.is_absolute() or '..' in path.parts or not path.parts
+                            or path.parts[0] != 'Tessera.app'):
+                        raise NativeShellNotFound('the macOS bundle must contain only Tessera.app')
+                # The data filter rejects escaping links and special files. Extract
+                # away from the existing app so an invalid archive cannot damage it.
+                archive.extractall(stage, members=members, filter='data')
+            app = stage / 'Tessera.app'
+            executable = app / 'Contents' / 'MacOS' / BIN_NAME
+            if (not executable.is_file() or not executable.resolve().is_relative_to(app.resolve())
+                    or not os.access(executable, os.X_OK)):
+                raise NativeShellNotFound('the macOS bundle lacks an executable Tessera core shell')
+            backup = stage / 'previous.app'
+            had_previous = target.exists() or target.is_symlink()
+            if had_previous:
+                os.replace(target, backup)
+            try:
+                os.replace(app, target)
+            except OSError:
+                if had_previous:
+                    os.replace(backup, target)
+                raise
+    except (tarfile.TarError, ValueError, OSError) as error:
+        raise NativeShellNotFound(f'could not install macOS app: {error}') from error
+    return target / 'Contents' / 'MacOS' / BIN_NAME
+
+
+def _install_windows(_url: str, data: bytes, timeout: float) -> Path:
+    """Run the current-user NSIS package at an explicit, verified destination.
+
+    Tauri's MSI template is per-machine. Its NSIS currentUser package instead
+    requests user privileges and accepts /D= as its final argument. Explicitly
+    selecting the directory avoids assuming the installer's default or a prior
+    registry entry, and requires no administrator handoff.
+    """
+    local = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local')
+    destination = local / 'Programs' / 'Tessera'
+    expected = destination / (BIN_NAME + '.exe')
+    with tempfile.NamedTemporaryFile(suffix='.exe', delete=False) as handle:
+        handle.write(data)
+        installer = Path(handle.name)
+    try:
+        # NSIS requires /D= last and unquoted even when the directory has
+        # spaces. shell=False keeps this a direct CreateProcess command line.
+        command = subprocess.list2cmdline([str(installer), '/S']) + ' /D=' + str(destination)
         result = subprocess.run(
-            ['msiexec', '/i', str(msi), '/qn', '/norestart'],
-            capture_output=True, text=True, timeout=300,
+            command,
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout,
         )
         if result.returncode != 0:
-            raise NativeShellNotFound(
-                f'Windows installer exited {result.returncode}: '
-                + (result.stderr or result.stdout or '').strip()[:200]
-            )
+            raise NativeShellNotFound(f'Windows desktop installer exited {result.returncode}')
+        if not expected.is_file():
+            raise NativeShellNotFound('Windows desktop installer did not create the expected executable')
     finally:
-        msi.unlink(missing_ok=True)
-    return Path.home() / 'AppData' / 'Local' / 'Programs' / 'Tessera' / (BIN_NAME + '.exe')
+        installer.unlink(missing_ok=True)
+    return expected
