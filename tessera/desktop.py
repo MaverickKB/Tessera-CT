@@ -42,19 +42,12 @@ def _run_owned(config):
     environment = dict(os.environ)
     environment[_WORKER_ENV] = '1'
     port = config.server.port
-    owner_closed = threading.Event()
     owner_stdin = sys.stdin.fileno()
-
-    def watch_owner():
-        try:
-            _wait_for_stdin_eof()
-        finally:
-            owner_closed.set()
-
-    threading.Thread(target=watch_owner, name='desktop-owner', daemon=True).start()
+    # Only the worker reads this pipe. A simultaneous owner read can hold the
+    # Windows CRT descriptor lock while Popen duplicates fd 0, deadlocking before
+    # the first worker starts. Worker EOF exits normally and is never restarted.
+    # If EOF races a restart marker, the fresh worker inherits EOF and exits too.
     while True:
-        if owner_closed.is_set():
-            return
         command = [sys.executable, '-u', '-m', 'tessera', '--home', str(config.home),
                    'desktop', '--host', config.server.host, '--port', str(port)]
         with subprocess.Popen(command, env=environment, stdin=owner_stdin,
@@ -77,8 +70,7 @@ def _run_owned(config):
                 sys.stdout.buffer.flush()
             status = worker.wait()
         if status != _RESTART_EXIT or not ready:
-            # A blocked stdin watcher must not delay process exit or contend with
-            # interpreter teardown. All owned worker resources are already reaped.
+            # All owned worker resources are reaped; preserve its actual status.
             os._exit(status)
 
 
