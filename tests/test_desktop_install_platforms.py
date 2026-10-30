@@ -132,3 +132,43 @@ def test_non_utf8_sidecar_is_recoverable(monkeypatch):
     monkeypatch.setattr(desktop, '_fetch', lambda *_args, **_kwargs: b'\xff')
     with pytest.raises(desktop.NativeShellNotFound, match='checksum sidecar'):
         desktop._fetch_checksum('https://example.test/bundle', timeout=2)
+
+
+@pytest.mark.parametrize('outcome', ['success', 'failure', 'no-binary', 'timeout', 'spawn-error'])
+def test_locked_windows_installer_cleanup_preserves_verified_result(tmp_path, monkeypatch, outcome):
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'local'))
+    expected = tmp_path / 'local/Programs/Tessera/tessera-desktop.exe'
+    installers = []
+    original_unlink = Path.unlink
+    def run(command, **kwargs):
+        installers.append(Path(command.split(' /S /D=', 1)[0].strip(chr(34))))
+        if outcome == 'spawn-error':
+            raise OSError('installer launch refused')
+        if outcome == 'timeout':
+            raise subprocess.TimeoutExpired(command, kwargs['timeout'])
+        if outcome == 'success':
+            expected.parent.mkdir(parents=True)
+            expected.write_bytes(b'installed and verified native shell')
+        return SimpleNamespace(returncode=9 if outcome == 'failure' else 0)
+    def locked(path, *args, **kwargs):
+        if path in installers:
+            raise PermissionError('temporary package held by antivirus')
+        return original_unlink(path, *args, **kwargs)
+    monkeypatch.setattr(desktop.subprocess, 'run', run)
+    monkeypatch.setattr(Path, 'unlink', locked)
+    try:
+        if outcome == 'success':
+            binary = install_fixture(monkeypatch, tmp_path, 'win32', b'verified NSIS installer')
+            assert binary == expected
+            assert binary.read_bytes() == b'installed and verified native shell'
+        else:
+            message = {'failure': 'installer exited 9', 'no-binary': 'did not create the expected executable',
+                       'timeout': 'timed out', 'spawn-error': 'installer launch refused'}[outcome]
+            with pytest.raises(desktop.NativeShellNotFound, match=message):
+                install_fixture(monkeypatch, tmp_path, 'win32', b'verified NSIS installer')
+            assert not expected.exists()
+        assert installers and installers[0].is_file(), 'the simulated lock prevented cleanup'
+    finally:
+        # The lock is synthetic; remove this test's public installer bytes.
+        for installer in installers:
+            original_unlink(installer, missing_ok=True)

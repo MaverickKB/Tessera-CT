@@ -480,5 +480,13 @@ def _install_windows(_url: str, data: bytes, timeout: float) -> Path:
         if not expected.is_file():
             raise NativeShellNotFound('Windows desktop installer did not create the expected executable')
     finally:
-        installer.unlink(missing_ok=True)
+        try:
+            installer.unlink(missing_ok=True)
+        except OSError:
+            # Windows Defender or an installer helper can briefly keep the
+            # verified public package open after its parent exits. Cleanup must
+            # not replace a successful verified install or the actual failure.
+            # The remaining file contains only a checksum-verified public
+            # installer in the user's temporary directory, never credentials.
+            pass
     return expected
