@@ -85,7 +85,7 @@ def stop(process, ready, port):
                 process.terminate()
         else:
             try:
-                os.killpg(process.pid, signal.SIGKILL)
+                os.killpg(ready.get('native_owner_pid', process.pid), signal.SIGKILL)
             except ProcessLookupError:
                 pass
         try:
