@@ -64,6 +64,15 @@ configure the private server's HTTPS Tailscale address for access away from LAN.
 The app uses the device's existing Tailscale connection. It does not create a VPN
 or change the server's route. Updated server UI assets load without an app rebuild.
 
+In Connection, enter the server address and its optional access token. **Test
+connection** checks the draft without saving it. **Save and connect** validates
+the address and stores the token securely before applying either connection
+setting. An invalid address or secure-storage failure keeps the sheet open with
+an error and preserves the previous connection. **Cancel** leaves saved settings
+unchanged. The address may include a base path, but must not contain embedded
+credentials, a query, or a fragment. `localhost` on the iPhone refers to the
+phone; it cannot reach a core running on your computer that way.
+
 Voice buttons enter the existing native CallKit coordinator. The embedded web
 view never owns the microphone. The bottom call bar shows the active call's
 session and provides mute/end independently of web navigation. Voice opens the

@@ -1329,3 +1329,21 @@ def test_a_system_can_be_edited_and_removed(tmp_path):
         assert load_config(home).systems['alpha'].watch is True
         manager.settings.apply({'id': 'systems', 'action': 'remove', 'name': 'alpha'})
         assert 'alpha' not in load_config(home).systems
+
+
+def test_setup_progress_requires_an_existing_enabled_chat_model(tmp_path):
+    from tessera.config import BackendConfig, Config
+    from tessera.settings_model import _setup_steps
+
+    config = Config(home=tmp_path, backends={}, roles={"main": "missing"})
+    assert [step["done"] for step in _setup_steps(config)] == [False, False]
+    config.backends["missing"] = BackendConfig(name="missing", enabled=False)
+    assert [step["done"] for step in _setup_steps(config)] == [False, False]
+    config.backends["missing"].enabled = True
+    config.backends["missing"].chat = False
+    assert [step["done"] for step in _setup_steps(config)] == [True, False]
+    config.backends["missing"].chat = True
+    steps = _setup_steps(config)
+    assert [step["done"] for step in steps] == [True, True]
+    assert "does not test connectivity" in steps[0]["text"]
+    assert "send a message to test" in steps[1]["text"]

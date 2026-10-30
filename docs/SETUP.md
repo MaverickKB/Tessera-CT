@@ -148,6 +148,31 @@ TOML rejects duplicate headers. Add only tables that do not already exist.
 For a basic chat, leave all optional features off. See [README](../README.md)
 for architecture and install/run commands.
 
+### First setup in Settings
+
+Start with **Accounts** to sign in, choose a local model server, or follow
+**Have an API key instead?** to Saved credentials. After saving a key, choose
+**Next: configure a model**, add the endpoint and model, and select the enabled
+chat model. The setup steps link to the relevant pages. Their checkmarks mean
+configuration is saved; they do not prove that a provider accepts the connection.
+Choose **Start chatting** and send a short message to verify the configured model.
+
+Scalar settings save when changed and show saving, saved, restart-required, or
+error feedback beside the control. Record editors use Save and Cancel. Moving
+between settings sections keeps unfinished record drafts in this page's memory;
+return to that section to finish or cancel. Reloading or closing the app does not
+persist drafts. Removing a saved credential requires an explicit confirmation.
+
+The browser and desktop shell use the same settings page. Platform-specific
+lifecycle controls are available only when their host supports them; a desktop
+bundle still needs the Python checkout described in `desktop/README.md`. Native
+Windows embedded memory is unsupported; use WSL for that runtime. The iPhone
+Connection sheet configures access to an already running core, while workspace
+Settings configures that core. A phone's localhost is the phone itself. Use a
+reachable private server address and the server's optional access token, then
+Test connection or Save and connect. Configure private networking on the host
+before attempting to connect from the phone.
+
 ### What the Settings page edits, and what it does not
 
 The Settings page is catalog-driven, and the catalog does not cover the whole

@@ -65,21 +65,24 @@ test('the browser error guard is not treated as a system service', () => {
   assert.equal(nodes['server-status'].textContent, '');
 });
 
-test('a shell without a system service says so instead of offering start and stop', async () => {
-  const nodes = {};
-  for (const id of ['server-controls', 'server-start', 'server-stop', 'server-status']) {
-    nodes[id] = {hidden: true, disabled: true, textContent: '', listeners: {}};
-  }
-  const window = {TesseraShell: {platform: 'linux', service: 'child'}};
-  const document = {getElementById(id) { return nodes[id]; }};
-  const source = fs.readFileSync(path.join(__dirname, '..', 'desktop.js'), 'utf8');
-  vm.runInNewContext(source, {window, document});
-  assert.equal(nodes['server-controls'].hidden, false);
-  assert.equal(nodes['server-start'].hidden, true);
-  assert.equal(nodes['server-stop'].hidden, true);
-  assert.match(nodes['server-status'].textContent, /not available on Linux/);
-  assert.match(nodes['server-status'].textContent, /LaunchAgent/);
-});
+for (const platform of ['linux', 'windows']) {
+  test(`an attached ${platform} shell points users to the process that owns its core`, () => {
+    const nodes = {};
+    for (const id of ['server-controls', 'server-start', 'server-stop', 'server-status']) {
+      nodes[id] = {hidden: true, disabled: true, textContent: '', listeners: {}};
+    }
+    const window = {TesseraShell: {platform, service: 'external'}};
+    const document = {getElementById(id) { return nodes[id]; }};
+    const source = fs.readFileSync(path.join(__dirname, '..', 'desktop.js'), 'utf8');
+    vm.runInNewContext(source, {window, document});
+    assert.equal(nodes['server-controls'].hidden, false);
+    assert.equal(nodes['server-start'].hidden, true);
+    assert.equal(nodes['server-stop'].hidden, true);
+    assert.match(nodes['server-status'].textContent, /another process started/);
+    assert.match(nodes['server-status'].textContent, /Start and stop it where it was launched/);
+    if (platform === 'windows') assert.match(nodes['server-status'].textContent, /does not install a Windows service/);
+  });
+}
 
 test('failed service operations stay visible and allow another attempt', async () => {
   const {nodes, service} = workspace(false);

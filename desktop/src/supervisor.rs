@@ -143,9 +143,6 @@ mod tests {
         let home = std::env::temp_dir()
             .join(format!("tessera-supervisor-{}-{keep}", std::process::id()));
         std::fs::create_dir_all(&home).unwrap();
-        for key in ["XAI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "TESSERA_SERVER_TOKEN"] {
-            std::env::remove_var(key);
-        }
         let mut settings = Settings::default();
         settings.home = home.to_str().unwrap().to_string();
         if keep {

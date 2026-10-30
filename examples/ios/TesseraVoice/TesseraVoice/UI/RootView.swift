@@ -79,17 +79,13 @@ struct RootView: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { callBar }
-            .sheet(isPresented: $showSettings, onDismiss: connect) {
+            .sheet(isPresented: $showSettings) {
                 NavigationStack {
-                    SettingsView()
-                        .navigationTitle("Connection")
-                        .toolbar {
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") {
-                                    showSettings = false
-                                }
-                            }
-                        }
+                    SettingsView(onSaved: {
+                        connect()
+                        showSettings = false
+                    })
+                    .navigationTitle("Connection")
                 }
             }
             .sheet(isPresented: $showCall) {
@@ -143,6 +139,8 @@ struct RootView: View {
             Task { await model.refresh() }
         } catch {
             connection = nil
+            workspace.error = settings.serverURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? nil : error.localizedDescription
         }
     }
 }

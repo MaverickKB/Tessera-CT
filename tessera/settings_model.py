@@ -9,7 +9,7 @@ import threading
 from urllib.parse import urlsplit
 
 from .account_oauth import grant_report
-from .config import PROVIDER_KINDS, Config, load_config
+from .config import PROVIDER_KINDS, Config, load_config, offered_for_chat
 from .credentials import CredentialResolver, KeychainStore
 from .floor_definition import FloorDefinitionError, peek_world_view, save_definition, staged_world_view
 from .systems import SYSTEM_KINDS
@@ -2100,14 +2100,16 @@ def mcp_field(config, manager=None):
 
 def _provider_connected(config):
     signed = any(grant_report(config.home, spec['oauth'])['state'] == 'current' for spec in OAUTH_MODELS.values())
-    return signed or bool(config.backends)
+    return signed or any(backend.enabled for backend in config.backends.values())
 
 
 def _setup_steps(config):
-    picked = bool((config.roles.get('main') or '').strip())
+    name = (config.roles.get('main') or '').strip()
+    backend = config.backends.get(name)
+    picked = backend is not None and offered_for_chat(name, backend)
     return [
-        {'n': 1, 'text': 'Connect a provider (required).', 'done': _provider_connected(config)},
-        {'n': 2, 'text': 'Pick a chat model (required).', 'done': picked},
+        {'n': 1, 'text': 'Save a provider connection (required; this does not test connectivity).', 'done': _provider_connected(config)},
+        {'n': 2, 'text': 'Pick an enabled chat model (required; send a message to test it).', 'done': picked},
     ]
 
 
