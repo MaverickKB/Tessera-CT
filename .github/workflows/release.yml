@@ -27,7 +27,9 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python scripts/desktop_release.py --check-version "$RELEASE_TAG"
       - id: targets
-        run: echo "matrix=$(python scripts/desktop_release.py --matrix)" >> "$GITHUB_OUTPUT"
+        run: |
+          matrix=$(python scripts/desktop_release.py --matrix)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   bundle:
     needs: matrix
@@ -74,7 +76,10 @@ jobs:
       - name: Assemble canonical artifacts and required checksums
         id: assemble
         shell: bash
-        run: echo "asset=$(python scripts/desktop_release.py --target ${{ matrix.target }} | head -n1)" >> "$GITHUB_OUTPUT"
+        run: |
+          assets=$(python scripts/desktop_release.py --target ${{ matrix.target }})
+          asset=$(printf '%s\n' "$assets" | head -n1)
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
       - name: Verify actual installation and native startup (Linux)
         if: matrix.platform == 'linux'
         shell: bash
