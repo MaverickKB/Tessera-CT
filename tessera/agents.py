@@ -1,7 +1,9 @@
 """Background sessions with explicit tool allowlists and shared limits."""
 
 from dataclasses import replace
+from collections import deque
 from pathlib import Path
+import json
 import re
 import threading
 import time
@@ -82,6 +84,11 @@ class AgentManager:
             if branch is not None:
                 branch.discard()
             raise
+        review = getattr(parent, 'review_advisory', None)
+        if callable(review):
+            review('handoff', getattr(parent, '_action_goal', task), reply=task,
+                   evidence=[{'id': 'worker-assignment', 'kind': 'handoff',
+                              'text': task}])
         model = f' on {selected}' if selected else ''
         if branch is None:
             return f'Started [{name}]{model}. Its report will be appended to this chat.'
@@ -269,6 +276,7 @@ class AgentManager:
         parent = self.session
         meta = {'agent': name, 'backend': selected, 'success': False, 'session_id': parent.session_id}
         report = None
+        review_tools = []
         try:
             roles = dict(parent.config.roles)
             if selected:
@@ -308,8 +316,19 @@ class AgentManager:
                 child._parent_cancelled = cancelled
                 with self.pool.lock:
                     self._children[name] = child
-                reply = child.run_turn(task)
-                child.agents.wait()
+                try:
+                    reply = child.run_turn(task)
+                    child.agents.wait()
+                finally:
+                    reviewer = getattr(parent, 'advisory_reviews', None)
+                    if reviewer is not None and reviewer.enabled('handoff'):
+                        # Conversational completion is distinct from successful
+                        # tools. Preserve actual failed/blocked child outputs so
+                        # a polished worker report cannot erase their evidence.
+                        review_tools, complete = self._handoff_tool_evidence(
+                            child.log, parent.config.jev.review_max_input_chars)
+                        if not complete:
+                            meta['advisory_evidence_state'] = 'unavailable'
             report = f'[{name}] {reply}'
             meta['success'] = child.last_turn_success
         except Exception as exc:
@@ -349,12 +368,65 @@ class AgentManager:
                 if branch is not None:
                     report = (report or f'[{name}] Agent ended without a report.') + self._close_branch(name, branch, meta)
                 if report is not None:
+                    review = getattr(parent, 'review_advisory', None)
+                    if callable(review):
+                        try:
+                            verdict = review('handoff', task, reply=report, record_note=False,
+                                             evidence=[{'id': 'worker-evidence-scope', 'kind': 'limitation',
+                                                        'text': 'Only the last 64 worker tool outputs are supplied; '
+                                                                'raw excerpts are bounded and failed-tool counts cover all observed outputs. '
+                                                                'This is not a complete child execution audit. '
+                                                                + ('Tool output evidence unavailable.' if meta.get('advisory_evidence_state') else '')}],
+                                             tool_outputs=[{'name': 'worker_report',
+                                                            'success': bool(meta.get('success')),
+                                                            'result': report}] + review_tools)
+                        except Exception as error:
+                            # Even a cancelled parent must retain its worker's
+                            # finished report and the original success evidence.
+                            verdict = {'checkpoint': 'handoff', 'advisory': True,
+                                       'state': 'unavailable', 'reason': type(error).__name__}
+                        if verdict is not None:
+                            meta['advisory_review'] = verdict
                     parent.log.append('work', report, meta)
             finally:
                 with self.pool.lock:
                     self._children.pop(name, None)
                     self.pool.running -= 1
                     self.pool.running_by_kind[lane] -= 1
+
+    @staticmethod
+    def _handoff_tool_evidence(log, max_chars):
+        """Bound raw context without dropping failure facts outside its tail."""
+        from .jev import JudgeKit
+        echoes = deque(maxlen=64)
+        failures = blocked = observed = 0
+        complete = True
+        try:
+            for row in log.iter():
+                if row.kind != 'echo':
+                    continue
+                observed += 1
+                try:
+                    result = json.loads(row.text)
+                except (ValueError, TypeError):
+                    result = row.text
+                output = {'name': 'worker_tool_output', 'success': row.meta.get('success'),
+                          'blocked': bool(row.meta.get('blocked')), 'result': result}
+                failures += int(JudgeKit._tools_failed([output]))
+                blocked += int(output['blocked'] or
+                               isinstance(result, dict) and bool(result.get('blocked')))
+                # Inspect full results before bounding raw excerpts. A failed
+                # result outside the retained tail must remain a fact.
+                output['result'] = row.text[:max_chars]
+                echoes.append(output)
+        except Exception:
+            complete = False
+        evidence = list(echoes)
+        if failures:
+            evidence.append({'name': 'worker_tool_failure_summary', 'success': False,
+                             'result': {'failed_tool_count': failures, 'blocked_tool_count': blocked,
+                                        'observed_tool_count': observed, 'evidence_complete': complete}})
+        return evidence, complete
 
     def _cli_options(self, options, workspace, tools, ceiling, branch):
         """CLI worker options: cwd, engine tools, and the native sandbox for this worker.

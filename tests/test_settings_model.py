@@ -280,7 +280,7 @@ def test_required_fields_come_before_optional_before_advanced(tmp_path):
     assert order.index('jev.api_key_env') > order.index('jev.credential_ref')
     # The optional URL is ranked advanced and sits below the credential.
     assert order.index('jev.url') > order.index('jev.credential_ref')
-    assert order[-1] in ('jev.loop_window', 'jev.batch_items')
+    assert order[-1] == 'jev.review_max_input_chars'
 
 
 def test_tier_ranks_are_stable_and_unranked_fields_stay_visible(tmp_path):
@@ -301,7 +301,10 @@ def test_tier_ranks_are_stable_and_unranked_fields_stay_visible(tmp_path):
     # risk bar, human gate, session gates.
     optional = [field['id'] for field in judge['fields'] if field.get('tier') == 'optional']
     assert optional == ['jev.timeout', 'jev.gate_threshold', 'jev.goal_threshold',
-                        'jev.risk_threshold', 'jev.human_gate', 'jev.session_gates_enabled']
+                        'jev.risk_threshold', 'jev.human_gate', 'jev.session_gates_enabled',
+                        'jev.completion_review_enabled', 'jev.plan_review_enabled',
+                        'jev.handoff_review_enabled', 'jev.summary_review_enabled',
+                        'jev.lesson_review_enabled']
     # Required is explicit too, so consumers do not need to infer it.
     required = [field for field in judge['fields'] if field.get('tier') == 'required']
     assert len(required) == 3
@@ -1025,7 +1028,7 @@ def test_taxonomy_preserves_empty_accounts_and_record_tiers(tmp_path):
 def test_previously_ranked_sections_keep_their_tier_counts(tmp_path):
     (tmp_path / 'config.toml').write_text(HOME)
     sections = {s['id']: s for s in project(load_config(tmp_path), {})['sections']}
-    for section, expected in [('computer', (3, 1, 4)), ('judge', (3, 6, 5))]:
+    for section, expected in [('computer', (3, 1, 4)), ('judge', (3, 11, 7))]:
         tiers = [f.get('tier', 'required') for f in sections[section]['fields']]
         assert tuple(tiers.count(tier) for tier in ('required', 'optional', 'advanced')) == expected
 

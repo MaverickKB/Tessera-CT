@@ -130,6 +130,13 @@ class JevConfig:
     gated_tools: list = field(default_factory=lambda: ['shell', 'write_file', 'edit_file'])
     action_gate_enabled: bool = False
     router_probes: dict = field(default_factory=dict)
+    completion_review_enabled: bool = False
+    plan_review_enabled: bool = False
+    handoff_review_enabled: bool = False
+    summary_review_enabled: bool = False
+    lesson_review_enabled: bool = False
+    review_max_calls_per_turn: int = 2
+    review_max_input_chars: int = 24000
 
 
 @dataclass
@@ -1338,6 +1345,12 @@ class Config:
             raise ValueError('Invalid Jev gate thresholds, loop window or batch bound')
         if not 0 <= self.jev.risk_threshold <= 1:
             raise ValueError('jev.risk_threshold must be between zero and one')
+        for checkpoint in ('completion', 'plan', 'handoff', 'summary', 'lesson'):
+            if type(getattr(self.jev, checkpoint + '_review_enabled')) is not bool:
+                raise ValueError('Jev advisory review switches must be true or false')
+        for bound, maximum in (('review_max_calls_per_turn', 64), ('review_max_input_chars', 1048576)):
+            if type(getattr(self.jev, bound)) is not int or not 1 <= getattr(self.jev, bound) <= maximum:
+                raise ValueError('Jev advisory review bound is outside its supported range')
         if (self.jev.cache_size <= 0 or not isinstance(self.jev.gated_tools, list)
                 or any(not isinstance(name, str) for name in self.jev.gated_tools)):
             raise ValueError('Invalid Jev cache or gated_tools')

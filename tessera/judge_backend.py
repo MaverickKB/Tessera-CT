@@ -5,10 +5,35 @@ import json
 from . import backend
 
 
+def backend_configured(settings):
+    """Inspect local settings only; do not construct a provider or contact it."""
+    if not getattr(settings, 'enabled', True):
+        return False
+    if settings.provider_kind == 'cli_worker':
+        # Official CLI workers own their login. It is checked when invoked.
+        return True
+    from .jev import connection_endpoint
+    if not connection_endpoint(settings.base_url) or not settings.model:
+        return False
+    if not (settings.credential_ref or settings.api_key_env):
+        if settings.account or (settings.extra or {}).get('account_settings'):
+            return False
+        # Local HTTP providers may intentionally accept unauthenticated requests.
+        return True
+    from .credentials import CredentialResolver
+    from .jev import credential_available
+    extra = settings.extra or {}
+    resolver = CredentialResolver(extra.get('credential_sources'), oauth_home=extra.get('oauth_home', ''))
+    return credential_available(resolver, settings.credential_ref, settings.api_key_env)
+
+
 class BackendJudge:
     def __init__(self, settings):
         self.settings = settings
         self.backend = None
+
+    def configured(self):
+        return backend_configured(self.settings)
 
     def __call__(self, state, questions):
         if self.backend is None:

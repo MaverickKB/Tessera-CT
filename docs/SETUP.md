@@ -1,5 +1,8 @@
 # Configure a private Tessera home
 
+For optional judge readiness and evidence-bound advisory reviews, see
+[Jev readiness and advisory evidence review](JEV.md).
+
 Tessera is a single-owner Python harness with its own loop. It does not install
 providers, remote services or a background daemon. Python 3.11+ and the standard
 library run the harness; pytest is needed only for tests. Install from the cloned

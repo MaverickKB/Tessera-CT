@@ -176,6 +176,14 @@ timeout = 8
 risk_threshold = 0.7
 cache_size = 256
 gated_tools = ["shell", "write_file", "edit_file"]
+# Independent advisory reviews. These never change approval or completion gates.
+completion_review_enabled = false
+plan_review_enabled = false
+handoff_review_enabled = false
+summary_review_enabled = false
+lesson_review_enabled = false
+review_max_calls_per_turn = 2
+review_max_input_chars = 24000
 
 [compactor]
 workers = 4

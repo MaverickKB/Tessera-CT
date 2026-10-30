@@ -2185,6 +2185,18 @@
     }
   }
 
+  function jevStatusLabel(report) {
+    const states = {off: 'Off', not_configured: 'Not configured', ready: 'Ready', unavailable: 'Unavailable'};
+    if (report && typeof report === 'object') {
+      if (Object.hasOwn(states, report.state)) return states[report.state];
+      if (report.enabled === false) return 'Off';
+      if (report.configured === false) return 'Not configured';
+      // An older server's enabled switch alone does not prove readiness.
+      return 'Not reported';
+    }
+    return report === false ? 'Off' : 'Not reported';
+  }
+
   async function refreshStatus(connectionOnly = false) {
     state.statusEpoch += 1;
     const epoch = state.statusEpoch;
@@ -2211,7 +2223,6 @@
     const reportedNames = statusBackendNames(status.backends);
     const names = reportedNames || [];
     const memory = memoryStatus(status.aethermind).connection;
-    const jev = typeof status.jev === "object" && status.jev !== null ? status.jev.enabled : status.jev;
     let totalDebt = status.debt_total;
     if (totalDebt === undefined) totalDebt = status.write_debt;
     if (!nonnegativeInteger(totalDebt)) totalDebt = "Not reported";
@@ -2220,7 +2231,7 @@
       ["Session", sessionStatus().busy ? "Working" : "Ready"],
       ["Active agents", sessionStatus().active_agents ?? "Not reported"],
       ["Queued turns", sessionStatus().queued ?? "Not reported"],
-      ["Jev routing", jev === true ? "On" : jev === false ? "Off" : "Not reported"],
+      ["Jev", jevStatusLabel(status.jev)],
       ["Reasoning effort", activeSession()?.reasoning || "low"],
       ["Thinking budget", activeSession()?.thinking_budget ? activeSession().thinking_budget.toLocaleString() + " tokens per response" : "Engine default"],
       ["AetherMind", memory.label],

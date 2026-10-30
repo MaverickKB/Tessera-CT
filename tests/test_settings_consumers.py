@@ -103,6 +103,8 @@ def enum_pair(spec):
 
 
 def variants(spec):
+    if spec.id == 'jev.review_max_input_chars':
+        return 8000, 16000
     if spec.id == 'roles.main':
         return 'alpha', 'beta'
     if spec.id == 'roles.failover':
@@ -422,6 +424,31 @@ def consume_session_gates(config):
     return config.jev.session_gates_enabled
 
 
+def review_reader(config):
+    from tessera.jev_review import AdvisoryReviewer
+    router = Mock()
+    router.configured.return_value = True
+    router._batch.return_value = {}
+    return AdvisoryReviewer(router, config.jev)
+
+
+def consume_review_flag(checkpoint):
+    return lambda config: review_reader(config).enabled(checkpoint)
+
+
+def consume_review_calls(config):
+    config.jev.completion_review_enabled = True
+    reader = review_reader(config)
+    return [reader.review('completion', 'Inspect this change', reply='A result')['reason']
+            for _ in range(3)]
+
+
+def consume_review_input(config):
+    config.jev.completion_review_enabled = True
+    report = review_reader(config).review('completion', 'Inspect this change', reply='x' * 40000)
+    return report.get('evidence')
+
+
 def consume_voice_enabled(config):
     # tessera/voice.py:256 VoiceSessions.status, served at tessera/sessions.py:1811
     host = manager_for(config)
@@ -647,6 +674,13 @@ CONSUMERS = {
     'jev.batch_items': consume_jev,
     'jev.human_gate': consume_jev,
     'jev.session_gates_enabled': consume_session_gates,
+    'jev.completion_review_enabled': consume_review_flag('completion'),
+    'jev.plan_review_enabled': consume_review_flag('plan'),
+    'jev.handoff_review_enabled': consume_review_flag('handoff'),
+    'jev.summary_review_enabled': consume_review_flag('summary'),
+    'jev.lesson_review_enabled': consume_review_flag('lesson'),
+    'jev.review_max_calls_per_turn': consume_review_calls,
+    'jev.review_max_input_chars': consume_review_input,
     'voice.enabled': consume_voice_enabled,
     'voice.account': consume_voice_configured,
     'voice.pipe': consume_voice_pipe,
@@ -832,9 +866,10 @@ def test_projection_shape_is_pinned(tmp_path):
     # ui.config_journal_entries, the two Codex catalog settings, and ui.mark
     # are scalars on that bare page.
     assert 'aethermind.enabled' not in ids
-    assert len(list(catalog(config, {}))) == 73
-    # 73 catalog fields plus the nine record rows, plus update.status.
-    assert len(ids) == 83
+    assert len(list(catalog(config, {}))) == 80
+    # 80 catalog fields include five review switches and two bounds, plus the
+    # nine record rows and update.status.
+    assert len(ids) == 90
 
 
 def test_yolo_banner_settings_save_reaches_status_and_disk(tmp_path):

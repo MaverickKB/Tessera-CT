@@ -119,12 +119,24 @@ def task_status(config):
     return result
 
 
-def judge_status(config, session_roots):
-    # A configured reference is a declaration, not a credential availability claim.
-    credential = bool(config.jev.credential_ref or os.environ.get(config.jev.api_key_env, ''))
-    backend_configured = config.roles.get('jev') in config.backends
-    result = {'enabled': config.jev.enabled, 'configured': credential or backend_configured,
+def judge_status(config, session_roots, readiness=(), *, include_decisions=True):
+    from .jev import config_readiness
+    observed = config_readiness(config)
+    # Only already-running judges supply observations. Status never creates a
+    # judge, resolves a credential, or contacts a provider to obtain one.
+    if observed['state'] == 'ready':
+        for snapshot in readiness:
+            if isinstance(snapshot, dict) and snapshot.get('state') == 'unavailable':
+                observed = {'state': 'unavailable',
+                            'reason': 'A running judge reported an unavailable response; no status probe was made.'}
+                break
+    result = {'enabled': config.jev.enabled,
+              'configured': observed['state'] in ('ready', 'unavailable'),
+              'state': observed['state'], 'reason': observed['reason'],
               'decision_log_present': False}
+    if not include_decisions:
+        result.pop('decision_log_present')
+        return result
     paths = []
     for root in session_roots:
         paths.append(Path(root) / 'decisions.jsonl')

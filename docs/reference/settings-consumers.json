@@ -2,7 +2,7 @@
   "source": "tessera/settings_model.py (catalog + record-row specs)",
   "proof": "catalog scalars are flip-tested in tests/test_settings_consumers.py; record rows are classified by named reader site",
   "counts": {
-    "CONSUMED": 112
+    "CONSUMED": 119
   },
   "fields": [
     {
@@ -439,6 +439,69 @@
       "readers": [
         {
           "site": "tessera/loop.py:928 and :1000 gate session tools on it (jev.py:91 pops it from the from_config dict, so the loop reads config directly)"
+        }
+      ]
+    },
+    {
+      "id": "jev.completion_review_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev_review.py AdvisoryReviewer.enabled and review select completion checkpoints"
+        }
+      ]
+    },
+    {
+      "id": "jev.plan_review_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev_review.py AdvisoryReviewer.enabled and review select plan checkpoints"
+        }
+      ]
+    },
+    {
+      "id": "jev.handoff_review_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev_review.py AdvisoryReviewer.enabled and review select handoff checkpoints"
+        }
+      ]
+    },
+    {
+      "id": "jev.summary_review_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev_review.py AdvisoryReviewer.enabled and review select summary checkpoints"
+        }
+      ]
+    },
+    {
+      "id": "jev.lesson_review_enabled",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev_review.py AdvisoryReviewer.enabled and review select lesson checkpoints"
+        }
+      ]
+    },
+    {
+      "id": "jev.review_max_calls_per_turn",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev_review.py AdvisoryReviewer.review stops optional review attempts at this turn budget"
+        }
+      ]
+    },
+    {
+      "id": "jev.review_max_input_chars",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/jev_review.py AdvisoryReviewer._packet bounds the serialized evidence and question payload"
         }
       ]
     },

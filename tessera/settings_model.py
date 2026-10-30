@@ -781,6 +781,21 @@ def catalog(config, approval):
               hint='Run session tools through the judge gate. Off means the approval policy alone decides.',
               tier='optional'), jev.session_gates_enabled),
     ])
+    for checkpoint, label in (('completion', 'Review completed work'), ('plan', 'Review proposed plans'),
+                              ('handoff', 'Review worker handoffs'), ('summary', 'Review memory summaries'),
+                              ('lesson', 'Review learned lessons')):
+        name = checkpoint + '_review_enabled'
+        items.append((Spec('jev.' + name, 'judge', 'bool', label, 'restart', ('jev', name),
+                           hint='Optional advisory evidence review at this checkpoint. It never changes approval or completion gates.',
+                           tier='optional'), getattr(jev, name)))
+    items.extend([
+        (Spec('jev.review_max_calls_per_turn', 'judge', 'int', 'Advisory reviews per turn', 'restart',
+              ('jev', 'review_max_calls_per_turn'), minimum=1, maximum=64, tier='advanced',
+              hint='Maximum advisory judge calls in one turn. Approval and safety gates keep their own policies.'), jev.review_max_calls_per_turn),
+        (Spec('jev.review_max_input_chars', 'judge', 'int', 'Advisory evidence limit', 'restart',
+              ('jev', 'review_max_input_chars'), minimum=1, maximum=1048576, tier='advanced',
+              hint='Maximum characters sent to one advisory review. Omitted evidence is reported as a limitation.'), jev.review_max_input_chars),
+    ])
     voice = config.voice
     voices = [item for item in voice.voices if isinstance(item, str) and item]
     current_voice = str((voice.session_options or {}).get('voice') or '')

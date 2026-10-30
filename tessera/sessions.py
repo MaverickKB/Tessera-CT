@@ -1,6 +1,7 @@
 """Persistent subjects, durable turn queues, replayable events, and session mail."""
 
 from collections import deque
+from copy import deepcopy
 from contextlib import contextmanager
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
@@ -554,11 +555,20 @@ class _Runtime:
         self.manager._save_runtime(self)
         message = payload.get('message') or payload.get('user') or ''
         is_wake = str(message).lstrip().startswith('[wake]')
+        learning = self.manager.autonomy.learning
+        review_enabled = self.session.advisory_reviews.enabled('lesson')
+        candidates = deepcopy(learning._matching(self.slug, message)) if review_enabled else []
         self.manager.autonomy.learning.observe_turn(
             self.slug, message, payload.get('tools') or [], payload.get('judge_score'),
             bool(payload.get('success')), is_wake,
             pinned=payload.get('pinned_skills') or [],
             tools_failed=payload.get('tools_failed', False))
+        if candidates:
+            self.session.review_advisory(
+                'lesson', message, reply=payload.get('reply') or '',
+                tool_outputs=payload.get('tools') or [],
+                evidence=[{'id': 'matched-lessons', 'kind': 'lesson',
+                           'text': json.dumps(candidates, ensure_ascii=False)}])
         # A trial measures turns, so a turn ending is the moment to move it.
         # Throttled inside; a failure here must not fail the turn.
         try:
@@ -1902,8 +1912,12 @@ class SessionManager:
             # lock already produced instead of re-deriving them.
             return board_status(self.config, slugs)
         observations = []
+        judge_observations = []
         seen = set()
         for runtime in runtimes.values():
+            router = getattr(runtime.session, 'router', None)
+            if router is not None and callable(getattr(router, 'readiness', None)):
+                judge_observations.append(router.readiness())
             for backend in (runtime.session.backend, runtime.session.fast_backend):
                 if not isinstance(backend, Backend) or id(backend) in seen:
                     continue
@@ -2101,7 +2115,8 @@ class SessionManager:
                 'infrastructure_status': (None if connection else self.infrastructure.status()),
                 'grafana': (None if connection else self.grafana.status()),
                 'voice': self.voice.status(),
-                'jev': ({'enabled': self.config.jev.enabled} if connection else judge_status(self.config, [self.path(slug) for slug in metadata])),
+                'jev': judge_status(self.config, [] if connection else [self.path(slug) for slug in metadata],
+                                    readiness=judge_observations, include_decisions=not connection),
                 'aethermind': memory_status,
                 # A record that cannot be rendered is not an absent session. Carry
                 # the reason here so the sidebar can say which file and which field,

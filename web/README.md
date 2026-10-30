@@ -566,11 +566,15 @@ Status epochs prevent an older response from restoring cleared information.
 The accepted local conversation tree, voice controls and other boards continue
 to use their own contracts; they do not become native-memory proof.
 
-Jev / JudgeKit uses the existing `jev.enabled` and `jev.configured` booleans.
-The server's `configured` flag means a declared credential reference or a present
-selected env value. The UI labels it Configuration, without claiming resolved
-credentials, complete endpoint setup, health or remote use. Published additive
-fields on `jev` are:
+Jev / JudgeKit retains `jev.enabled` and `jev.configured` and publishes a passive
+`state`: `off`, `not_configured`, `ready`, or `unavailable`, plus a safe `reason`.
+The existing status row renders these as Off, Not configured, Ready and
+Unavailable. Ready means complete local configuration, not remote health or
+successful judging. An unavailable state comes only from an already-running
+judge's observed failure; status never probes or retries. Missing endpoint,
+model, backend or credential configuration cannot be reported as ready just
+because the enable switch is on. Keychain selectors are declarations until real
+use observes their availability. Published additive fields on `jev` are:
 
 | Field | Values | Meaning |
 | --- | --- | --- |
