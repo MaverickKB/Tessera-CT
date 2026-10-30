@@ -622,6 +622,10 @@ def ensure_bundled_engine(config, clock=time.monotonic, *, force=False):
     with _LOCK:
         state = _REGISTRY.get(key)
         if state is not None and state['proc'].poll() is None:
+            # The service is shared by this home, but a new session may name
+            # a different project, personal store or skill shelf. Reusing the
+            # process must not bypass initialization of those destinations.
+            _seed_store(config)
             return state['url']
         previous = _REGISTRY.pop(key, None)
         if previous is not None:
@@ -734,6 +738,9 @@ def _choice_key(config):
         memory.bundled_path or '',
         getattr(memory, 'source', '') or '',
         getattr(memory, 'token_env', '') or '',
+        memory.project or '',
+        memory.personal_project or '',
+        getattr(getattr(config, 'skills', None), 'shelf', '') or '',
     )
 
 
