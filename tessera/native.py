@@ -116,6 +116,17 @@ def _release_asset(release_url: str | None, checksum: str | None) -> tuple[str, 
     """
     if release_url:
         return release_url, checksum
+    # Automatic derivation publishes a self-contained AppImage on Linux only.
+    # On macOS/Windows the bundled artifact is a platform installer, not an
+    # executable this module can drop on PATH, so auto-derivation stops here
+    # rather than naming a download it cannot install. An explicit --release-url
+    # is honored before this gate, so a manual bootstrap still works.
+    if not sys.platform.startswith('linux'):
+        raise NativeShellNotFound(
+            'automatic desktop install is a Linux AppImage today; install the '
+            'published bundle from the release page on this platform, then run '
+            '`tessera start` with the binary on PATH'
+        )
     from . import updates
     origin = updates.install_report()
     if not origin:
@@ -199,23 +210,17 @@ def _fetch(url: str, timeout: int = 120) -> bytes:
         return response.read()
 
 
-def install(release_url: str, checksum: str | None = None, timeout: int = 600) -> Path:
+def install(release_url: str, checksum: str | None = None) -> Path:
     """Download a self-contained executable, verify it, and install it per-user.
 
-    ``release_url`` names a self-contained executable for this platform (the
-    Linux AppImage). ``checksum`` is an optional lowercase hex sha256. Per-user
-    install means no privilege is required. This is not for a ``.deb``/``.dmg``/
-    ``.msi``/NSIS installer, which the OS runs once rather than an executable
-    this module drops on PATH; those are published for the manual install path,
-    not the automatic one.
+    ``release_url`` names a self-contained executable (the Linux AppImage).
+    ``checksum`` is an optional lowercase hex sha256. Per-user install means no
+    privilege is required. This is not for a ``.deb``/``.dmg``/``.msi``/NSIS
+    installer, which the OS runs once rather than an executable this module
+    drops on PATH; those are published for the manual install path, not the
+    automatic one.
     """
-    if not sys.platform.startswith('linux'):
-        raise NativeShellNotFound(
-            'automatic desktop install is a Linux AppImage today; on this '
-            'platform install the published bundle from the release page, then '
-            'run `tessera start` with the binary on PATH'
-        )
-    data = _fetch(release_url, timeout=timeout)
+    data = _fetch(release_url, timeout=600)
     if checksum:
         actual = hashlib.sha256(data).hexdigest()
         if actual.lower() != checksum.lower():

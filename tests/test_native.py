@@ -128,6 +128,9 @@ def test_release_asset_explicit_url_wins(monkeypatch):
 
 def test_release_asset_derives_from_provenance(monkeypatch):
     from tessera import updates
+    # Derivation is the Linux AppImage path; pin the platform so the test runs
+    # identically on macOS/Windows CI.
+    monkeypatch.setattr(native.sys, 'platform', 'linux')
     monkeypatch.setattr(updates, 'install_report',
                         lambda: {'url': 'https://github.com/MaverickKB/Tessera-CT', 'kind': 'git-install'})
     monkeypatch.setattr(native, '_package_version', lambda: '0.1.1')
@@ -141,9 +144,27 @@ def test_release_asset_derives_from_provenance(monkeypatch):
 
 def test_release_asset_requires_origin(monkeypatch):
     from tessera import updates
+    monkeypatch.setattr(native.sys, 'platform', 'linux')
     monkeypatch.setattr(updates, 'install_report', lambda: None)
     with pytest.raises(NativeShellNotFound, match='no install origin'):
         native._release_asset(None, None)
+
+
+def test_release_asset_derivation_is_linux_only(monkeypatch):
+    # Auto-derivation on a non-Linux host names a self-contained installer this
+    # module cannot drop on PATH, so it stops before naming a download.
+    monkeypatch.setattr(native.sys, 'platform', 'darwin')
+    with pytest.raises(NativeShellNotFound, match='Linux AppImage'):
+        native._release_asset(None, None)
+
+
+def test_release_asset_explicit_url_bypasses_platform_gate(monkeypatch):
+    # An explicit URL is honored before the Linux gate, so a manual bootstrap on
+    # any platform still works.
+    monkeypatch.setattr(native.sys, 'platform', 'darwin')
+    url, checksum = native._release_asset('https://example.test/t.AppImage', None)
+    assert url == 'https://example.test/t.AppImage'
+    assert checksum is None
 
 
 def test_ensure_installed_returns_existing_binary(monkeypatch, tmp_path):
