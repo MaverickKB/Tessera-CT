@@ -70,6 +70,7 @@ def test_role_is_lazy_and_disabled_jev_never_constructs_or_resolves(tmp_path, mo
     monkeypatch.setattr('tessera.jev.CredentialResolver.resolve', no_typesafe)
     monkeypatch.setattr('tessera.jev.urllib.request.urlopen', no_typesafe)
     kit = JudgeKit.from_config(config)
+    assert not kit.configured()
     assert kit.intake('Hello')['source'] == 'heuristic'
 
 
@@ -82,6 +83,7 @@ def test_backend_role_takes_precedence_without_typesafe_credentials(tmp_path, mo
     monkeypatch.setattr('tessera.jev.CredentialResolver.resolve', no_typesafe)
     monkeypatch.setattr('tessera.jev.urllib.request.urlopen', no_typesafe)
     kit = JudgeKit.from_config(config).bind_session(tmp_path, 'fixture-session')
+    assert kit.configured()
     assert not constructions and not backend.calls
     assert kit.intake('fixture-private request')['source'] == 'jev'
     assert len(constructions) == len(backend.calls) == 1

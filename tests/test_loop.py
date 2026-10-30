@@ -261,6 +261,30 @@ def test_no_judge_leaves_no_scoring_or_output_gate_on_a_turn(tmp_path):
             assert key not in reply.meta, key
 
 
+@pytest.mark.parametrize('missing', ['url', 'model', 'selector', 'credential'])
+def test_enabled_but_unconfigured_judge_does_not_score_a_turn(tmp_path, monkeypatch, missing):
+    config = session_config(tmp_path)
+    config.jev.enabled = True
+    config.jev.url = '' if missing == 'url' else 'https://judge.example.com/evaluate'
+    config.jev.model = '' if missing == 'model' else 'test-judge'
+    config.jev.api_key_env = '' if missing == 'selector' else 'JEV_TEST_KEY'
+    config.jev.credential_ref = ''
+    if missing == 'credential':
+        monkeypatch.delenv('JEV_TEST_KEY', raising=False)
+    else:
+        monkeypatch.setenv('JEV_TEST_KEY', 'fixture-key')
+    def unexpected(*args, **kwargs):
+        raise AssertionError('An unconfigured judge must not be used')
+    monkeypatch.setattr('tessera.jev.JudgeKit.verify_output', unexpected)
+    monkeypatch.setattr('tessera.jev.JudgeKit.output_gate', unexpected)
+    monkeypatch.setattr('tessera.jev.urllib.request.urlopen', unexpected)
+    with Session(config, backend=FakeBackend(['Done.'])) as session:
+        assert session.run_turn('Hello') == 'Done.'
+        reply = session.log.get(1)
+        for key in ('judge_score', 'judge_source', 'verification', 'output_gate'):
+            assert key not in reply.meta, key
+
+
 def test_memory_decision_causes_read_before_answer(tmp_path):
     from integration_helpers import FakeMcpServer
     from tessera.aethermind import AetherMindClient

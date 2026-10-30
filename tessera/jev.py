@@ -104,6 +104,23 @@ class JudgeKit:
         self.floor_slug = floor_slug or ''
         return self
 
+    def configured(self):
+        """Whether the enabled judge has an evaluator or usable connection settings.
+
+        This checks local configuration only; it never probes the judge.
+        A configured judge may still fail remotely and use its existing fallback.
+        """
+        if not self.enabled:
+            return False
+        if self.evaluator is not None:
+            return True
+        if not (self.url and self.model and (self.api_key_env or self.credential_ref)):
+            return False
+        try:
+            return bool(self._credentials.resolve(self.credential_ref, env=self.api_key_env).value)
+        except CredentialError:
+            return False
+
     def intake(self, message, view_tail=""):
         state = {"message": message, "view_tail": view_tail}
         questions = {
