@@ -138,7 +138,7 @@ def _launch_native(binary, env, startup_timeout):
     if os.name != 'nt':
         import signal
         try:
-            os.killpg(process.pid, signal.SIGTERM)
+            _signal_native_group(process.pid, signal.SIGTERM, startup_timeout)
         except ProcessLookupError:
             pass
     elif process.poll() is None:
@@ -157,11 +157,31 @@ def _launch_native(binary, env, startup_timeout):
     if os.name != 'nt':
         import signal
         try:
-            os.killpg(process.pid, signal.SIGKILL)
+            _signal_native_group(process.pid, signal.SIGKILL, startup_timeout)
         except ProcessLookupError:
             pass
     reader.join(timeout=startup_timeout)
     raise NativeShellNotFound('The native desktop window did not become ready')
+
+
+def _signal_native_group(group, sig, timeout):
+    try:
+        os.killpg(group, sig)
+    except PermissionError:
+        # Darwin returns EPERM for a zombie-only process group. Confirm there
+        # are no live members before treating that as already-cleaned; a real
+        # permission failure must prevent recovery starting a competing core.
+        result = subprocess.run(['/bin/ps', '-axo', 'pgid=,stat='],
+                                stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, timeout=timeout)
+        if result.returncode != 0:
+            raise
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) != 2 or not parts[0].isdigit():
+                raise
+            if int(parts[0]) == group and not parts[1].startswith('Z'):
+                raise
 
 
 def _package_version() -> str:

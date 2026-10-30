@@ -52,6 +52,8 @@ def test_native_launch_waits_for_real_window_ready_and_forwards_proof(monkeypatc
     event = {'event': 'tessera-desktop.window-ready', 'shell_pid': 21, 'core_pid': 22}
     script = 'import time; print(' + repr(json.dumps(event)) + ', flush=True); time.sleep(30)'
     def start(argv, **kwargs):
+        if argv[0] == '/bin/ps':
+            return original(argv, **kwargs)
         process = original([sys.executable, '-u', '-c', script], **kwargs)
         processes.append(process)
         return process
@@ -71,6 +73,8 @@ def test_native_launch_failure_and_timeout_leave_no_detached_shell(monkeypatch, 
     processes = []
     original = subprocess.Popen
     def start(argv, **kwargs):
+        if argv[0] == '/bin/ps':
+            return original(argv, **kwargs)
         process = original([sys.executable, '-u', '-c', script], **kwargs)
         processes.append(process)
         return process
@@ -149,6 +153,8 @@ def test_failed_posix_shell_cannot_leave_its_core_child_running(tmp_path, monkey
               'Path(' + repr(str(child_pid)) + ').write_text(str(child.pid)); raise SystemExit(3)')
     original = subprocess.Popen
     def start(argv, **kwargs):
+        if argv[0] == '/bin/ps':
+            return original(argv, **kwargs)
         return original([sys.executable, '-u', '-c', script], **kwargs)
     monkeypatch.setattr(desktop.subprocess, 'Popen', start)
     with pytest.raises(desktop.NativeShellNotFound):
