@@ -920,9 +920,6 @@ class UiConfig:
     yolo_banner: bool = True
     # False labels that button Unleashed. True labels it F-it and shows the cartoon.
     easter_egg_f_it: bool = False
-    # Which goblin avatar represents this install. The art and its manifest are
-    # in web/brand/goblin. One of the ids the manifest lists.
-    goblin_avatar: str = 'smith'
     # An error event older than this (or one recorded before events carried a time) opens no banner.
     error_banner_seconds: float = 600.0
     # Opening a session loads this many newest messages; older ones load on demand.

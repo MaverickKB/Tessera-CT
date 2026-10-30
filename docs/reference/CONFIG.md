@@ -671,7 +671,6 @@ Names in `tools.disabled` are operator switches. They apply in every approval mo
 | --- | --- | --- | --- |
 | `ui.yolo_banner` | `true` | `TESSERA_UI__YOLO_BANNER` | Settings row |
 | `ui.easter_egg_f_it` | `false` | `TESSERA_UI__EASTER_EGG_F_IT` | Settings row |
-| `ui.goblin_avatar` | `"smith"` | `TESSERA_UI__GOBLIN_AVATAR` | file-only: no Settings row — set this in config.toml |
 | `ui.error_banner_seconds` | `600.0` | `TESSERA_UI__ERROR_BANNER_SECONDS` | file-only: no Settings row — set this in config.toml |
 | `ui.history_page` | `60` | `TESSERA_UI__HISTORY_PAGE` | file-only: no Settings row — set this in config.toml |
 | `ui.view_page_lines` | `80` | `TESSERA_UI__VIEW_PAGE_LINES` | file-only: no Settings row — set this in config.toml |
