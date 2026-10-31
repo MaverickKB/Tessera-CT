@@ -533,7 +533,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/autonomy/floor-definition' and method == 'PUT':
             body = self._body(('definition', 'actor'), ('definition',))
             try:
-                self._json(200, manager.autonomy.floor_save(body['definition'], body.get('actor') or 'operator'))
+                self._json(200, manager.autonomy.floor_save(body['definition'], 'operator'))
             except FloorDefinitionError as error:
                 raise ApiError(400, str(error)) from None
             return
