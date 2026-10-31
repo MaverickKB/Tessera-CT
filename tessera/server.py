@@ -1376,9 +1376,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if resource == 'messages' and method == 'POST':
             body = self._body(('text', 'reply_to', 'source', 'client_request_id', 'attachments', 'project_id', 'selected'), ('text',))
-            self._json(202, {'turn_id': manager.submit(slug, body['text'], body.get('reply_to'),
-                source=body.get('source'), client_request_id=body.get('client_request_id'),
-                attachments=body.get('attachments'), project_id=body.get('project_id'), selected=body.get('selected'))})
+            try:
+                turn_id = manager.submit(slug, body['text'], body.get('reply_to'),
+                    source=body.get('source'), client_request_id=body.get('client_request_id'),
+                    attachments=body.get('attachments'), project_id=body.get('project_id'), selected=body.get('selected'))
+            except RuntimeError as error:
+                if str(error) != 'Session manager is stopping' or manager._accepting:
+                    raise
+                self._json(503, {'error': 'Session manager is stopping'}, {'Retry-After': '1'})
+                return
+            self._json(202, {'turn_id': turn_id})
             return
         if resource == 'feedback' and method == 'POST':
             body = self._body(('i', 'rating', 'resolved', 'note'), ('i',))

@@ -93,6 +93,34 @@ def test_phone_voice_submit_is_accepted(tmp_path):
         assert server.manager.autonomy.state['presence'].get(slug, {}).get('last_message') is None
 
 
+def test_message_post_during_drain_is_retryable(tmp_path):
+    with running_server(tmp_path) as server:
+        _, created = call(server, 'POST', '/api/sessions', {'title': 'Drain'})
+        server.manager.hold()
+        connection = http.client.HTTPConnection(*server.server_address, timeout=5)
+        connection.request('POST', f"/api/sessions/{created['slug']}/messages",
+                           body=json.dumps({'text': 'Hello'}),
+                           headers={'Content-Type': 'application/json'})
+        response = connection.getresponse()
+        assert response.status == 503
+        assert response.getheader('Retry-After') == '1'
+        response.read()
+        connection.close()
+
+
+def test_message_post_unrelated_runtime_error_is_server_error(tmp_path, monkeypatch):
+    with running_server(tmp_path) as server:
+        _, created = call(server, 'POST', '/api/sessions', {'title': 'Failure'})
+
+        def fail(*args, **kwargs):
+            raise RuntimeError('Unrelated failure')
+
+        monkeypatch.setattr(server.manager, 'submit', fail)
+        status, body = call(server, 'POST', f"/api/sessions/{created['slug']}/messages", {'text': 'Hello'})
+        assert status == 500
+        assert body['error'] == 'Request failed (RuntimeError)'
+
+
 def test_sse_replays_events_and_supports_last_event_id(tmp_path):
     with running_server(tmp_path) as server:
         call(server, 'POST', '/api/sessions', {'title': 'events'})

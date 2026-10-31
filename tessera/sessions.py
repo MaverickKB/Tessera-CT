@@ -617,13 +617,13 @@ class _Runtime:
                 # previous turn's silence as this turn's and interrupts it.
                 self.progress_at = time.monotonic()
                 self._set_state(item, 'running')
-            self.events.append('turn_start', {'turn_id': item['id'], 'from_slug': item['from_slug'], 'hop': item['hop']})
+            self.events.append('turn_start', {'turn_id': item['id'], 'from_slug': item.get('from_slug'), 'hop': item.get('hop', 0)})
             success = False
             error = None
             failure_details = {}
             try:
                 # Restore a sender report if a crash happened between durable enqueue and log append.
-                if item['from_slug'] and not item.get('work_id'):
+                if item.get('from_slug') and not item.get('work_id'):
                     present = False
                     for message in self.session.log.iter():
                         if message.kind == 'work' and message.meta.get('turn_id') == item['id']:
@@ -631,9 +631,9 @@ class _Runtime:
                             break
                     if not present:
                         self.session.log.append('work', f'[{item["from_slug"]}] {item["text"]}',
-                                                {'from_slug': item['from_slug'], 'hop': item['hop'], 'turn_id': item['id']})
-                awareness = None if item.get('wake') or item['from_slug'] else self.manager.autonomy.take_awareness(self.slug)
-                self.session.run_turn(item['text'], turn_meta={'request_id': item['id'], 'from_slug': item['from_slug'], 'hop': item['hop'], 'work_id': item.get('work_id'),
+                                                {'from_slug': item.get('from_slug'), 'hop': item.get('hop', 0), 'turn_id': item['id']})
+                awareness = None if item.get('wake') or item.get('from_slug') else self.manager.autonomy.take_awareness(self.slug)
+                self.session.run_turn(item['text'], turn_meta={'request_id': item['id'], 'from_slug': item.get('from_slug'), 'hop': item.get('hop', 0), 'work_id': item.get('work_id'),
                                                         **({'voice_transcript': True} if item.get('source') == 'voice' else {}),
                                                         **({'wake': item['wake']} if item.get('wake') else {}),
                                                         **({'awareness': awareness} if awareness else {}),
@@ -874,6 +874,7 @@ class SessionManager:
                 runtime.close()
             self._owner.close()
             raise
+        self.goblin_scheduler.start()
         self.autonomy.start()
 
     def path(self, slug):
@@ -997,7 +998,7 @@ class SessionManager:
                 slug = stem[:64 - len(ending)].rstrip('-') + ending
                 suffix += 1
             path = self.path(slug)
-            path.mkdir()
+            path.mkdir(exist_ok=True)
             timestamp = now()
             chosen = self._workspace_value(workspace)
             meta = {'id': uuid.uuid4().hex, 'slug': slug, 'title': title.strip(), 'created': timestamp,
@@ -1029,7 +1030,7 @@ class SessionManager:
             if backend is None and self.config.backends:
                 backend = next(iter(self.config.backends))
             path = self.path(slug)
-            path.mkdir()
+            path.mkdir(exist_ok=True)
             timestamp = now()
             meta = {'id': uuid.uuid4().hex, 'slug': slug, 'title': title.strip(), 'created': timestamp,
                     'updated': timestamp, 'messages': 0, 'archived': False, 'backend': backend,
@@ -1093,7 +1094,7 @@ class SessionManager:
             if backend is None and self.config.backends:
                 backend = next(iter(self.config.backends))
             path = self.path(slug)
-            path.mkdir()
+            path.mkdir(exist_ok=True)
             timestamp = now()
             meta = {'id': uuid.uuid4().hex, 'slug': slug, 'title': title.strip(), 'created': timestamp,
                     'updated': timestamp, 'messages': 0, 'archived': False, 'backend': backend,

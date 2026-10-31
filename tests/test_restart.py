@@ -428,3 +428,29 @@ def test_an_idle_restart_gives_up_on_a_turn_that_has_gone_silent(tmp_path):
 
     states = turn_states(tmp_path, slug)
     assert states['hung'] == ('error', 'Interrupted by a core restart'), states
+
+
+def test_legacy_queued_turn_resumes_without_origin_fields(tmp_path):
+    config = session_config(tmp_path)
+    with SessionManager(config, backend_factory=lambda *args: FakeBackend([])) as manager:
+        slug = manager.create(title='legacy')['slug']
+    journal = tmp_path / 'sessions' / slug / 'turns.jsonl'
+    record = {'op': 'enqueue', 'turn': {'id': 'legacy-turn', 'text': 'Hello', 'state': 'queued'}}
+    journal.write_text(json.dumps(record) + '\n', encoding='utf-8')
+    with SessionManager(config, backend_factory=lambda *args: FakeBackend(['Recovered'])) as manager:
+        assert manager.wait(slug, 10)
+        assert manager.turn(slug, 'legacy-turn')['state'] == 'done'
+        assert manager.runtime(slug).failure is None
+        assert any(message.text == 'Recovered' for message in manager.get(slug).log.iter())
+
+
+def test_goblin_session_reuses_directory_without_metadata(tmp_path):
+    config = session_config(tmp_path)
+    with SessionManager(config, backend_factory=lambda *args: FakeBackend([])) as manager:
+        directory = tmp_path / 'sessions' / 'goblin-orphan'
+        directory.mkdir()
+        marker = directory / 'existing.txt'
+        marker.write_text('keep', encoding='utf-8')
+        result = manager.ensure_bot('goblin-orphan', 'Orphan', goblin_id='orphan')
+        assert result['slug'] == 'goblin-orphan'
+        assert marker.read_text(encoding='utf-8') == 'keep'
