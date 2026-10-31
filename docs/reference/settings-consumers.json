@@ -2,7 +2,7 @@
   "source": "tessera/settings_model.py (catalog + record-row specs)",
   "proof": "catalog scalars are flip-tested in tests/test_settings_consumers.py; record rows are classified by named reader site",
   "counts": {
-    "CONSUMED": 119
+    "CONSUMED": 120
   },
   "fields": [
     {
@@ -313,6 +313,15 @@
       "readers": [
         {
           "site": "tessera/sessions.py:1571 throttle on trial checks"
+        }
+      ]
+    },
+    {
+      "id": "desktop_appimage_extract",
+      "status": "CONSUMED",
+      "readers": [
+        {
+          "site": "tessera/desktop_install.py:187 appimage_extract_enabled reads desktop_appimage_extract; launch sets APPIMAGE_EXTRACT_AND_RUN only when that is true and FUSE 2 cannot mount"
         }
       ]
     },

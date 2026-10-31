@@ -33,7 +33,7 @@ type-checking and rendering the value do not count as reads.
 
 ## Summary at HEAD
 
-119 fields: 119 CONSUMED, 0 NO-READER, 0 UNRESOLVED.
+120 fields: 120 CONSUMED, 0 NO-READER, 0 UNRESOLVED.
 
 ## Partial findings, recorded as debt
 
@@ -101,6 +101,7 @@ catalog spec appears without a reader entry, so a dead scalar cannot ship
 | `autonomy.self_prompt_gap_seconds` | CONSUMED | tessera/autonomy.py:1506 and :1563 gate self-prompt refreshes on the gap |
 | `autonomy.oversight_policy` | CONSUMED | tessera/oversight.py:446 selects report content; tessera/sessions.py:1604 echoes it |
 | `autonomy.trial_poll_seconds` | CONSUMED | tessera/sessions.py:1571 throttle on trial checks |
+| `desktop_appimage_extract` | CONSUMED | tessera/desktop_install.py:187 appimage_extract_enabled reads desktop_appimage_extract; launch sets APPIMAGE_EXTRACT_AND_RUN only when that is true and FUSE 2 cannot mount |
 | `jev.enabled` | CONSUMED | tessera/jev.py:89 JudgeKit.from_config reads the whole jev block |
 | `jev.action_gate_enabled` | CONSUMED | tessera/jev.py:89 JudgeKit.from_config; gates mutating tools in the session loop |
 | `jev.url` | CONSUMED | tessera/jev.py:89 JudgeKit.from_config |

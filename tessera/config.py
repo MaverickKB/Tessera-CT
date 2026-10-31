@@ -1052,6 +1052,10 @@ class Config:
     desktop_install_timeout: float = 600.0
     # Wait for a native window ready acknowledgement before accepting launch.
     desktop_startup_timeout: float = 60.0
+    # Linux AppImage only. Off: a missing FUSE 2 mount is reported and the web
+    # UI is the fallback. On: extract the AppImage and run it without mounting.
+    # Printed when that path is used. A working FUSE 2 mount is unchanged.
+    desktop_appimage_extract: bool = False
 
     def validate(self):
         self.credentials = CredentialResolver(self.credentials).references
@@ -1317,6 +1321,8 @@ class Config:
                 or not math.isfinite(self.desktop_install_timeout)
                 or self.desktop_install_timeout <= 0):
             raise ValueError('desktop_install_timeout must be a positive number of seconds')
+        if type(self.desktop_appimage_extract) is not bool:
+            raise ValueError('desktop_appimage_extract must be true or false')
         if (type(self.agents.max_concurrent) is not int or self.agents.max_concurrent < 0
                 or self.agents.token_budget < 0
                 or self.agents.judge_tokens < 0 or self.agents.wall_seconds < 0
@@ -1724,7 +1730,8 @@ def load_config(home=None):
     config.config_missing = not path.exists()
     config.migration_notes = []
     for name in ('cwd', 'workspace', 'agent_name', 'operator_name', 'user_instructions',
-                 'identity_file', 'identity_max_bytes', 'desktop_install_timeout', 'desktop_startup_timeout'):
+                 'identity_file', 'identity_max_bytes', 'desktop_install_timeout', 'desktop_startup_timeout',
+                 'desktop_appimage_extract'):
         if name in data:
             setattr(config, name, data[name])
     if not isinstance(config.cwd, (str, Path)):

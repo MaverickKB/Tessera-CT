@@ -625,6 +625,11 @@ def consume_codex_catalog(config):
     return codex_request_url(config)
 
 
+def consume_desktop_appimage_extract(config):
+    from tessera.desktop_install import appimage_extract_enabled
+    return appimage_extract_enabled(config)
+
+
 CONSUMERS = {
     'swarm.pressure_hold_enabled': consume_pressure,
     'swarm.pressure_soft_threshold': consume_pressure_threshold,
@@ -709,6 +714,7 @@ CONSUMERS = {
     'permissions.safe_policy': consume_safe_policy,
     'codex.models_url': consume_codex_catalog,
     'codex.client_version': consume_codex_catalog,
+    'desktop_appimage_extract': consume_desktop_appimage_extract,
 }
 
 
@@ -866,10 +872,10 @@ def test_projection_shape_is_pinned(tmp_path):
     # ui.config_journal_entries, the two Codex catalog settings, and ui.mark
     # are scalars on that bare page.
     assert 'aethermind.enabled' not in ids
-    assert len(list(catalog(config, {}))) == 80
-    # 80 catalog fields include five review switches and two bounds, plus the
+    assert len(list(catalog(config, {}))) == 81
+    # 81 catalog fields include five review switches and two bounds, plus the
     # nine record rows and update.status.
-    assert len(ids) == 90
+    assert len(ids) == 91
 
 
 def test_yolo_banner_settings_save_reaches_status_and_disk(tmp_path):

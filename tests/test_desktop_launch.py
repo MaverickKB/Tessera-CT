@@ -116,7 +116,7 @@ def test_public_start_surface_and_recovery_do_not_duplicate_a_core(tmp_path, mon
     args += {'browser': ['--browser'], 'web': ['--web'], 'headless': ['--no-browser']}.get(surface, [])
     assert terminal.main(args) == 0
     if surface == 'native':
-        launch.assert_called_once_with(tmp_path, port=9234, startup_timeout=60.0)
+        launch.assert_called_once_with(tmp_path, port=9234, startup_timeout=60.0, extract_appimage=False)
         create.assert_not_called()
         thread.assert_not_called()
     else:
