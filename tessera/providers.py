@@ -15,6 +15,15 @@ def arguments_object(value):
     return value
 
 
+class EmptyResponse(ValueError):
+    """A completed provider answer with no text and no tool calls.
+
+    Distinct from a malformed answer: the wire shape was fine, the model simply
+    returned nothing. The backend retries this one and the turn loop fails over
+    to another model, because an empty answer is a failed turn, not a refusal.
+    """
+
+
 class ProviderAdapter(ABC):
     path = ""
 
@@ -259,7 +268,9 @@ class ResponsesAdapter(ProviderAdapter):
             if calls:
                 raise ValueError("Refused provider tool response")
         if status == "completed" and not calls and not any(text):
-            raise ValueError("Provider completed without text or tool calls")
+            # A completed response with nothing in it is a failed answer, not a
+            # refusal. The backend retries it and fails over to another model.
+            raise EmptyResponse("Provider completed without text or tool calls")
         self._remember(calls, data["output"])
         return {"content": "\n".join(text), "tool_calls": calls,
                 "usage": data.get("usage", {}), "finish_reason": finish}
@@ -348,7 +359,7 @@ class AnthropicMessagesAdapter(ProviderAdapter):
         if calls and finish in ("length", "content_filter"):
             raise ValueError("Incomplete provider tool response")
         if not calls and not any(text):
-            raise ValueError("Provider completed without text or tool calls")
+            raise EmptyResponse("Provider completed without text or tool calls")
         self._remember(calls, data["content"])
         return {"content": "\n".join(text), "tool_calls": calls,
                 "usage": data.get("usage", {}), "finish_reason": finish}

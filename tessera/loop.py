@@ -762,6 +762,8 @@ class Session:
             # A length-capped answer is a failed response, not a refusal: a reasoning model can spend
             # the whole token ceiling thinking and return no content at all (GLM-5.3-Flash through
             # a router route loses live turns this way). Re-ask on the failover model.
+            # An empty completed answer takes the same path: the model returned no
+            # text and no tool calls, so the turn is lost unless another model answers.
             return True
         return exc.kind == 'http' and type(exc.http_status) is int and 500 <= exc.http_status <= 599
 

@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from .http_cancel import CancellableHTTP, CancelledIO
 from .credentials import CredentialError, CredentialResolver, redact_secret
 from .codex_headers import codex_headers, official_codex_url
-from .providers import create_adapter
+from .providers import EmptyResponse, create_adapter
 from .provider_status import initial_status
 from .cli_worker import CliWorker, WorkerError
 from .rate_limits import parse_rate_limits
@@ -411,6 +411,16 @@ class Backend:
                 # Name what the parser rejected. "invalid provider response"
                 # alone cannot tell a stream shape from a missing field.
                 detail = type(exc).__name__ + ': ' + str(exc)
+                if isinstance(exc, EmptyResponse):
+                    # A completed answer with no text and no tool calls is a failed
+                    # turn, not a malformed one. It takes the transport retry path
+                    # and, once retries are spent, the turn loop fails over.
+                    if attempt == retries:
+                        raise BackendError(f'Backend {self.name}: empty provider response',
+                                           kind='incomplete_response', detail=detail[:400]) from None
+                    if self._transport._cancelled.wait(min(delay * (2 ** attempt), 30)):
+                        self.check_cancelled()
+                    continue
                 raise BackendError(f'Backend {self.name}: invalid provider response',
                                    kind='parse', detail=detail[:400]) from None
         raise BackendError('Backend exhausted retries')

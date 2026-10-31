@@ -8,7 +8,8 @@ import threading
 import pytest
 
 from tessera.backend import Backend, BackendError
-from tessera.providers import ChatCompletionsAdapter, ResponsesAdapter
+from tessera.providers import (AnthropicMessagesAdapter, ChatCompletionsAdapter,
+                               EmptyResponse, ResponsesAdapter)
 
 
 def test_responses_encodes_image_parts_without_changing_chat_completions():
@@ -299,3 +300,34 @@ def test_waiting_snapshot_survives_reconnect_without_heartbeat_reset(tmp_path):
     assert snapshot["status"] == "Waiting upstream"
     assert snapshot["at"] == "2026-10-22T07:00:00+00:00"
     assert snapshot["thought"] == snapshot["text"] == ""
+
+
+def test_an_empty_completed_answer_is_an_incomplete_response_not_a_parse_error():
+    """A completed answer with no text and no tool calls is a failed turn.
+
+    Measured in the live home on 2026-10-31: 55 turns died with 'Provider
+    completed without text or tool calls'. It was raised as a plain ValueError,
+    so the backend classified it as kind='parse' — no retry, and the turn loop's
+    failover did not accept it. Both adapters now raise EmptyResponse, which the
+    backend maps to kind='incomplete_response', the kind failover already takes.
+    """
+    responses = {"status": "completed", "output": [], "usage": {}}
+    with pytest.raises(EmptyResponse, match="without text or tool calls"):
+        ResponsesAdapter().decode(responses)
+
+    anthropic = {"type": "message", "role": "assistant", "stop_reason": "end_turn",
+                 "content": [], "usage": {}}
+    with pytest.raises(EmptyResponse, match="without text or tool calls"):
+        AnthropicMessagesAdapter().decode(anthropic)
+
+
+def test_an_empty_answer_reaches_the_backend_as_a_failed_response(monkeypatch):
+    monkeypatch.setenv("EXAMPLE_PROVIDER_KEY", "synthetic-provider-secret")
+    empty = {"id": "response-1", "status": "completed", "output": [], "usage": {}}
+    with provider_server([empty, empty]) as (url, received):
+        backend = Backend("empty", url, "example-model", "EXAMPLE_PROVIDER_KEY",
+                          {"provider_kind": "openai_responses", "retries": 1})
+        with pytest.raises(BackendError) as raised:
+            backend.chat([{"role": "user", "content": "Answer this"}], tools=[])
+    assert raised.value.kind == "incomplete_response"
+    assert len(received) == 2
