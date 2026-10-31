@@ -208,7 +208,11 @@ class Session:
             guidance = self._guidance()
             if guidance:
                 self.system_prompt += '\n' + guidance + '\n'
-            if compactor_backend is None and not injected_backend and 'compactor' in self.config.roles:
+            if compactor_backend is None and not injected_backend and self.config.backends:
+                # Always resolve a compactor model. A config that omits the role used
+                # to build a compactor with no backend, so every summary was an
+                # extractive prefix instead of a written one, silently. backend_for
+                # falls back to the main role, which is the right model for this.
                 compactor_backend = self._backend('compactor')
             settings = self.config.compactor
             # The compactor gets a short summarizer instruction, not the session

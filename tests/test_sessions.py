@@ -9,6 +9,15 @@ from tessera.config import Config
 from tessera.sessions import SessionManager
 
 
+COMPACTOR_MARK = 'You summarize a span of a conversation'
+
+
+def chat_calls(calls):
+    """Model calls made by a turn, not by the compactor."""
+    return [call for call in calls
+            if COMPACTOR_MARK not in call['body']['messages'][0]['content']]
+
+
 def config_for(root):
     config = Config(home=root, cwd=root)
     config.jev.enabled = False
@@ -245,8 +254,8 @@ def test_selected_backend_handles_direct_route_over_global_fast_role(tmp_path):
             manager.submit('selected', 'Hello')
             assert manager.wait('selected', 5)
             assert list(manager.get('selected').log.iter())[-1].text == 'Selected backend answer'
-        assert not first_calls
-        assert len(second_calls) == 1
+        assert not chat_calls(first_calls)
+        assert len(chat_calls(second_calls)) == 1
 
 
 def test_shutdown_rejects_a_new_lazy_runtime(tmp_path, monkeypatch):
@@ -379,14 +388,15 @@ def test_default_session_preserves_configured_fast_role(tmp_path):
             manager.submit('default', 'Hello')
             assert manager.wait('default', 5)
             assert list(manager.get('default').log.iter())[-1].text == 'Fast answer'
-        assert not main_calls and len(fast_calls) == 1
+        assert not chat_calls(main_calls) and len(chat_calls(fast_calls)) == 1
 
 
 def test_session_pinned_to_removed_backend_falls_back_to_main_with_notice(tmp_path):
     from fake_backend import fake_http_server
     from tessera.config import BackendConfig
     reply = {'choices': [{'message': {'content': 'Main answer'}}]}
-    with fake_http_server([(200, reply)]) as (url, calls):
+    # The turn and the background compactor both resolve the main model here.
+    with fake_http_server([(200, reply), (200, reply), (200, reply)]) as (url, calls):
         config = config_for(tmp_path)
         config.backends = {'main': BackendConfig('main', url, 'm'), 'old': BackendConfig('old', url, 'o')}
         config.roles = {'main': 'main'}
@@ -398,7 +408,8 @@ def test_session_pinned_to_removed_backend_falls_back_to_main_with_notice(tmp_pa
             assert manager.wait('pinned', 5)
             texts = [m.text for m in manager.get('pinned').log.iter()]
             assert any('no longer configured' in t for t in texts) and texts[-1] == 'Main answer'
-        assert calls and calls[0]['body']['model'] == 'm'
+        turn_calls = chat_calls(calls)
+        assert turn_calls and turn_calls[0]['body']['model'] == 'm'
 
 
 def test_one_unreadable_session_does_not_take_down_the_list(tmp_path, capsys):
