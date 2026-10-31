@@ -38,6 +38,7 @@ class SummaryTree:
         self._lock = threading.RLock()
         self.changed = threading.Condition(self._lock)
         self._message_count = log.count()
+        damaged = 0
         for path in sorted(self.directory.glob('*.jsonl')):
             file_level = int(path.name.split('.')[0])
             complete_tail = True
@@ -48,7 +49,11 @@ class SummaryTree:
                         record = json.loads(line)
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         if complete_tail:
-                            raise
+                            # A terminated line that will not parse is a damaged
+                            # record. The tree is derived from the log, so skip the
+                            # node and let it rebuild rather than refusing to start.
+                            damaged += 1
+                            continue
                         # An interrupted final append is uncommitted work.
                         # Preserve that segment and queue the absent node.
                         break
@@ -66,6 +71,9 @@ class SummaryTree:
                     self._metadata[key] = metadata
             if complete_tail:
                 self._write_paths[file_level] = path
+        if damaged:
+            print(f'tessera: skipped {damaged} damaged summary line(s) in {self.directory}; '
+                  'those nodes rebuild from the log', flush=True)
         # One startup replay seeds missing work. Runtime arrivals only touch
         # their leaf and the newly completed sibling pair.
         for message in log.iter():

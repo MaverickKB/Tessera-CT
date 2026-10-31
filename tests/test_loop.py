@@ -62,6 +62,21 @@ def test_the_turn_prompt_is_capped_at_the_settle_budget(tmp_path):
         assert 'Older coverage is omitted' in gist
 
 
+def test_the_compactor_starts_without_a_turn_confirming_memory(tmp_path):
+    """A freshly loaded session compacts before anyone speaks to it.
+
+    The compactor needs the model backend, not memory. When its start waited on a
+    memory probe, an idle session loaded after a restart built no summaries at all
+    until its next turn, so a restarted core looked like it had stopped compacting.
+    """
+    backend = FakeBackend([])
+    with Session(session_config(tmp_path), backend=backend) as session:
+        session._start_compactor()
+        assert session.compactor.threads
+        assert all(thread.is_alive() for thread in session.compactor.threads)
+        session.compactor.stop()
+
+
 def test_hook_block_prevents_side_effect_and_still_captures(tmp_path):
     hooks = HookBus()
     events = []

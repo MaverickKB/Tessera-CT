@@ -158,6 +158,15 @@ class View:
         self._compacting = size > self.low_bytes
         self.save()
 
+    @property
+    def over_budget(self):
+        """True while the saved view sits above the merge watermark.
+
+        A plain flag read. Taking the view lock here would invert lock order against
+        the log callback, which holds the view lock and then asks the tree for a node.
+        """
+        return bool(self._compacting)
+
     def save(self):
         with self._lock:
             state = {'version': 1, 'nodes': self.nodes, 'count': self._count,
