@@ -5,6 +5,7 @@ This registry controls approvals. It is not a process or filesystem sandbox.
 
 from contextlib import contextmanager
 from .http_cancel import CancellableHTTP
+from .web_guard import CappedRedirect, vet_public_host
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import base64
@@ -1000,7 +1001,9 @@ def build_registry(cwd=None, view=None, spawn=None, approval='ask', approve=None
                     raise ValueError('invalid header')
                 extra[key] = value
         request = urllib.request.Request(url, headers=extra, method='GET')
-        transport = CancellableHTTP()
+        # Only this opener vets destinations. Backend and MCP transports keep
+        # the plain CancellableHTTP and still reach their configured endpoints.
+        transport = CancellableHTTP(CappedRedirect(), vet_host=vet_public_host)
         transport.cancel_event = registry.cancelled
         try:
             with registry.cancellation(transport.cancel), transport.opener.open(request, timeout=fetch_timeout) as response:
