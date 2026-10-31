@@ -8,6 +8,28 @@ import threading
 import pytest
 
 from tessera.backend import Backend, BackendError
+from tessera.providers import ChatCompletionsAdapter, ResponsesAdapter
+
+
+def test_responses_encodes_image_parts_without_changing_chat_completions():
+    data_url = "data:image/png;base64,aGVsbG8="
+    messages = [
+        {"role": "user", "content": "Look at this"},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Screenshot"},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ]},
+    ]
+
+    responses = ResponsesAdapter().encode("model", messages, [], {})
+    assert responses["input"][0]["content"] == "Look at this"
+    assert responses["input"][1]["content"] == [
+        {"type": "input_text", "text": "Screenshot"},
+        {"type": "input_image", "image_url": data_url},
+    ]
+
+    chat = ChatCompletionsAdapter().encode("model", messages, [], {})
+    assert chat["messages"] == messages
 
 
 @contextmanager

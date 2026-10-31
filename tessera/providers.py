@@ -150,7 +150,18 @@ class ResponsesAdapter(ProviderAdapter):
                 items.extend(replay)
                 continue
             if message.get("content") or not calls:
-                items.append({"role": role, "content": deepcopy(message.get("content", ""))})
+                content = deepcopy(message.get("content", ""))
+                if isinstance(content, list):
+                    translated = []
+                    for part in content:
+                        if part["type"] == "text":
+                            translated.append({"type": "input_text", "text": part["text"]})
+                        elif part["type"] == "image_url":
+                            translated.append({"type": "input_image", "image_url": part["image_url"]["url"]})
+                        else:
+                            translated.append(part)
+                    content = translated
+                items.append({"role": role, "content": content})
             for call in calls:
                 function = call["function"]
                 arguments = arguments_object(function.get("arguments") or "{}")
