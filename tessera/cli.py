@@ -205,6 +205,21 @@ def _inspect(config, args):
                           'write_debt': len(capture.debt())}, indent=2))
 
 
+def _report_native_launch_failure(error, *, browser_fallback):
+    """Print a native-launch failure. A FUSE refusal names the fix before any fallback."""
+    if getattr(error, 'fuse', False):
+        for line in str(error).splitlines():
+            print('tessera: ' + line, file=sys.stderr)
+    else:
+        print(f'tessera: native shell failed to launch: {error}', file=sys.stderr)
+    if browser_fallback:
+        if getattr(error, 'fuse', False):
+            print('tessera: opening the web UI instead. This is a fallback, not a successful native launch.',
+                  file=sys.stderr)
+        else:
+            print('tessera: opening the web UI instead.', file=sys.stderr)
+
+
 def _start(config, args):
     """One command for a working app: create what is missing, then serve and open.
 
@@ -296,10 +311,10 @@ def _start(config, args):
                 # Return only after the native window actually loads. The shell
                 # owns the core, so this launcher must not start a second one.
                 desktop_install.launch(home, port=getattr(args, 'port', None),
-                                       startup_timeout=config.desktop_startup_timeout)
+                                       startup_timeout=config.desktop_startup_timeout,
+                                       extract_appimage=desktop_install.appimage_extract_enabled(config))
             except desktop_install.NativeShellNotFound as error:
-                print(f'tessera: native shell failed to launch: {error}', file=sys.stderr)
-                print('tessera: opening the web UI instead.', file=sys.stderr)
+                _report_native_launch_failure(error, browser_fallback=True)
             else:
                 print('Tessera desktop app launched.', flush=True)
                 return 0
@@ -602,7 +617,8 @@ def main(argv=None):
             checksum = desktop_install._required_checksum(checksum)
             binary = desktop_install.install(url, checksum, timeout=config.desktop_install_timeout)
             print(f'Installed native desktop shell to {binary}')
-            desktop_install.launch(config.home, startup_timeout=config.desktop_startup_timeout)
+            desktop_install.launch(config.home, startup_timeout=config.desktop_startup_timeout,
+                                   extract_appimage=desktop_install.appimage_extract_enabled(config))
             return 0
         if args.command in ('serve', 'desktop'):
             if args.host is not None:

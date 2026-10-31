@@ -40,6 +40,31 @@ the selected home, an answering core, and a subsequent native `start`.
 A matching published release is required for automatic download. If it is
 unavailable or installation fails, `start` reports the failure before recovering
 to the browser; this recovery does not mean the native app installed successfully.
+
+### Linux: FUSE 2
+
+The Linux shell is an AppImage. It mounts itself with FUSE 2 (`fusermount`
+2.x). Current Ubuntu and Debian ship `fusermount3` only, and the AppImage
+refuses that. `tessera start` says so, names the install command for the
+distro, and then opens the web UI. That fallback is not a successful native
+launch. Tessera does not run sudo. Install FUSE 2 and run `tessera start`
+again:
+
+```sh
+sudo apt install fuse            # Ubuntu 24.04 and newer, Debian 13 and newer
+sudo apt install libfuse2        # older Debian and Ubuntu
+sudo dnf install fuse fuse-libs  # Fedora
+sudo pacman -S fuse2             # Arch
+```
+
+To open the native app without installing FUSE 2, turn on **Settings →
+Update → Run the Linux app without FUSE**, or set
+`desktop_appimage_extract = true` in `config.toml` (or export
+`TESSERA_DESKTOP_APPIMAGE_EXTRACT=true`). That extracts the AppImage and runs
+it. It is off unless you turn it on. Turning it off stops extract-and-run,
+including a leftover `APPIMAGE_EXTRACT_AND_RUN` in the environment. A machine
+that already has FUSE 2 mounts the AppImage either way.
+
 `install-desktop` reports a failed installation and exits without substituting a
 browser. Existing native installations continue to work without downloading.
 The public launcher remembers the selected home, exact Python interpreter, and

@@ -709,6 +709,12 @@ def catalog(config, approval):
               ('autonomy', 'trial_poll_seconds'), minimum=0, tier='advanced',
               hint='Minimum seconds between trial checks, shared by autonomy ticks and turn completions. Zero checks on every call; it does not start a timer.'), autonomy.trial_poll_seconds),
     ])
+    items.extend([
+        (Spec('desktop_appimage_extract', 'update', 'bool', 'Run the Linux app without FUSE', 'restart',
+              ('desktop_appimage_extract',), tier='optional',
+              hint='Off unless you turn it on. On Linux, if the AppImage cannot mount because FUSE 2 is missing, Tessera extracts it and opens the native window anyway, and says so. Off, Tessera prints the FUSE 2 install command and opens the web UI instead. A working FUSE 2 mount is unchanged either way. Turning this off stops extract-and-run.'),
+         config.desktop_appimage_extract),
+    ])
     jev = config.jev
     # The judge key is a saved credential. An enum with no options is a dead
     # end, so with nothing saved the row says where to add one instead.

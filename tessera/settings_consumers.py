@@ -129,6 +129,7 @@ CATALOG_READERS = {
     'ui.config_journal_entries': [Reader('tessera/config_editor.py change_report keeps and shows this many config changes; tessera/settings_model.py SettingsService.view publishes shown and total')],
     'permissions.mode': [Reader('tessera/settings_model.py:405 reads the approval dict; tessera/sessions.py:1848 set_yolo writes it', 'no config path: the spec writes approval state, not a config field')],
     'permissions.safe_policy': [Reader('tessera/sessions.py:2129 _init_approval derives the safe mode from tools.approval; set_yolo(false) restores it')],
+    'desktop_appimage_extract': [Reader('tessera/desktop_install.py:187 appimage_extract_enabled reads desktop_appimage_extract; launch sets APPIMAGE_EXTRACT_AND_RUN only when that is true and FUSE 2 cannot mount')],
     'codex.models_url': [Reader('tessera/model_discovery.py codex_request_url; discover_codex_models GETs it with the stored sign-in token')],
     'codex.client_version': [Reader('tessera/model_discovery.py codex_request_url appends client_version to that request')],
 }
