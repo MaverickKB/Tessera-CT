@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from tessera.log_rotation import rotate_core_streams, rotate_file, stream_file
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +33,7 @@ print('done', flush=True)
 '''
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='file-descriptor rotation is POSIX-only')
 def test_a_child_keeps_writing_to_its_named_file_after_rotation(tmp_path):
     log = tmp_path / 'core.log'
     script = WRITER.format(root=str(ROOT))
@@ -80,6 +83,7 @@ def test_a_pipe_is_not_a_file_to_rotate(tmp_path):
         os.close(write_fd)
 
 
+@pytest.mark.skipif(sys.platform == 'win32', reason='file-descriptor rotation is POSIX-only')
 def test_serve_rotates_the_core_stream_file_at_startup(tmp_path):
     """The server path rotates, not just the helper."""
     from tessera import server

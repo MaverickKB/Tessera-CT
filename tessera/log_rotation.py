@@ -9,19 +9,33 @@ keeps writing to the file it is named after.
 """
 
 import os
+import sys
 
 
 def stream_file(fd):
     """The regular file this descriptor writes to, or None.
 
     A terminal, a pipe or a socket is not ours to rotate: the operator is
-    reading it. Only a real file on disk is bounded here.
+    reading it. Only a real file on disk is bounded here. Linux answers
+    through /proc; macOS answers through F_GETPATH; everywhere else the
+    descriptor is left alone.
     """
-    try:
-        target = os.readlink('/proc/self/fd/' + str(fd))
-    except OSError:
-        return None
-    if not target.startswith('/'):
+    target = None
+    if sys.platform == 'darwin':
+        import fcntl
+        try:
+            raw = fcntl.fcntl(fd, fcntl.F_GETPATH, bytearray(1024))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(raw, bytes):
+            return None
+        target = raw.split(b'\x00', 1)[0].decode('utf-8', 'replace')
+    else:
+        try:
+            target = os.readlink('/proc/self/fd/' + str(fd))
+        except OSError:
+            return None
+    if not target or not target.startswith('/'):
         return None
     try:
         if not os.path.isfile(target):

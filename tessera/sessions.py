@@ -32,11 +32,12 @@ from .passive_status import task_status, judge_status, configured_path
 from .oversight import oversight_report
 from .trial import TrialStore, advance, session_rows
 from .messaging import SessionMessaging, may_resume_work
-from .tools import AUTO_APPROVE
+from .tools import AUTO_APPROVE, object_schema
 from .voice import VoiceSessions
 from .infrastructure import Infrastructure
 from .grafana import GrafanaClient
 from .credentials import CredentialResolver
+from .cua import register_cua_tools
 from .board import _MISSING
 from .board_tools import BoardTools
 from .autonomy import Autonomy
