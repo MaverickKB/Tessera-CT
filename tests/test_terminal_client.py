@@ -262,7 +262,7 @@ def test_actual_terminal_tty_tool_prompt_controls_the_daemon_write(tmp_path):
             environment[name] = value
     environment['NO_COLOR'] = '1'
     from integration_helpers import FakeMcpServer
-    with FakeMcpServer(dialect='path') as memory, fake_http_server([(200, tool), (200, done)]) as (url, received):
+    with FakeMcpServer(dialect='path') as memory, fake_http_server([(200, tool), (200, done), (200, done), (200, done), (200, done)]) as (url, received):
         config = 'cwd=' + json.dumps(str(tmp_path)) + '\n'
         config += f'[backends.fixture]\nbase_url="{url}"\nmodel="fixture-placeholder"\n[roles]\nmain="fixture"\n'
         config += ('[aethermind]\nendpoints = [' + json.dumps(memory.url) + ']\n'
