@@ -216,7 +216,7 @@ class Session:
                 compactor_backend = self._backend('compactor')
             settings = self.config.compactor
             # The compactor gets a short summarizer instruction, not the session
-            # prompt: a goblin's persona, roster and rules add tens of kilobytes to
+            # prompt: a session's persona, roster and rules add tens of kilobytes to
             # every summary and none of it helps.
             self.compactor = Compactor(self.tree, self.view, compactor_backend, COMPACTOR_SYSTEM_PROMPT, self.tools.schemas(),
                                        workers=settings.workers, retries=settings.retries, context_bytes=settings.context_bytes,
