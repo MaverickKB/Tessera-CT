@@ -9,8 +9,6 @@ from tessera.goblin_sessions import ensure_session, session_options
 from tessera.goblins import GoblinStore
 from tessera.sessions import SessionManager
 
-from fake_backend import FakeBackend
-
 
 class Down:
     """The default model's service is unreachable (simulated; nothing real is touched)."""
@@ -67,6 +65,10 @@ def manager_over_loopback(tmp_path, url, failover_on=True):
 EMPTY = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
 
 
+def note_messages(manager, slug):
+    return [m for m in manager.get(slug).log.iter() if m.kind == 'note']
+
+
 def test_a_goblin_turn_completes_after_exhausted_empty_answers(tmp_path):
     with fake_http_server([(200, EMPTY), (200, EMPTY)]) as (url, received):
         manager, grok, record = manager_over_loopback(tmp_path, url)
@@ -77,7 +79,13 @@ def test_a_goblin_turn_completes_after_exhausted_empty_answers(tmp_path):
             assert manager.wait(slug, 5)
             log = manager.get(slug).log
             assert [m.text for m in log.iter() if m.kind == 'agent'][-1] == 'Answered by the failover model.'
-            assert 'local unavailable; used grok-test.' in notes(manager, slug)
+            failover_notes = [m for m in note_messages(manager, slug)
+                              if m.meta.get('label') == 'failover']
+            assert len(failover_notes) == 1
+            meta = failover_notes[0].meta
+            assert 'local unavailable; used grok-test.' in failover_notes[0].text
+            assert meta['from'] == 'local' and meta['to'] == 'grok-chat'
+            assert meta['error_kind'] == 'incomplete_response'
             assert len(received) == 2 and len(grok.calls) == 1
 
 
@@ -99,7 +107,6 @@ def test_exhausted_empty_answers_surface_the_outage_without_failover(tmp_path):
     with fake_http_server([(200, EMPTY), (200, EMPTY)]) as (url, received):
         manager, grok, record = manager_over_loopback(tmp_path, url, failover_on=False)
         with manager:
-            ensure_session(manager, record)
             session = ensure_session(manager, record)
             slug = session['slug']
             manager.submit(slug, 'Hello')
