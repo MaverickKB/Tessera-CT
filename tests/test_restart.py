@@ -444,15 +444,15 @@ def test_legacy_queued_turn_resumes_without_origin_fields(tmp_path):
         assert any(message.text == 'Recovered' for message in manager.get(slug).log.iter())
 
 
-def test_goblin_session_reuses_directory_without_metadata(tmp_path):
+def test_session_reuses_directory_without_metadata(tmp_path):
     config = session_config(tmp_path)
     with SessionManager(config, backend_factory=lambda *args: FakeBackend([])) as manager:
-        directory = tmp_path / 'sessions' / 'goblin-orphan'
+        directory = tmp_path / 'sessions' / 'orphan'
         directory.mkdir()
         marker = directory / 'existing.txt'
         marker.write_text('keep', encoding='utf-8')
-        result = manager.ensure_bot('goblin-orphan', 'Orphan', goblin_id='orphan')
-        assert result['slug'] == 'goblin-orphan'
+        result = manager.ensure('orphan', 'Orphan')
+        assert result['slug'] == 'orphan'
         assert marker.read_text(encoding='utf-8') == 'keep'
 
 

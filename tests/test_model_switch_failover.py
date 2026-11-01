@@ -5,8 +5,6 @@ from fake_backend import FakeBackend, fake_http_server
 from test_loop import session_config
 from tessera.backend import Backend, BackendError
 from tessera.config import BackendConfig, Config
-from tessera.goblin_sessions import ensure_session, session_options
-from tessera.goblins import GoblinStore
 from tessera.sessions import SessionManager
 
 
@@ -45,7 +43,6 @@ def manager_over_loopback(tmp_path, url, failover_on=True):
     objects with different names, as failover requires.
     """
     config = session_config(tmp_path)
-    config.goblins.enabled = True
     config.backends = {
         'local': BackendConfig(name='local', base_url=url, model='test-empty'),
         'grok-chat': BackendConfig(name='grok-chat', base_url='https://api.example.com/v1', model='grok-test'),
@@ -53,13 +50,9 @@ def manager_over_loopback(tmp_path, url, failover_on=True):
     config.roles = {'main': 'local', **({'failover': 'grok-chat'} if failover_on else {})}
     grok = FakeBackend(['Answered by the failover model.'] * 4)
     local = Backend('local', url, 'test-empty', extra={'retries': 1, 'retry_delay': 0})
-    store = GoblinStore(tmp_path / 'goblins.json')
-    record = store.create(name='Cog')
-    options = session_options(store, config)
     backends = {'local': local, None: local, 'grok-chat': grok}
-    manager = SessionManager(config, backend_factory=lambda slug, name: backends[name],
-                             session_options=options)
-    return manager, grok, record
+    manager = SessionManager(config, backend_factory=lambda slug, name: backends[name])
+    return manager, grok
 
 
 EMPTY = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
@@ -69,34 +62,13 @@ def note_messages(manager, slug):
     return [m for m in manager.get(slug).log.iter() if m.kind == 'note']
 
 
-def test_a_goblin_turn_completes_after_exhausted_empty_answers(tmp_path):
-    with fake_http_server([(200, EMPTY), (200, EMPTY)]) as (url, received):
-        manager, grok, record = manager_over_loopback(tmp_path, url)
-        with manager:
-            session = ensure_session(manager, record)
-            slug = session['slug']
-            manager.submit(slug, 'Hello')
-            assert manager.wait(slug, 5)
-            log = manager.get(slug).log
-            assert [m.text for m in log.iter() if m.kind == 'agent'][-1] == 'Answered by the failover model.'
-            failover_notes = [m for m in note_messages(manager, slug)
-                              if m.meta.get('label') == 'failover']
-            assert len(failover_notes) == 1
-            meta = failover_notes[0].meta
-            assert 'local unavailable; used grok-test.' in failover_notes[0].text
-            assert meta['from'] == 'local' and meta['to'] == 'grok-chat'
-            assert meta['error_kind'] == 'incomplete_response'
-            assert len(received) == 2 and len(grok.calls) == 1
-
-
 def test_a_refusal_is_not_an_empty_answer_and_does_not_fail_over(tmp_path):
     refusal = {"choices": [{"message": {"content": "I will not."},
                             "finish_reason": "content_filter"}]}
     with fake_http_server([(200, refusal)]) as (url, received):
-        manager, grok, record = manager_over_loopback(tmp_path, url)
+        manager, grok = manager_over_loopback(tmp_path, url)
         with manager:
-            session = ensure_session(manager, record)
-            slug = session['slug']
+            slug = manager.create('Notes')['slug']
             manager.submit(slug, 'Hello')
             manager.wait(slug, 5)
             assert not grok.calls and len(received) == 1
@@ -105,10 +77,9 @@ def test_a_refusal_is_not_an_empty_answer_and_does_not_fail_over(tmp_path):
 
 def test_exhausted_empty_answers_surface_the_outage_without_failover(tmp_path):
     with fake_http_server([(200, EMPTY), (200, EMPTY)]) as (url, received):
-        manager, grok, record = manager_over_loopback(tmp_path, url, failover_on=False)
+        manager, grok = manager_over_loopback(tmp_path, url, failover_on=False)
         with manager:
-            session = ensure_session(manager, record)
-            slug = session['slug']
+            slug = manager.create('Notes')['slug']
             manager.submit(slug, 'Hello')
             manager.wait(slug, 5)
             assert not grok.calls and len(received) == 2
