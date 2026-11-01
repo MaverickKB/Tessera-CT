@@ -17,7 +17,7 @@ from dataclasses import replace
 
 from .backend import Backend, BackendError
 from .capture import Capture
-from .compactor import Compactor
+from .compactor import COMPACTOR_SYSTEM_PROMPT, Compactor
 from .config import load_config
 from .hooks import HookBus
 from .jev import JevRouter
@@ -31,6 +31,7 @@ from .remote import register_remote_tools
 from .skills import Shelf, append_shelf_note, register_skill_tools
 from .tree import SummaryTree
 from .view import View
+from .gitutil import git_dir
 
 INTERRUPT_REPLIES = {'user': 'Interrupted by the user.', 'restart': 'Interrupted by a core restart.'}
 
@@ -184,7 +185,6 @@ class Session:
                 configure_tools(self.tools)
             self.companion_identity = self._identity()
             from .companions import Companions
-            from .mcp_client import McpClient
             paused = (self.config.home / 'run' / 'companions-paused.json').exists()
             # Companions serve the resident session only; subagents never dial them.
             self.companions = Companions(self.config if depth == 0 else _companions_off(self.config),
@@ -208,10 +208,17 @@ class Session:
             guidance = self._guidance()
             if guidance:
                 self.system_prompt += '\n' + guidance + '\n'
-            if compactor_backend is None and not injected_backend and 'compactor' in self.config.roles:
+            if compactor_backend is None and not injected_backend and self.config.backends:
+                # Always resolve a compactor model. A config that omits the role used
+                # to build a compactor with no backend, so every summary was an
+                # extractive prefix instead of a written one, silently. backend_for
+                # falls back to the main role, which is the right model for this.
                 compactor_backend = self._backend('compactor')
             settings = self.config.compactor
-            self.compactor = Compactor(self.tree, self.view, compactor_backend, self.system_prompt, self.tools.schemas(),
+            # The compactor gets a short summarizer instruction, not the session
+            # prompt: a session's persona, roster and rules add tens of kilobytes to
+            # every summary and none of it helps.
+            self.compactor = Compactor(self.tree, self.view, compactor_backend, COMPACTOR_SYSTEM_PROMPT, self.tools.schemas(),
                                        workers=settings.workers, retries=settings.retries, context_bytes=settings.context_bytes,
                                        judge_threshold=settings.judge_threshold,
                                        judge=self.router.compaction_judge if settings.judge_enabled else None,
@@ -409,22 +416,7 @@ class Session:
 
     @staticmethod
     def _git_dir(cwd):
-        path = Path(cwd) / '.git'
-        try:
-            if path.is_dir():
-                return path
-            if path.is_file():
-                text = path.read_text(encoding='utf-8', errors='replace').strip()
-                if text.startswith('gitdir:'):
-                    raw = text.split(':', 1)[1].strip()
-                    located = Path(raw)
-                    if not located.is_absolute():
-                        located = (path.parent / located).resolve()
-                    if located.is_dir():
-                        return located
-        except OSError:
-            return None
-        return None
+        return git_dir(cwd)
 
     @staticmethod
     def _read_head(git_dir):
@@ -755,6 +747,8 @@ class Session:
             # A length-capped answer is a failed response, not a refusal: a reasoning model can spend
             # the whole token ceiling thinking and return no content at all (GLM-5.3-Flash through
             # a router route loses live turns this way). Re-ask on the failover model.
+            # An empty completed answer takes the same path: the model returned no
+            # text and no tool calls, so the turn is lost unless another model answers.
             return True
         return exc.kind == 'http' and type(exc.http_status) is int and 500 <= exc.http_status <= 599
 
@@ -1057,8 +1051,12 @@ class Session:
         return getattr(getattr(self, 'capture', None), 'client', None) is not None
 
     def _start_compactor(self):
-        if self._memory_confirmed() and getattr(self, 'compactor', None) is not None:
-            self.compactor.start()
+        # Compaction is not conditional. It needs the model backend, not memory, so
+        # it starts with the runtime. Waiting for a turn to confirm memory left an
+        # idle session with no summaries until someone spoke to it.
+        compactor = getattr(self, 'compactor', None)
+        if compactor is not None:
+            compactor.start()
 
     def run_turn(self, message, turn_meta=None):
         with self._turn_lock:
@@ -1089,7 +1087,11 @@ class Session:
             self._pinned_skills = []
             # Render before appending: the current user message appears exactly once.
             snapshot_count = self.log.count()
-            gist = self.view.render()
+            # The view is the conversation, and the prompt carries it up to the
+            # settle budget. Past that the newest window is sent and the older
+            # spans stay zoomable, so a session cannot grow its prompt without
+            # bound while compaction catches up.
+            gist = self.view.prompt_render(self.config.view.low_bytes)
             attached = self.turn_meta.pop('attachments', None) or []
             user_meta = {'turn': self.turn, 'session_id': self.session_id, **self.turn_meta}
             if attached:

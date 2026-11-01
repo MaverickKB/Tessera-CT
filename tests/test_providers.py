@@ -8,6 +8,29 @@ import threading
 import pytest
 
 from tessera.backend import Backend, BackendError
+from tessera.providers import (AnthropicMessagesAdapter, ChatCompletionsAdapter,
+                               EmptyResponse, ResponsesAdapter)
+
+
+def test_responses_encodes_image_parts_without_changing_chat_completions():
+    data_url = "data:image/png;base64,aGVsbG8="
+    messages = [
+        {"role": "user", "content": "Look at this"},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Screenshot"},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ]},
+    ]
+
+    responses = ResponsesAdapter().encode("model", messages, [], {})
+    assert responses["input"][0]["content"] == "Look at this"
+    assert responses["input"][1]["content"] == [
+        {"type": "input_text", "text": "Screenshot"},
+        {"type": "input_image", "image_url": data_url},
+    ]
+
+    chat = ChatCompletionsAdapter().encode("model", messages, [], {})
+    assert chat["messages"] == messages
 
 
 @contextmanager
@@ -18,6 +41,14 @@ def provider_server(script):
         def do_POST(self):
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             received.append({"path": self.path, "headers": dict(self.headers), "body": payload})
+            if not pending:
+                # An unscripted request is a fixture bug. Answering 200 with an empty
+                # body hid it behind the client's "invalid provider response".
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "provider script exhausted"}).encode())
+                return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -33,6 +64,17 @@ def provider_server(script):
         server.shutdown()
         server.server_close()
         worker.join()
+
+
+class SummarizingBackend:
+    """A compactor backend that always answers, so it never eats a turn's script."""
+
+    def __init__(self):
+        self.calls = []
+
+    def chat(self, messages, tools=None, **kwargs):
+        self.calls.append(messages)
+        return {"content": "Summary of the turn."}
 
 
 TOOLS = [{"type": "function", "function": {"name": "lookup", "description": "Look up an item",
@@ -139,7 +181,13 @@ account = "work"
 api_version = "2023-06-01"
 max_tokens = 64
 ''')
-        with Session(load_config(tmp_path), configure_tools=configure) as session:
+        # The session always carries a compactor, and this config names no compactor
+        # backend, so it would fall back to the main URL and eat the scripted answer.
+        # Give the compactor its own always-answering backend: the scripted server then
+        # carries exactly the turn's two provider calls.
+        compactor = SummarizingBackend()
+        with Session(load_config(tmp_path), configure_tools=configure,
+                     compactor_backend=compactor) as session:
             assert session.run_turn("lookup example") == "Found."
             assert session.last_turn_success is True
         assert len(received) == 2
@@ -252,3 +300,34 @@ def test_waiting_snapshot_survives_reconnect_without_heartbeat_reset(tmp_path):
     assert snapshot["status"] == "Waiting upstream"
     assert snapshot["at"] == "2026-10-22T07:00:00+00:00"
     assert snapshot["thought"] == snapshot["text"] == ""
+
+
+def test_an_empty_completed_answer_is_an_incomplete_response_not_a_parse_error():
+    """A completed answer with no text and no tool calls is a failed turn.
+
+    Measured in the live home on 2026-10-31: 55 turns died with 'Provider
+    completed without text or tool calls'. It was raised as a plain ValueError,
+    so the backend classified it as kind='parse' — no retry, and the turn loop's
+    failover did not accept it. Both adapters now raise EmptyResponse, which the
+    backend maps to kind='incomplete_response', the kind failover already takes.
+    """
+    responses = {"status": "completed", "output": [], "usage": {}}
+    with pytest.raises(EmptyResponse, match="without text or tool calls"):
+        ResponsesAdapter().decode(responses)
+
+    anthropic = {"type": "message", "role": "assistant", "stop_reason": "end_turn",
+                 "content": [], "usage": {}}
+    with pytest.raises(EmptyResponse, match="without text or tool calls"):
+        AnthropicMessagesAdapter().decode(anthropic)
+
+
+def test_an_empty_answer_reaches_the_backend_as_a_failed_response(monkeypatch):
+    monkeypatch.setenv("EXAMPLE_PROVIDER_KEY", "synthetic-provider-secret")
+    empty = {"id": "response-1", "status": "completed", "output": [], "usage": {}}
+    with provider_server([empty, empty]) as (url, received):
+        backend = Backend("empty", url, "example-model", "EXAMPLE_PROVIDER_KEY",
+                          {"provider_kind": "openai_responses", "retries": 1})
+        with pytest.raises(BackendError) as raised:
+            backend.chat([{"role": "user", "content": "Answer this"}], tools=[])
+    assert raised.value.kind == "incomplete_response"
+    assert len(received) == 2

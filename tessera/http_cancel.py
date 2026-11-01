@@ -9,6 +9,28 @@ class CancelledIO(RuntimeError):
     pass
 
 
+def _host_and_port(host, default_port):
+    """Split the ``name:port`` string http.client hands the transport."""
+    if host.startswith('['):
+        end = host.find(']')
+        name = host[1:end]
+        rest = host[end + 1:]
+        if rest.startswith(':'):
+            return name, int(rest[1:])
+        return name, default_port
+    if ':' in host:
+        name, _, text = host.rpartition(':')
+        return name, int(text)
+    return host, default_port
+
+
+def _pinned_connector(address, port):
+    """A create_connection stand-in that only ever dials the vetted address."""
+    def create_connection(ignored_address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+        return socket.create_connection((address, port), timeout, source_address)
+    return create_connection
+
+
 class _CancelHTTP(request.HTTPHandler):
     def __init__(self, transport):
         super().__init__()
@@ -28,9 +50,11 @@ class _CancelHTTPS(request.HTTPSHandler):
 
 
 class CancellableHTTP:
-    def __init__(self, *handlers):
+    def __init__(self, *handlers, vet_host=None):
         self._cancelled = threading.Event()
         self.cancel_event = None
+        # Optional callable(name, port) -> address. It must raise ValueError to refuse.
+        self.vet_host = vet_host
         self.response = None
         self._connections = set()
         self._connection_lock = threading.Lock()
@@ -45,7 +69,15 @@ class CancellableHTTP:
 
     def _connection(self, kind, host, **options):
         self.check_cancelled()
+        pinned = None
+        if self.vet_host is not None:
+            name, port = _host_and_port(host, kind.default_port)
+            pinned = self.vet_host(name, port)
         connection = kind(host, **options)
+        if pinned is not None:
+            # The connection still carries the real hostname for the Host header
+            # and for TLS server_hostname; only the socket address is pinned.
+            connection._create_connection = _pinned_connector(pinned, connection.port)
         original_connect = connection.connect
 
         def connect():

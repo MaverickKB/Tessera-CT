@@ -32,9 +32,10 @@ from .floor_signals import (
     session_rows, timer_rows,
 )
 from .learning import LearningStore, intention_titles, OPEN
-from .systems import due_endpoints, host_thresholds, thresholds_by_ordinal
+from .systems import due_endpoints, thresholds_by_ordinal
 from .remote import ssh_argv
 from .tools import object_schema, AUTO_APPROVE
+from .durability import write_json_atomic
 
 TASK_FINAL = ('done', 'failed', 'stopped', 'timed_out', 'lost')
 PRESENCE_STATES = ('arrive', 'here', 'leave', 'typing')
@@ -360,7 +361,7 @@ def record_judgment(home, key, **fields):
         facts = {}
     facts[key] = {'at': time.time(), **fields}
     saved['facts'] = facts
-    _atomic_json(path, saved)
+    write_json_atomic(path, saved)
     return {'recorded': True, 'key': key}
 
 
@@ -391,39 +392,6 @@ def recent_chat(home, slug, limit=4, operator='the operator'):
     return kept[-limit:]
 
 
-def recent_notes(client, project, limit=3):
-    """Short AetherMind notes. A cover, not a verified fact, and never the whole tree."""
-    if client is None or not project:
-        return []
-    try:
-        result = client.read_layers(project, last_n=limit)
-    except Exception:
-        return ['AetherMind notes unavailable.']
-    # read_layers returns immutable history, so an archived layer arrives with
-    # no self-signal. Showing one as a current note tells the floor about
-    # something that was deliberately retired.
-    result = drop_superseded(result)
-    layers = result.get('layers') if isinstance(result, dict) else result
-    if not isinstance(layers, list):
-        return []
-    lines = []
-    for layer in layers[:limit]:
-        if not isinstance(layer, dict):
-            continue
-        body = str(layer.get('body') or '').replace('\n', ' ').strip()
-        if body:
-            lines.append(body[:200])
-    return lines
-
-
-def _atomic_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + '.tmp')
-    with temporary.open('w', encoding='utf-8') as stream:
-        json.dump(data, stream, ensure_ascii=False, indent=1, sort_keys=True)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
 
 
 def _home_path(home, value):
@@ -452,7 +420,7 @@ class Autonomy:
         self._stopping = False
         self.state = {'timers': {}, 'tasks': {}, 'held': {}, 'wakes': [], 'presence': {}, 'subscriptions': {},
                       'capped': None, 'approvals': {}, 'awareness': {}, 'deferred': {}, 'self_prompt_at': {},
-                      'suppress': {}, 'coordination_at': {}, 'reflection_at': {},
+                      'suppress': {}, 'suppress_lane': {}, 'coordination_at': {}, 'reflection_at': {},
                       # The compose path creates these lazily with setdefault(), and the
                       # load loop below only restores keys that are already in this dict.
                       # A key missing here is written to disk by _save() and silently
@@ -483,6 +451,7 @@ class Autonomy:
                                       clock=lambda: self.clock())
         self.learning.floor_slug = self.settings.infinity_slug
         self._intentions_at = 0.0
+        self._tick_failure = ''
         self.thread = None
 
     def start(self):
@@ -493,7 +462,7 @@ class Autonomy:
             self.thread.start()
 
     def _save(self):
-        _atomic_json(self.path, self.state)
+        write_json_atomic(self.path, self.state)
 
     def _check_slug(self, slug):
         self.manager.path(slug)
@@ -1234,7 +1203,26 @@ class Autonomy:
             try:
                 self.tick()
             except Exception as error:
-                print(f'autonomy: tick failed ({type(error).__name__}: {error})', file=sys.stderr, flush=True)
+                self._note_tick_failure(error)
+            else:
+                self._clear_tick_failure()
+
+    def _note_tick_failure(self, error):
+        """A tick that fails the same way every tick is one line, not one per tick.
+
+        A missing backend makes every tick fail identically. Printing each one
+        buried the first, which is the only one that says what to fix. The line
+        is printed on the first failure and again only when the failure's own
+        text changes; success clears it so a real recurrence is still reported.
+        """
+        detail = type(error).__name__ + ': ' + str(error)
+        if self._tick_failure == detail:
+            return
+        self._tick_failure = detail
+        print('autonomy: tick failed (' + detail + ')', file=sys.stderr, flush=True)
+
+    def _clear_tick_failure(self):
+        self._tick_failure = ''
 
     def status(self):
         now = self.clock()
@@ -1731,13 +1719,36 @@ class Autonomy:
             return 'hold:already_queued'
         return ''
 
-    def _note_suppress(self, slug, reason):
-        previous = (self.state.get('suppress') or {}).get(slug)
-        if previous == reason:
+    def _note_suppress(self, slug, reason, lane='self_prompt'):
+        """Record one lane's reason for not waking this slug, and print it once.
+
+        Two lanes suppress the same slug: the agenda loop arms `self_prompt` and
+        `reflection`, and the floor loop reports `busy` or `operator_stopped`.
+        While both compared against one per-slug slot, every tick flipped the
+        stored reason between them, so the change check never held and the line
+        was printed on every tick -- 85k lines in one home's core.out. The memo
+        is per lane; `suppress` keeps the latest reason for status and the UI.
+        """
+        memo = self.state.setdefault('suppress_lane', {})
+        key = lane + ':' + slug
+        if memo.get(key) == reason:
             return
+        memo[key] = reason
         self.state.setdefault('suppress', {})[slug] = reason
-        print(f'autonomy: suppressing self_prompt for {slug} ({reason})', file=sys.stderr, flush=True)
+        print(f'autonomy: suppressing {lane} for {slug} ({reason})', file=sys.stderr, flush=True)
         self._save()
+
+    def _clear_suppress(self, slug, lane='self_prompt'):
+        """This lane is due again. Drop its memo, and the shared row if it is alone."""
+        memo = self.state.setdefault('suppress_lane', {})
+        memo.pop(lane + ':' + slug, None)
+        still_suppressed = False
+        for key in memo:
+            if key.endswith(':' + slug):
+                still_suppressed = True
+                break
+        if not still_suppressed:
+            self.state.setdefault('suppress', {}).pop(slug, None)
 
     def _intention_tool_name(self, runtime):
         try:
@@ -1787,12 +1798,14 @@ class Autonomy:
             return ''
         return slug
 
-    def _arm_or_post(self, slug, now, body, last_map, gap, kind='self_prompt', rules=None):
+    def _arm_or_post(self, slug, now, body, last_map, gap, kind='self_prompt', rules=None,
+                     lane=None):
+        lane = lane or kind
         reason = self._suppress_reason(slug, now, kind)
         if reason:
-            self._note_suppress(slug, reason)
+            self._note_suppress(slug, reason, lane=lane)
             return
-        self.state.setdefault('suppress', {}).pop(slug, None)
+        self._clear_suppress(slug, lane=lane)
         last = last_map.get(slug)
         if last is None:
             last_map[slug] = now
@@ -1842,7 +1855,7 @@ class Autonomy:
                     self._note_suppress(slug, 'answerable')
                     settled_answerable.append(slug)
                 else:
-                    self.state.setdefault('suppress', {}).pop(slug, None)
+                    self._clear_suppress(slug)
                 continue
             body = 'Standing agenda is due.\n' + '\n'.join(text_lines)
             posted = self._arm_or_post(slug, now, body, last_map, gap)
@@ -1937,7 +1950,8 @@ class Autonomy:
             return
         runtime = self.manager._runtimes.get(floor_slug)
         if runtime is not None and (runtime.operator_stopped or not runtime.idle()):
-            self._note_suppress(floor_slug, 'operator_stopped' if runtime.operator_stopped else 'busy')
+            self._note_suppress(floor_slug, 'operator_stopped' if runtime.operator_stopped else 'busy',
+                                lane='floor')
             return
         brief = {}
         if self.manager.config.board.enabled:
@@ -1975,7 +1989,8 @@ class Autonomy:
         last_map = self.state.setdefault(kind + '_at', {})
         if kind != 'reflection':
             last_map.setdefault(floor_slug, now - gap)
-        posted = self._arm_or_post(floor_slug, now, text, last_map, gap, kind=kind, rules=causing)
+        posted = self._arm_or_post(floor_slug, now, text, last_map, gap, kind=kind, rules=causing,
+                                   lane='floor')
         if posted:
             self.state['pressure_seen'] = pressure_seen(
                 report, now, thresholds=self._thresholds(), definition=definition,

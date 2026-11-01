@@ -82,7 +82,9 @@ def test_offline_capture_marks_correction_and_records_evidence_even_low_keep(tmp
     hooks.emit("turn_end", {"reply": "Done, tests passed.", "success": True})
     layer = capture.debt()[0]["layer"]
     assert layer["type"] == "correction" and "!" in layer["markers"]
-    assert "Decision: correction" in layer["body"]
+    # The turn's tool failed, so the body files it as a failure; the judge's
+    # correction type and markers stay on the layer.
+    assert "Decision: failure" in layer["body"]
     assert "Reply claimed success while a tool failed." in layer["body"]
     assert "Output verification" not in layer["body"] and "claims_done_but_failed" not in layer["body"]
     hooks.emit("turn_start", {"message": "Thanks"})

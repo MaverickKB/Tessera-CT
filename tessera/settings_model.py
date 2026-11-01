@@ -13,7 +13,7 @@ from .config import PROVIDER_KINDS, Config, load_config, offered_for_chat
 from .credentials import CredentialResolver, KeychainStore
 from .floor_definition import FloorDefinitionError, peek_world_view, save_definition, staged_world_view
 from .systems import SYSTEM_KINDS
-from .settings_ladder import ladder, credential_source, binding_source
+from .settings_ladder import ladder, credential_source
 from .speech_services import (DUPLEX_PROVIDERS, SpeechProbeError, connection_for,
                               duplex_connections, probe_models, probe_voices)
 from .voice import pipes as voice_pipes, selected_pipe as voice_selected_pipe
@@ -3060,9 +3060,33 @@ def _read_path(config, path):
     return node
 
 
+def _report_value(value, name=''):
+    """A config value as the reply may carry it: plain data, no secrets.
+
+    A table path can resolve to a dataclass record, which json.dumps refuses.
+    The reply only reports, so it carries the record's plain fields. A leaf whose
+    key is secret-shaped is reported as a marker, never as the value.
+    """
+    if isinstance(value, dict):
+        plain = {}
+        for key, child in value.items():
+            plain[key] = _report_value(child, key)
+        return plain
+    if isinstance(value, list):
+        return [_report_value(item, name) for item in value]
+    if hasattr(value, '__dataclass_fields__'):
+        return _report_value(asdict(value), name)
+    if is_secret_name(name):
+        return 'set' if value not in (None, '') else value
+    return value
+
+
 def _row(config, path):
     value = _read_path(config, path)
-    return {'value': None if value is _MISSING else value, 'present': value is not _MISSING}
+    if value is _MISSING:
+        return {'value': None, 'present': False}
+    name = path[-1] if path else ''
+    return {'value': _report_value(value, name), 'present': True}
 
 
 def pending_edits(manager, edits):

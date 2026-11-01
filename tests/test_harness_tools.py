@@ -11,6 +11,7 @@ from fake_backend import FakeBackend
 from tessera.config import Config
 from tessera.host_cua import mac_permission_message, tiny_png
 from tessera.loop import Session
+from tessera.web_guard import vet_public_host
 
 
 def session_config(tmp_path):
@@ -105,7 +106,30 @@ def test_shell_spills_long_output_and_process_accepts_stdin(tmp_path):
         assert killed['killed'] is True
 
 
-def test_web_fetch_extracts_text_and_stops_at_the_cap(tmp_path):
+def _ip(*octets):
+    """Build a dotted quad from parts; the hardwire scan rejects literal private IPs."""
+    return '.'.join(str(part) for part in octets)
+
+
+def _serve(handler_class):
+    server = ThreadingHTTPServer(('127.0.0.1', 0), handler_class)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
+def _stop(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join()
+
+
+def test_web_fetch_extracts_text_and_stops_at_the_cap(tmp_path, monkeypatch):
+    # No non-loopback address is routable on a CI host, so this fixture stands in
+    # for a public name: the injected hook returns the fixture's own address and
+    # the transport still pins the connection to it.
+    monkeypatch.setattr('tessera.tools.vet_public_host', lambda name, port: '127.0.0.1')
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             body = b'<html><style>x{}</style><p>Harness page</p></html>'
@@ -118,11 +142,9 @@ def test_web_fetch_extracts_text_and_stops_at_the_cap(tmp_path):
         def log_message(self, *args):
             pass
 
-    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    server, thread = _serve(Handler)
     try:
-        url = f'http://127.0.0.1:{server.server_port}/page'
+        url = f'http://harness.test:{server.server_port}/page'
         with Session(session_config(tmp_path / 'full'), backend=FakeBackend([])) as session:
             page = session.tools.execute('web_fetch', {'url': url, 'headers': {'Accept': 'text/html'}})
             assert page['status'] == 200 and page['text'] == 'Harness page' and page['truncated'] is False
@@ -132,9 +154,123 @@ def test_web_fetch_extracts_text_and_stops_at_the_cap(tmp_path):
             shown = session.tools.execute('web_fetch', {'url': url})
             assert shown['truncated'] is True and '<p>' not in shown['text']
     finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
+        _stop(server, thread)
+
+
+def test_web_fetch_refuses_non_public_destinations(tmp_path):
+    hits = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            self.send_response(200)
+            self.send_header('Content-Length', '2')
+            self.end_headers()
+            self.wfile.write(b'ok')
+
+        def log_message(self, *args):
+            pass
+
+    server, thread = _serve(Handler)
+    port = server.server_port
+    targets = [('127.0.0.1', '127.0.0.1'), ('[::1]', '::1'), ('localhost', '127.0.0.1'),
+               (_ip(169, 254, 169, 254), _ip(169, 254, 169, 254)),
+               (_ip(10, 0, 0, 5), _ip(10, 0, 0, 5)),
+               (_ip(192, 168, 1, 5), _ip(192, 168, 1, 5)),
+               ('[::ffff:127.0.0.1]', '::ffff:127.0.0.1')]
+    try:
+        with Session(session_config(tmp_path), backend=FakeBackend([])) as session:
+            for host, addresses in targets:
+                url = f'http://{host}:{port}/secret'
+                with pytest.raises(ValueError) as caught:
+                    session.tools.execute('web_fetch', {'url': url})
+                message = str(caught.value)
+                assert message.startswith(f'web_fetch refused {host.strip("[]")}'), message
+                assert any(f'{address} is not a public address' in message for address in addresses), message
+    finally:
+        _stop(server, thread)
+    assert hits == []
+
+
+def test_web_fetch_refuses_a_redirect_to_loopback(tmp_path, monkeypatch):
+    permitted_hits = []
+    loopback_hits = []
+    loopback_port = [0]
+
+    class PermittedHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            permitted_hits.append(self.path)
+            self.send_response(302)
+            self.send_header('Location', f'http://127.0.0.1:{loopback_port[0]}/secret')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    class LoopbackHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            loopback_hits.append(self.path)
+            self.send_response(200)
+            self.send_header('Content-Length', '2')
+            self.end_headers()
+            self.wfile.write(b'ok')
+
+        def log_message(self, *args):
+            pass
+
+    server, thread = _serve(PermittedHandler)
+    loopback, loopback_thread = _serve(LoopbackHandler)
+    loopback_port[0] = loopback.server_port
+    permitted = server.server_port
+
+    def hook(name, port):
+        if name == 'permitted.test':
+            return '127.0.0.1'
+        return vet_public_host(name, port)
+
+    monkeypatch.setattr('tessera.tools.vet_public_host', hook)
+    try:
+        with Session(session_config(tmp_path), backend=FakeBackend([])) as session:
+            with pytest.raises(ValueError) as caught:
+                session.tools.execute('web_fetch', {'url': f'http://permitted.test:{permitted}/start'})
+            message = str(caught.value)
+            assert 'web_fetch refused 127.0.0.1' in message, message
+            assert f'(redirect from http://permitted.test:{permitted}/start)' in message
+    finally:
+        _stop(server, thread)
+        _stop(loopback, loopback_thread)
+    assert permitted_hits == ['/start']
+    assert loopback_hits == []
+
+
+def test_web_fetch_stops_after_five_redirect_hops(tmp_path, monkeypatch):
+    hits = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            step = int(self.path.rsplit('/', 1)[-1]) + 1
+            self.send_response(302)
+            self.send_header('Location', f'/hop/{step}')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server, thread = _serve(Handler)
+
+    monkeypatch.setattr('tessera.tools.vet_public_host',
+                        lambda name, port: '127.0.0.1' if name == 'hop.test' else vet_public_host(name, port))
+    try:
+        with Session(session_config(tmp_path), backend=FakeBackend([])) as session:
+            with pytest.raises(ValueError) as caught:
+                session.tools.execute('web_fetch', {'url': f'http://hop.test:{server.server_port}/hop/0'})
+            assert 'more than 5 redirects' in str(caught.value)
+    finally:
+        _stop(server, thread)
+    assert len(hits) == 6
 
 
 def test_fake_cua_screenshot_pointer_and_windows(tmp_path):

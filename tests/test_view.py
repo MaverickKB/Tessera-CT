@@ -8,6 +8,23 @@ from tessera.tree import SummaryTree
 from tessera.view import View
 
 
+def test_a_damaged_tree_line_is_skipped_instead_of_refusing_to_open(tmp_path):
+    """The tree is derived data: a damaged node is rebuilt, never fatal.
+
+    A terminated line that cannot be decoded used to raise, which stopped the core
+    from serving any session. The log still holds the message, so the node rebuilds.
+    """
+    with ChatLog(tmp_path / "log") as log:
+        SummaryTree(tmp_path / "tree-home", log, node_bytes=64)
+        log.append("user", "hello there")
+    damaged = tmp_path / "tree-home" / "tree" / "0.jsonl"
+    damaged.write_bytes(b'{"level": 0, "index": 0, "text": "bad \\xff\\xfe"}\n')
+    with ChatLog(tmp_path / "log") as log:
+        tree = SummaryTree(tmp_path / "tree-home", log, node_bytes=64)
+        # The damaged node rebuilds from the log; the chat still opens.
+        assert tree.node(0, 0) == "hello there"
+
+
 def setup_view(root, **kwargs):
     log = ChatLog(root / 'log')
     tree = SummaryTree(root, log, node_bytes=32)

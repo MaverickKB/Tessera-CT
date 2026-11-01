@@ -7,7 +7,6 @@ One long-lived child per client; it is restarted on the next call if it exits.
 import json
 import os
 import queue
-import signal
 import subprocess
 import threading
 import time

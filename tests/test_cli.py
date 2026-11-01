@@ -75,7 +75,8 @@ def test_init_does_not_overwrite_config_and_missing_backend_is_actionable(tmp_pa
 
 def test_cli_delegation_prints_completed_background_report(tmp_path):
     response = {'choices': [{'message': {'content': 'Actual delegated result: alpha-123'}}]}
-    with FakeMcpServer(dialect='path') as memory, fake_http_server([(200, response)]) as (url, received):
+    # Spares cover the session compactor's own calls; the queue must not run dry.
+    with FakeMcpServer(dialect='path') as memory, fake_http_server([(200, response)] * 3) as (url, received):
         # Safe mode allows one request on a local model and the chat holds it.
         # The hand-set 2 leaves a slot for the delegated worker.
         (tmp_path / 'config.toml').write_text(
@@ -88,9 +89,13 @@ def test_cli_delegation_prints_completed_background_report(tmp_path):
 
 
 def test_cli_chat_two_turns_and_clean_exit(tmp_path):
-    replies = []
-    for text in ('Hello from chat.', 'You are welcome.'):
-        replies.append((200, {'choices': [{'message': {'content': text}}]}))
+    replies = [
+        (200, {'choices': [{'message': {'content': 'Hello from chat.'}}]}),
+        # The session compactor runs between turns; its call takes this slot.
+        (200, {'choices': [{'message': {'content': 'Compacted.'}}]}),
+        (200, {'choices': [{'message': {'content': 'You are welcome.'}}]}),
+        (200, {'choices': [{'message': {'content': 'Compacted.'}}]}),
+    ]
     with FakeMcpServer(dialect='path') as memory, fake_http_server(replies) as (url, received):
         (tmp_path / 'config.toml').write_text(
             f'[backends.test]\nbase_url="{url}"\nmodel="test-model"\n[roles]\nmain="test"\n'
@@ -99,12 +104,18 @@ def test_cli_chat_two_turns_and_clean_exit(tmp_path):
     assert result.returncode == 0, result.stderr
     assert 'Hello from chat.' in result.stdout
     assert 'You are welcome.' in result.stdout
-    assert received[0]['body']['messages'][0] == received[1]['body']['messages'][0]
+    # The compactor's own request rides between the turns; compare the two
+    # actual turn requests, whose newest message is what the operator typed.
+    turn_requests = [r for r in received
+                     if r['body']['messages'][-1]['content'] in ('Hello', 'Thanks')]
+    assert len(turn_requests) == 2
+    assert turn_requests[0]['body']['messages'][0] == turn_requests[1]['body']['messages'][0]
 
 
 def test_cli_named_chat_reuses_persistent_subject(tmp_path):
     response = {'choices': [{'message': {'content': 'Persistent answer'}}]}
-    with FakeMcpServer(dialect='path') as memory, fake_http_server([(200, response), (200, response)]) as (url, received):
+    # Two spares cover each run's compactor call at close.
+    with FakeMcpServer(dialect='path') as memory, fake_http_server([(200, response), (200, response), (200, response), (200, response)]) as (url, received):
         (tmp_path / 'config.toml').write_text(
             f'[backends.test]\nbase_url="{url}"\nmodel="test-model"\n[roles]\nmain="test"\n'
             + memory_table(memory.url))

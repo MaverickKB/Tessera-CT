@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import time
 import uuid
+from .durability import write_json_atomic
 
 
 CLOSED = ('absorbed', 'retired')
@@ -22,15 +23,6 @@ FLOOR = (
     'Quiet time supports independent thought, creative pursuits, exploration and rest.',
 )
 
-
-def _atomic_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + '.tmp')
-    with temporary.open('w', encoding='utf-8') as stream:
-        json.dump(data, stream, ensure_ascii=False, indent=1, sort_keys=True)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
 
 
 def _new_id(prefix, existing):
@@ -204,7 +196,7 @@ class LearningStore:
                 self._intentions = saved['intentions']
 
     def _save(self):
-        _atomic_json(self.path, {
+        write_json_atomic(self.path, {
             'lessons': self._lessons,
             'questions': self._questions,
             'intentions': self._intentions,
@@ -671,13 +663,6 @@ class LearningStore:
             if same and age < hold_seconds:
                 held.append(lesson['id'])
         return held
-
-    def floor_lines(self):
-        """Play, then house. These are harness concepts, not items the model writes."""
-        lines = []
-        for line in FLOOR:
-            lines.append(line)
-        return lines
 
     def context_for(self, slug, message):
         if not message or message.lstrip().startswith('[wake]'):

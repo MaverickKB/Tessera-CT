@@ -68,6 +68,33 @@ def _text(value):
 
 NOTE_TYPES = ("note", "decision", "correction", "lock", "lesson")
 
+NO_OUTCOME = "No separate outcome."
+
+# The prefixes of the lines that carry no content beyond "the command ran":
+# the category, an absent outcome, and the per-tool status list.
+BOILERPLATE_PREFIXES = ("Decision:", "Outcome: " + NO_OUTCOME, "Tools:")
+
+
+def is_turn_log(lines, failed):
+    """True when a turn body says nothing beyond which commands ran.
+
+    The writer asks this before enqueueing a turn layer. Every line of such a
+    body is boilerplate: a category, "Outcome: No separate outcome.", and the
+    tool statuses. That is the shape behind the 823 command-log layers. One
+    line of real content makes the body memory. A failed turn is never
+    dropped, and a skipped turn is named in the turn result so the silence is
+    visible.
+    """
+    if failed:
+        return False
+    for line in lines:
+        text = line.strip()
+        if not text:
+            continue
+        if not text.startswith(BOILERPLATE_PREFIXES):
+            return False
+    return True
+
 
 def _result_as_dict(result):
     """A tool result as a dict. MCP tools often return their JSON object as text."""
@@ -214,6 +241,7 @@ class Capture:
     def turn_end(self, payload):
         payload = self._snapshot(payload)
         collision = None
+        skipped = False
         with self._lock:
             if self._turn_active:
                 reply = _text(payload.get("reply", payload.get("response", "")))
@@ -235,37 +263,53 @@ class Capture:
                 classification = self.judgekit.memory(message, reply, outputs, verification,
                                                        existing_layers=candidates if candidates else None)
                 failed = self._unresolved(payload, verification, outputs, reply)
-                lines, outcome = self._summary_lines(message, reply, outputs, classification, verification, failed)
+                lines, outcome, failed_names = self._summary_lines(
+                    message, reply, outputs, classification, verification, failed)
                 request_id = self._turn_request_id
-                layer = self._layer("\n\n".join(lines), "turn", failed=failed)
+                # A failed turn is kept whatever its category: the failure is the
+                # part nobody can reconstruct later. A turn whose only content is
+                # "a command ran" is a turn log and is not written at all.
+                if is_turn_log(lines, failed):
+                    skipped = True
+                if not skipped:
+                    # Every layer that is written names what changes next, so a
+                    # reader knows what to do with it. The line is added only to
+                    # kept turns: it must not be what makes a turn log look like
+                    # memory.
+                    lines.append(self._next_action_line(reply, failed_names, failed))
+                body = "\n\n".join(lines)
+                layer = self._layer(body, "turn", failed=failed)
                 layer["type"] = classification["layer_type"]
                 if classification.get("is_correction", 0) >= .5 or layer["type"] == "correction":
                     layer["markers"].append("!")
                 # A ref that already holds different content cannot be written.
                 # Recording it as a collision keeps the loss visible: the item
                 # stays in debt, so a lost capture never reads as a clean turn.
-                try:
-                    self._enqueue(request_id, layer)
-                except ValueError:
-                    collision = request_id
-                    # Keep the body. The ref is spent on different content, so the
-                    # item can never be delivered under this request_id, but the
-                    # capture itself must not vanish from the record.
-                    collision_id = request_id + "!collision-" + uuid.uuid4().hex
-                    with self._journal_lock():
-                        self._append({"event": "collision", "request_id": collision_id,
-                                      "item": {"project_id": self.project_id, "request_id": request_id,
-                                               "layer": layer, "created_at": _now(), "attempts": 0,
-                                               "last_error": None,
-                                               "permanent_error": "CaptureCollision"}})
+                if not skipped:
+                    try:
+                        self._enqueue(request_id, layer)
+                    except ValueError:
+                        collision = request_id
+                        # Keep the body. The ref is spent on different content, so the
+                        # item can never be delivered under this request_id, but the
+                        # capture itself must not vanish from the record.
+                        collision_id = request_id + "!collision-" + uuid.uuid4().hex
+                        with self._journal_lock():
+                            self._append({"event": "collision", "request_id": collision_id,
+                                          "item": {"project_id": self.project_id, "request_id": request_id,
+                                                   "layer": layer, "created_at": _now(), "attempts": 0,
+                                                   "last_error": None,
+                                                   "permanent_error": "CaptureCollision"}})
                 self._completed.append({"request_id": request_id, "message": self._bounded(message, 2000),
                                         "reply": self._bounded(outcome, 400), "failed": failed,
-                                        "collision": bool(collision)})
+                                        "collision": bool(collision), "skipped": skipped})
                 self._turn_active = False
         self.retry_outbox()
         result = {"write_debt": len(self.debt())}
         if collision:
             result["lost"] = [collision]
+        if skipped:
+            result["skipped_turn_log"] = [request_id]
         return result
 
     def session_end(self, payload):
@@ -289,7 +333,9 @@ class Capture:
                 continue
             if event.get("error") or event.get("blocked") or event.get("success") is False:
                 tool_failed = True
-            result = event.get("result")
+            # A tool that returns its error as a JSON string is still a failed
+            # call. Reading only dict results let those turns read as finished.
+            result = _result_as_dict(event.get("result"))
             if isinstance(result, dict) and result.get("state") != "no_tree":
                 if result.get("error") or result.get("exit_code", 0) not in (None, 0):
                     tool_failed = True
@@ -313,6 +359,7 @@ class Capture:
         """Decision and outcome only. Raw tool JSON and earlier recall bodies are not stored."""
         recalled = []
         notes = []
+        failed_names = []
         for event in outputs:
             name = event.get("name", "tool")
             if name in self.omit_outcomes:
@@ -330,12 +377,17 @@ class Capture:
             if failed_call:
                 label = self._failure_label(event, result)
                 notes.append(f"{name}: failed" + (f" ({label})" if label else "") + route)
+                failed_names.append(name)
             else:
                 notes.append(f"{name}: ok" + route)
         outcome = self._distill(self._without_recall(reply, recalled))
         if not outcome.strip():
             outcome = "No separate outcome."
         decision = classification.get("layer_type") or "fact"
+        if failed:
+            # A failed turn is filed as a failure. Filing it as "fact" is how a
+            # store ends up full of facts that decided nothing.
+            decision = "failure"
         lines = [f"Decision: {decision}", "Outcome: " + outcome]
         if notes:
             lines.append("Tools: " + "; ".join(notes))
@@ -345,7 +397,27 @@ class Capture:
             lines.append("Reply claimed success while a tool failed.")
         if failed:
             lines.append("Failure recorded during this turn.")
-        return lines, outcome
+        return lines, outcome, failed_names
+
+    def _next_action_line(self, reply, failed_names, failed):
+        """What changes next. A layer that names nothing is a turn log, not memory."""
+        stated = self._stated_next_step(reply)
+        if stated:
+            return "Next: " + stated
+        if failed:
+            if failed_names:
+                return "Next: resolve the " + ", ".join(dict.fromkeys(failed_names)) + " failure before relying on this result."
+            return "Next: the turn failed; retry it before relying on this result."
+        return "Next: nothing changed; this turn closed what it opened."
+
+    @staticmethod
+    def _stated_next_step(text):
+        """The turn's own next-step sentence, when the reply states one."""
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text or ""):
+            match = re.match(r"(?i)\s*(?:the\s+)?next(?:\s+step)?\s*[:,]\s*(.+)", sentence)
+            if match:
+                return " ".join(match.group(1).split())[:200]
+        return ""
 
     def _collect_text(self, value, found):
         if isinstance(value, str):
