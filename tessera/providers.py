@@ -83,8 +83,14 @@ class ChatCompletionsAdapter(ProviderAdapter):
             function = call["function"]
             calls.append({"id": call["id"], "name": function["name"],
                           "arguments": arguments_object(function.get("arguments") or "{}")})
+        finish = choice.get("finish_reason")
+        if not calls and not content and finish not in ("length", "content_filter"):
+            # A completed answer with nothing in it is a failed turn, not a
+            # malformed one. The backend retries it and, once retries are
+            # spent, the turn loop fails over to another model.
+            raise EmptyResponse("Provider completed without text or tool calls")
         result = {"content": content, "tool_calls": calls, "usage": data.get("usage", {}),
-                  "finish_reason": choice.get("finish_reason")}
+                  "finish_reason": finish}
         reasoning = message.get("reasoning_content") or message.get("reasoning")
         if isinstance(reasoning, str) and reasoning:
             result["reasoning"] = reasoning
