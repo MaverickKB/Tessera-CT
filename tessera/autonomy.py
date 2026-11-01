@@ -483,6 +483,7 @@ class Autonomy:
                                       clock=lambda: self.clock())
         self.learning.floor_slug = self.settings.infinity_slug
         self._intentions_at = 0.0
+        self._tick_failure = ''
         self.thread = None
 
     def start(self):
@@ -1234,7 +1235,26 @@ class Autonomy:
             try:
                 self.tick()
             except Exception as error:
-                print(f'autonomy: tick failed ({type(error).__name__}: {error})', file=sys.stderr, flush=True)
+                self._note_tick_failure(error)
+            else:
+                self._clear_tick_failure()
+
+    def _note_tick_failure(self, error):
+        """A tick that fails the same way every tick is one line, not one per tick.
+
+        A missing backend makes every tick fail identically. Printing each one
+        buried the first, which is the only one that says what to fix. The line
+        is printed on the first failure and again only when the failure's own
+        text changes; success clears it so a real recurrence is still reported.
+        """
+        detail = type(error).__name__ + ': ' + str(error)
+        if self._tick_failure == detail:
+            return
+        self._tick_failure = detail
+        print('autonomy: tick failed (' + detail + ')', file=sys.stderr, flush=True)
+
+    def _clear_tick_failure(self):
+        self._tick_failure = ''
 
     def status(self):
         now = self.clock()
@@ -1965,7 +1985,6 @@ class Autonomy:
             self._note_suppress(floor_slug, 'operator_stopped' if runtime.operator_stopped else 'busy',
                                 lane='floor')
             return
-        self._clear_suppress(floor_slug, lane='floor')
         brief = {}
         if self.manager.config.board.enabled:
             brief = self._read_floor('board-brief', self.manager.board_brief, {},

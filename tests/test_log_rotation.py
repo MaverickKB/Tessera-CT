@@ -109,3 +109,26 @@ def test_rotation_is_off_when_the_cap_is_zero(tmp_path):
     log.write_text('x' * 200)
     assert rotate_core_streams(0, 3, fds=())['rotated'] == ''
     assert log.is_file() and not (tmp_path / 'core.log.1').exists()
+
+
+def test_a_repeated_tick_failure_is_reported_once(tmp_path, capsys):
+    """A missing backend made every tick fail identically, one line per tick.
+
+    The first line is the only one that names the fix; the rest buried it. The
+    line repeats only when the failure itself changes or after a success.
+    """
+    from test_autonomy import open_manager
+
+    manager, _slug, _clock, _backend = open_manager(
+        tmp_path, ['quiet'], self_prompt_gap_seconds=0, standing_floor=False)
+    with manager:
+        autonomy = manager.autonomy
+        for _ in range(6):
+            autonomy._note_tick_failure(ValueError('No backend configured for main'))
+        printed = capsys.readouterr().err
+        assert printed.count('tick failed') == 1
+        autonomy._clear_tick_failure()
+        autonomy._note_tick_failure(ValueError('No backend configured for main'))
+        autonomy._note_tick_failure(RuntimeError('something else'))
+        later = capsys.readouterr().err
+        assert later.count('tick failed') == 2
