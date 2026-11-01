@@ -40,6 +40,14 @@ def provider_server(script):
         def do_POST(self):
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             received.append({"path": self.path, "headers": dict(self.headers), "body": payload})
+            if not pending:
+                # An unscripted request is a fixture bug. Answering 200 with an empty
+                # body hid it behind the client's "invalid provider response".
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "provider script exhausted"}).encode())
+                return
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -55,6 +63,17 @@ def provider_server(script):
         server.shutdown()
         server.server_close()
         worker.join()
+
+
+class SummarizingBackend:
+    """A compactor backend that always answers, so it never eats a turn's script."""
+
+    def __init__(self):
+        self.calls = []
+
+    def chat(self, messages, tools=None, **kwargs):
+        self.calls.append(messages)
+        return {"content": "Summary of the turn."}
 
 
 TOOLS = [{"type": "function", "function": {"name": "lookup", "description": "Look up an item",
@@ -161,7 +180,13 @@ account = "work"
 api_version = "2023-06-01"
 max_tokens = 64
 ''')
-        with Session(load_config(tmp_path), configure_tools=configure) as session:
+        # The session always carries a compactor, and this config names no compactor
+        # backend, so it would fall back to the main URL and eat the scripted answer.
+        # Give the compactor its own always-answering backend: the scripted server then
+        # carries exactly the turn's two provider calls.
+        compactor = SummarizingBackend()
+        with Session(load_config(tmp_path), configure_tools=configure,
+                     compactor_backend=compactor) as session:
             assert session.run_turn("lookup example") == "Found."
             assert session.last_turn_success is True
         assert len(received) == 2
