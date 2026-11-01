@@ -99,6 +99,92 @@ def toml_value(value):
     raise ValueError('Unsupported value type')
 
 
+def _value_of(line):
+    """The value on one key line, or None when the line is not a simple key = value."""
+    if '=' not in line or line.lstrip().startswith('#'):
+        return None
+    try:
+        data = tomllib.loads(line)
+    except tomllib.TOMLDecodeError:
+        return None
+    if len(data) != 1:
+        return None
+    return next(iter(data.values()))
+
+
+def _expand_inline_table(lines, path):
+    """Rewrite an inline row at path as real tables, so later edits can find it.
+
+    A file written before dict edits became tables holds lines like
+    `"nous" = {...}` under [backends]. TOML then refuses a [backends.nous]
+    header as a second declaration of the same table, so the inline row is
+    expanded before anything new is written.
+    """
+    path = tuple(path)
+    if not path:
+        return lines
+    for line in lines:
+        match = _HEADER.match(line)
+        if match and _path_of(match.group(1)) == path:
+            return lines
+    parent = path[:-1]
+    start = None
+    for index, line in enumerate(lines):
+        match = _HEADER.match(line)
+        if match and _path_of(match.group(1)) == parent:
+            start = index + 1
+            break
+    if start is None:
+        return lines
+    end = len(lines)
+    for index in range(start, len(lines)):
+        if _HEADER.match(lines[index]):
+            end = index
+            break
+    for index in range(start, end):
+        if _key_of(lines[index]) != path[-1]:
+            continue
+        table = _value_of(lines[index])
+        if not isinstance(table, dict):
+            return lines
+        del lines[index]
+        existing = ''.join(lines)
+        if existing and not existing.endswith('\n'):
+            existing += '\n'
+        return existing.splitlines(keepends=True) + _table_lines(path, table)
+    return lines
+
+
+def _drop_empty_table(text, path):
+    """Remove a header whose section holds no keys and no child headers.
+
+    Expanding an inline row leaves its parent header behind with nothing in it.
+    An empty table is valid TOML, but it is residue from the migration.
+    """
+    path = tuple(path)
+    lines = text.splitlines(keepends=True)
+    start = None
+    for index, line in enumerate(lines):
+        match = _HEADER.match(line)
+        if match and _path_of(match.group(1)) == path:
+            start = index
+            break
+    if start is None:
+        return text
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if _HEADER.match(lines[index]):
+            end = index
+            break
+    for line in lines[start + 1:end]:
+        if line.strip() and not line.lstrip().startswith('#'):
+            return text
+    del lines[start]
+    if start > 0 and not lines[start - 1].strip():
+        del lines[start - 1]
+    return ''.join(lines)
+
+
 def remove_toml_table(text, path):
     """Remove the table at path and every subtable under it. Other lines are kept."""
     path = tuple(path)
@@ -113,12 +199,96 @@ def remove_toml_table(text, path):
     return ''.join(out)
 
 
+def _expand_tables(text, path):
+    """Expand any inline ancestor of path into real tables."""
+    lines = text.splitlines(keepends=True)
+    if text and not text.endswith('\n'):
+        lines[-1] += '\n'
+    for size in range(1, len(path) + 1):
+        lines = _expand_inline_table(lines, path[:size])
+    text = ''.join(lines)
+    for size in range(1, len(path)):
+        text = _drop_empty_table(text, path[:size])
+    return text
+
+
+def _header(path):
+    """A table header, quoting only the names that are not bare keys."""
+    parts = []
+    for part in path:
+        if _BARE.match(part):
+            parts.append(part)
+        else:
+            parts.append(_quote(part))
+    return '.'.join(parts)
+
+
+def _table_lines(path, table):
+    """Render a dict as real TOML tables, one header per level.
+
+    An inline table written under an existing header cannot be found again by a
+    later edit: that edit looks for a header that was never written, so it
+    appends a second declaration of the same table and TOML refuses the file.
+    Writing every dict as its own [a.b] header keeps the file navigable.
+    """
+    out = ['\n[' + _header(path) + ']\n']
+    for name, child in table.items():
+        if isinstance(child, dict):
+            continue
+        out.append(f'{_quote(name)} = {toml_value(child)}\n')
+    for name, child in table.items():
+        if isinstance(child, dict):
+            out.extend(_table_lines((*path, name), child))
+    return out
+
+
+def _remove_key_line(lines, path, key):
+    """Drop a key from the table at path, leaving the table and other keys."""
+    path = tuple(path)
+    first = None
+    for index, line in enumerate(lines):
+        match = _HEADER.match(line)
+        if match and _path_of(match.group(1)) == path:
+            first = index + 1
+            break
+    if first is None:
+        return lines
+    end = len(lines)
+    for index in range(first, len(lines)):
+        if _HEADER.match(lines[index]):
+            end = index
+            break
+    for index in range(first, end):
+        if _key_of(lines[index]) == key:
+            del lines[index]
+            return lines
+    return lines
+
+
+def set_table(text, path, table):
+    """Replace the table at path with the dict's own headers and keys."""
+    path = tuple(path)
+    text = _expand_tables(text, path)
+    lines = text.splitlines(keepends=True)
+    lines = _remove_key_line(lines, path[:-1], path[-1])
+    existing = ''.join(lines)
+    trimmed = remove_toml_table(existing, path)
+    if trimmed.endswith('\n\n'):
+        trimmed = trimmed[:-1]
+    return trimmed + ''.join(_table_lines(path, table))
+
+
 def set_toml_value(text, path, key, value):
     """Set (or with value None, remove) one key in the table at path."""
+    text = _expand_tables(text, path)
+    if isinstance(value, dict):
+        return set_table(text, (*path, key), value)
     if value is None:
-        trimmed = remove_toml_table(text, (*path, key))
-        if trimmed != text:
-            return trimmed
+        lines = text.splitlines(keepends=True)
+        if text and not text.endswith('\n'):
+            lines[-1] += '\n'
+        kept = ''.join(_remove_key_line(lines, path, key))
+        return remove_toml_table(kept, (*path, key))
     lines = text.splitlines(keepends=True)
     if text and not text.endswith('\n'):
         lines[-1] += '\n'
@@ -131,10 +301,7 @@ def set_toml_value(text, path, key, value):
                 start = index
                 break
         if start is None:
-            if value is None:
-                return ''.join(lines)
-            header = '.'.join(_quote(part) for part in path)
-            return ''.join(lines) + f'\n[{header}]\n{_quote(key)} = {toml_value(value)}\n'
+            return ''.join(lines) + f'\n[{_header(path)}]\n{_quote(key)} = {toml_value(value)}\n'
         first = start + 1
     else:
         first = 0
@@ -145,13 +312,9 @@ def set_toml_value(text, path, key, value):
             break
     for index in range(first, end):
         if _key_of(lines[index]) == key:
-            if value is None:
-                del lines[index]
-            else:
-                lines[index] = f'{_quote(key)} = {toml_value(value)}\n'
+            lines[index] = f'{_quote(key)} = {toml_value(value)}\n'
             return ''.join(lines)
-    if value is not None:
-        lines.insert(first if path else end, f'{_quote(key)} = {toml_value(value)}\n')
+    lines.insert(first if path else end, f'{_quote(key)} = {toml_value(value)}\n')
     return ''.join(lines)
 
 

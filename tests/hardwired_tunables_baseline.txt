@@ -37,6 +37,7 @@ tessera/sessions.py:EventJournal.after.timeout # some callers still omit the Con
 tessera/skills.py:DESCRIPTION_LIMIT # module literal has no Config contract
 tessera/skills.py:NAME_LIMIT # module literal has no Config contract
 tessera/swarm_bounds.py:SAFE_JOB_TASK_LIMIT # Safe mode only: eight workers in one job when max_job_tasks is omitted. Unleashed drops it. A number set by hand replaces it.
+tessera/teams_api.py:MAX_DELIVERY_ATTEMPTS # bounded team-channel delivery retry (commit 1061556); has no Config contract yet
 tessera/tools.py:ToolRegistry.__init__.approval # some callers still omit the Config-supplied argument
 tessera/trial.py:MIN_TOOL_CALLS # module literal has no Config contract
 tessera/trial.py:RATE_MARGIN # module literal has no Config contract
