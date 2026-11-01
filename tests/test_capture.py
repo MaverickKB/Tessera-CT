@@ -749,3 +749,14 @@ def test_a_long_session_rereads_its_inheritance_after_the_refresh_age(tmp_path, 
     clock[0] += 100000
     once.inheritance_block()
     assert len(reads) == 3
+def test_a_plain_session_writes_layers_without_identity_tags(tmp_path):
+    capture = Capture(None, tmp_path, "work", "personal", "tester")
+    bus = Bus()
+    capture.install(bus)
+    run_capture(bus)
+    note = capture.memory_note("A plain note")
+    layers = [item["layer"] for item in capture.debt()]
+    assert all(not any(m.startswith(("goblin:", "holder:", "thread:")) for m in layer["markers"])
+               for layer in layers)
+    assert note["markers"] == []
+
