@@ -53,6 +53,7 @@ SCALARS = {
     "identity_max_bytes",
     "desktop_install_timeout",
     "desktop_startup_timeout",
+    "desktop_appimage_extract",
 }
 
 

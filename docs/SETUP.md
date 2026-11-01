@@ -209,14 +209,15 @@ Configure private networking on the host before connecting from the phone.
 ### What the Settings page edits, and what it does not
 
 The Settings page is catalog-driven, and the catalog does not cover the whole
-file. Of the 48 top-level configuration attributes,
-**19 are reachable from the page** and **29 are not**.
+file. Of the 49 top-level configuration attributes,
+**20 are reachable from the page** and **29 are not**.
 That split is not a bug report; it is the shape of the product today, and this
 paragraph exists so nobody has to infer it from a missing control.
 
 Reachable from the page (`ui`, `aethermind`, `jev`, `identity`, `voice`,
 `autonomy`, `computer_use`, `hosts`, `systems`, `roles`, `credentials`, `mcp_servers`,
-`backends`, `accounts`, `swarm`, `agent_name`, `operator_name`, `codex`, `tools`).
+`backends`, `accounts`, `swarm`, `agent_name`, `operator_name`, `codex`, `tools`,
+`desktop_appimage_extract`).
 `hosts`, `systems`, `credentials` and `mcp_servers` are record editors: you can add,
 edit and remove rows. `backends` is reached by the Models editor and `accounts` by
 Service accounts, so those two have named-entry controls rather than a single field.
