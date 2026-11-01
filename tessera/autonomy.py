@@ -452,7 +452,7 @@ class Autonomy:
         self._stopping = False
         self.state = {'timers': {}, 'tasks': {}, 'held': {}, 'wakes': [], 'presence': {}, 'subscriptions': {},
                       'capped': None, 'approvals': {}, 'awareness': {}, 'deferred': {}, 'self_prompt_at': {},
-                      'suppress': {}, 'coordination_at': {}, 'reflection_at': {},
+                      'suppress': {}, 'suppress_lane': {}, 'coordination_at': {}, 'reflection_at': {},
                       # The compose path creates these lazily with setdefault(), and the
                       # load loop below only restores keys that are already in this dict.
                       # A key missing here is written to disk by _save() and silently
@@ -1731,13 +1731,36 @@ class Autonomy:
             return 'hold:already_queued'
         return ''
 
-    def _note_suppress(self, slug, reason):
-        previous = (self.state.get('suppress') or {}).get(slug)
-        if previous == reason:
+    def _note_suppress(self, slug, reason, lane='self_prompt'):
+        """Record one lane's reason for not waking this slug, and print it once.
+
+        Two lanes suppress the same slug: the agenda loop arms `self_prompt` and
+        `reflection`, and the floor loop reports `busy` or `operator_stopped`.
+        While both compared against one per-slug slot, every tick flipped the
+        stored reason between them, so the change check never held and the line
+        was printed on every tick -- 85k lines in one home's core.out. The memo
+        is per lane; `suppress` keeps the latest reason for status and the UI.
+        """
+        memo = self.state.setdefault('suppress_lane', {})
+        key = lane + ':' + slug
+        if memo.get(key) == reason:
             return
+        memo[key] = reason
         self.state.setdefault('suppress', {})[slug] = reason
-        print(f'autonomy: suppressing self_prompt for {slug} ({reason})', file=sys.stderr, flush=True)
+        print(f'autonomy: suppressing {lane} for {slug} ({reason})', file=sys.stderr, flush=True)
         self._save()
+
+    def _clear_suppress(self, slug, lane='self_prompt'):
+        """This lane is due again. Drop its memo, and the shared row if it is alone."""
+        memo = self.state.setdefault('suppress_lane', {})
+        memo.pop(lane + ':' + slug, None)
+        still_suppressed = False
+        for key in memo:
+            if key.endswith(':' + slug):
+                still_suppressed = True
+                break
+        if not still_suppressed:
+            self.state.setdefault('suppress', {}).pop(slug, None)
 
     def _intention_tool_name(self, runtime):
         try:
@@ -1787,12 +1810,14 @@ class Autonomy:
             return ''
         return slug
 
-    def _arm_or_post(self, slug, now, body, last_map, gap, kind='self_prompt', rules=None):
+    def _arm_or_post(self, slug, now, body, last_map, gap, kind='self_prompt', rules=None,
+                     lane=None):
+        lane = lane or kind
         reason = self._suppress_reason(slug, now, kind)
         if reason:
-            self._note_suppress(slug, reason)
+            self._note_suppress(slug, reason, lane=lane)
             return
-        self.state.setdefault('suppress', {}).pop(slug, None)
+        self._clear_suppress(slug, lane=lane)
         last = last_map.get(slug)
         if last is None:
             last_map[slug] = now
@@ -1842,7 +1867,7 @@ class Autonomy:
                     self._note_suppress(slug, 'answerable')
                     settled_answerable.append(slug)
                 else:
-                    self.state.setdefault('suppress', {}).pop(slug, None)
+                    self._clear_suppress(slug)
                 continue
             body = 'Standing agenda is due.\n' + '\n'.join(text_lines)
             posted = self._arm_or_post(slug, now, body, last_map, gap)
@@ -1937,8 +1962,10 @@ class Autonomy:
             return
         runtime = self.manager._runtimes.get(floor_slug)
         if runtime is not None and (runtime.operator_stopped or not runtime.idle()):
-            self._note_suppress(floor_slug, 'operator_stopped' if runtime.operator_stopped else 'busy')
+            self._note_suppress(floor_slug, 'operator_stopped' if runtime.operator_stopped else 'busy',
+                                lane='floor')
             return
+        self._clear_suppress(floor_slug, lane='floor')
         brief = {}
         if self.manager.config.board.enabled:
             brief = self._read_floor('board-brief', self.manager.board_brief, {},
@@ -1975,7 +2002,8 @@ class Autonomy:
         last_map = self.state.setdefault(kind + '_at', {})
         if kind != 'reflection':
             last_map.setdefault(floor_slug, now - gap)
-        posted = self._arm_or_post(floor_slug, now, text, last_map, gap, kind=kind, rules=causing)
+        posted = self._arm_or_post(floor_slug, now, text, last_map, gap, kind=kind, rules=causing,
+                                   lane='floor')
         if posted:
             self.state['pressure_seen'] = pressure_seen(
                 report, now, thresholds=self._thresholds(), definition=definition,

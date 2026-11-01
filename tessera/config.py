@@ -277,6 +277,12 @@ class ServerConfig:
     # Events replayed to a page that opens with no checkpoint. The transcript comes
     # from the messages endpoint, so this only has to cover the newest work; 0 replays all.
     event_replay_limit: int = 200
+    # The core's own stdout/stderr file is rotated once at startup when it is
+    # larger than this, keeping this many older files. 0 turns rotation off.
+    # A steady-state floor writes one line per tick, so an unbounded file grew
+    # to 90k lines and buried every real error in the noise.
+    log_max_bytes: int = 10485760
+    log_keep: int = 3
 
 
 @dataclass
@@ -1442,6 +1448,10 @@ class Config:
             raise ValueError('server.reply_quote_chars must be a positive integer')
         if type(self.server.compress_min_bytes) is not int or self.server.compress_min_bytes < 0:
             raise ValueError('server.compress_min_bytes must be an integer >= 0')
+        if type(self.server.log_max_bytes) is not int or self.server.log_max_bytes < 0:
+            raise ValueError('server.log_max_bytes must be an integer >= 0')
+        if type(self.server.log_keep) is not int or self.server.log_keep < 0:
+            raise ValueError('server.log_keep must be an integer >= 0')
         if not isinstance(self.server.allowed_hosts, list) or any(
                 not isinstance(name, str) or not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?\.?', name)
                 for name in self.server.allowed_hosts):

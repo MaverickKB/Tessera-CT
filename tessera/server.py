@@ -17,6 +17,7 @@ import re
 import socket
 import subprocess
 import signal
+import sys
 import threading
 import time
 import uuid
@@ -1684,6 +1685,7 @@ def serve(config):
         return _run_owned(config, 'serve')
     from .bundled_engine import ensure_local_engine_bundle
     ensure_local_engine_bundle(config)
+    _rotate_core_output(config)
     terminating = []
     with create_server(config) as server:
         server.self_supervised = not config.server.supervised
@@ -1718,6 +1720,25 @@ def serve(config):
     if server._restarting and not terminating:
         from .updates import restart_process
         restart_process(server.config, 'serve', server.server_address[1])
+
+
+def _rotate_core_output(config):
+    """Rotate the core's own stdout/stderr file once at startup.
+
+    The file is the desktop's `logs/core.log` or an operator launcher's
+    `core.out`. Rotation needs a regular file on disk; a terminal or a pipe is
+    left alone. A failure is reported, never fatal: a log that cannot be
+    rotated must not stop the core from serving.
+    """
+    from .log_rotation import rotate_core_streams
+    try:
+        result = rotate_core_streams(config.server.log_max_bytes, config.server.log_keep)
+    except OSError as error:
+        print('core log rotation failed: ' + type(error).__name__, file=sys.stderr, flush=True)
+        return None
+    if result.get('rotated'):
+        print(f'core log rotated: {result["file"]} -> {result["rotated"]}', file=sys.stderr, flush=True)
+    return result
 
 
 def _release_embedded_engine(config):

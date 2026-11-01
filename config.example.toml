@@ -258,6 +258,13 @@ auth_mode = "loopback"
 # one is still working. This bounds silence, not turn length: raising it makes
 # a hung model call hold the reload open longer, not a productive turn.
 restart_stall_seconds = 1800
+# The core's own stdout/stderr file (`logs/core.log` under the desktop, or
+# whatever file the launcher redirected it to) is rotated once at startup when
+# it is larger than this, keeping this many older files. 0 turns it off. A
+# steady-state floor used to write one suppression line per tick with no
+# bound, so the file reached 90k lines and hid every real error.
+log_max_bytes = 10485760
+log_keep = 3
 
 # Optional operator identity text (for example a SOUL or CORTEX file). Relative
 # paths resolve under the home. Empty means none; nothing is baked in.
