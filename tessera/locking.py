@@ -1,6 +1,7 @@
 """Exclusive local file locks with the same interface on POSIX and Windows."""
 
 import errno
+from contextlib import contextmanager
 import os
 import time
 
@@ -34,3 +35,16 @@ def flock(file, operation):
                 time.sleep(0.05)
     finally:
         os.lseek(descriptor, position, os.SEEK_SET)
+
+
+@contextmanager
+def locked(lock, path):
+    """Hold the store's thread lock, then an exclusive lock beside its file."""
+    with lock:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.with_name(path.name + '.lock').open('a+b') as stream:
+            flock(stream, LOCK_EX)
+            try:
+                yield
+            finally:
+                flock(stream, LOCK_UN)

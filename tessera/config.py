@@ -3,7 +3,6 @@
 from dataclasses import asdict, dataclass, field, fields, replace
 import logging
 import os
-import sys
 import math
 import re
 from urllib.parse import urlsplit

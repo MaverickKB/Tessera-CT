@@ -34,7 +34,6 @@ from datetime import datetime
 from pathlib import Path
 import stat
 
-from .passive_status import read_snapshot
 
 # The heuristic's reachable completion scores (jev.py:_fallback, 'judge').
 HEURISTIC_SCORES = (0.0, 0.1, 0.65, 0.9)

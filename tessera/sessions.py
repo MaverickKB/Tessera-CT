@@ -20,7 +20,7 @@ import time
 import unicodedata
 import uuid
 
-from .capture import Capture, service_error_name
+from .capture import service_error_name
 from .identities import handle_for
 from .aethermind import AetherMindClient
 from .backend import Backend, BackendError
@@ -32,7 +32,7 @@ from .passive_status import task_status, judge_status, configured_path
 from .oversight import oversight_report
 from .trial import TrialStore, advance, session_rows
 from .messaging import SessionMessaging, may_resume_work
-from .tools import object_schema, AUTO_APPROVE
+from .tools import AUTO_APPROVE
 from .voice import VoiceSessions
 from .infrastructure import Infrastructure
 from .grafana import GrafanaClient
@@ -40,7 +40,6 @@ from .credentials import CredentialResolver
 from .board import _MISSING
 from .board_tools import BoardTools
 from .autonomy import Autonomy
-from .cua import register_cua_tools
 from .board_status import (board_brief, board_claim, board_file, board_link, board_move as move_board_card,
                            board_answer, board_create, board_note, board_project_create, board_project_update,
                            board_remove, board_revise, board_start as start_board_card, board_status,
@@ -51,7 +50,6 @@ from .job_status import job_status
 from .feedback import Feedback
 from .attachments import (
     MAX_PER_TURN,
-    describe as describe_attachments,
     resolve as resolve_attachment,
     store as store_attachment,
     reference as reference_attachment,

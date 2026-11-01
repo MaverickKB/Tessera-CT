@@ -13,7 +13,7 @@ from .config import PROVIDER_KINDS, Config, load_config, offered_for_chat
 from .credentials import CredentialResolver, KeychainStore
 from .floor_definition import FloorDefinitionError, peek_world_view, save_definition, staged_world_view
 from .systems import SYSTEM_KINDS
-from .settings_ladder import ladder, credential_source, binding_source
+from .settings_ladder import ladder, credential_source
 from .speech_services import (DUPLEX_PROVIDERS, SpeechProbeError, connection_for,
                               duplex_connections, probe_models, probe_voices)
 from .voice import pipes as voice_pipes, selected_pipe as voice_selected_pipe

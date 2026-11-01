@@ -1,8 +1,6 @@
 """Lifecycle hooks. Policy failures fail closed before a tool executes."""
 
 import json
-import os
-import signal
 import subprocess
 import threading
 

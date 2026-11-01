@@ -1,6 +1,7 @@
 """Directory durability where the platform exposes directory fsync."""
 
 import errno
+import json
 import os
 
 
@@ -33,3 +34,14 @@ def sync_directory(path):
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def write_json_atomic(path, data):
+    """Write JSON through a temp sibling so a reader never sees a torn file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + '.tmp')
+    with temporary.open('w', encoding='utf-8') as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=1, sort_keys=True)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)

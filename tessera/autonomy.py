@@ -32,9 +32,10 @@ from .floor_signals import (
     session_rows, timer_rows,
 )
 from .learning import LearningStore, intention_titles, OPEN
-from .systems import due_endpoints, host_thresholds, thresholds_by_ordinal
+from .systems import due_endpoints, thresholds_by_ordinal
 from .remote import ssh_argv
 from .tools import object_schema, AUTO_APPROVE
+from .durability import write_json_atomic
 
 TASK_FINAL = ('done', 'failed', 'stopped', 'timed_out', 'lost')
 PRESENCE_STATES = ('arrive', 'here', 'leave', 'typing')
@@ -360,7 +361,7 @@ def record_judgment(home, key, **fields):
         facts = {}
     facts[key] = {'at': time.time(), **fields}
     saved['facts'] = facts
-    _atomic_json(path, saved)
+    write_json_atomic(path, saved)
     return {'recorded': True, 'key': key}
 
 
@@ -391,39 +392,6 @@ def recent_chat(home, slug, limit=4, operator='the operator'):
     return kept[-limit:]
 
 
-def recent_notes(client, project, limit=3):
-    """Short AetherMind notes. A cover, not a verified fact, and never the whole tree."""
-    if client is None or not project:
-        return []
-    try:
-        result = client.read_layers(project, last_n=limit)
-    except Exception:
-        return ['AetherMind notes unavailable.']
-    # read_layers returns immutable history, so an archived layer arrives with
-    # no self-signal. Showing one as a current note tells the floor about
-    # something that was deliberately retired.
-    result = drop_superseded(result)
-    layers = result.get('layers') if isinstance(result, dict) else result
-    if not isinstance(layers, list):
-        return []
-    lines = []
-    for layer in layers[:limit]:
-        if not isinstance(layer, dict):
-            continue
-        body = str(layer.get('body') or '').replace('\n', ' ').strip()
-        if body:
-            lines.append(body[:200])
-    return lines
-
-
-def _atomic_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + '.tmp')
-    with temporary.open('w', encoding='utf-8') as stream:
-        json.dump(data, stream, ensure_ascii=False, indent=1, sort_keys=True)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
 
 
 def _home_path(home, value):
@@ -494,7 +462,7 @@ class Autonomy:
             self.thread.start()
 
     def _save(self):
-        _atomic_json(self.path, self.state)
+        write_json_atomic(self.path, self.state)
 
     def _check_slug(self, slug):
         self.manager.path(slug)

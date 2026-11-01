@@ -16,7 +16,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import signal
 import subprocess
 
 from .procutil import kill_group, popen, terminate_group
@@ -25,6 +24,7 @@ import threading
 import urllib.error
 import urllib.request
 import uuid
+from .gitutil import git_dir
 
 
 def clip_output(text, limit=30000):
@@ -470,22 +470,7 @@ def _popen_is_real():
 
 
 def _git_dir(cwd):
-    path = Path(cwd) / '.git'
-    try:
-        if path.is_dir():
-            return path
-        if path.is_file():
-            text = path.read_text(encoding='utf-8', errors='replace').strip()
-            if text.startswith('gitdir:'):
-                raw = text.split(':', 1)[1].strip()
-                located = Path(raw)
-                if not located.is_absolute():
-                    located = (path.parent / located).resolve()
-                if located.is_dir():
-                    return located
-    except OSError:
-        return None
-    return None
+    return git_dir(cwd)
 
 
 def _read_git_head(git_dir):

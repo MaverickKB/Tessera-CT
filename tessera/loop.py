@@ -31,6 +31,7 @@ from .remote import register_remote_tools
 from .skills import Shelf, append_shelf_note, register_skill_tools
 from .tree import SummaryTree
 from .view import View
+from .gitutil import git_dir
 
 INTERRUPT_REPLIES = {'user': 'Interrupted by the user.', 'restart': 'Interrupted by a core restart.'}
 
@@ -184,7 +185,6 @@ class Session:
                 configure_tools(self.tools)
             self.companion_identity = self._identity()
             from .companions import Companions
-            from .mcp_client import McpClient
             paused = (self.config.home / 'run' / 'companions-paused.json').exists()
             # Companions serve the resident session only; subagents never dial them.
             self.companions = Companions(self.config if depth == 0 else _companions_off(self.config),
@@ -416,22 +416,7 @@ class Session:
 
     @staticmethod
     def _git_dir(cwd):
-        path = Path(cwd) / '.git'
-        try:
-            if path.is_dir():
-                return path
-            if path.is_file():
-                text = path.read_text(encoding='utf-8', errors='replace').strip()
-                if text.startswith('gitdir:'):
-                    raw = text.split(':', 1)[1].strip()
-                    located = Path(raw)
-                    if not located.is_absolute():
-                        located = (path.parent / located).resolve()
-                    if located.is_dir():
-                        return located
-        except OSError:
-            return None
-        return None
+        return git_dir(cwd)
 
     @staticmethod
     def _read_head(git_dir):

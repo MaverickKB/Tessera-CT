@@ -2,7 +2,7 @@
 
 from contextlib import contextmanager
 from copy import deepcopy
-from . import locking as fcntl
+from . import locking
 from .durability import sync_directory
 import json
 import math
@@ -386,14 +386,8 @@ class BoardStore:
     @contextmanager
     def _locked(self):
         self._require_enabled()
-        with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.with_name(self.path.name + '.lock').open('a+b') as stream:
-                fcntl.flock(stream, fcntl.LOCK_EX)
-                try:
-                    yield
-                finally:
-                    fcntl.flock(stream, fcntl.LOCK_UN)
+        with locking.locked(self._lock, self.path):
+            yield
 
     def _load_cards(self, repair=False):
         cards, sequence = self._read_journal(self.path, repair)
