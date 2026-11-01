@@ -67,8 +67,11 @@ def test_workers_use_selected_independent_backends_and_the_current_workspace(tmp
         parent.tools.execute('spawn_agent', {'name': 'one', 'task': 'Inspect the file', 'capability': 'routine'})
         parent.tools.execute('spawn_agent', {'name': 'two', 'task': 'Inspect another file', 'capability': 'standard'})
         assert parent.agents.wait(5)
-        assert {name for name, _ in seen} == {'small', 'medium'}
-        assert len({identity for _, identity in seen}) == 2
+        # The session's compactor runs its own backend calls; this assertion is
+        # about the spawned workers' independent backends.
+        worker_calls = [(name, identity) for name, identity in seen if name in ('small', 'medium')]
+        assert {name for name, _ in worker_calls} == {'small', 'medium'}
+        assert len({identity for _, identity in worker_calls}) == 2
         reports = [m for m in parent.log.iter() if m.kind == 'work']
         assert {m.meta['backend'] for m in reports} == {'small', 'medium'}
         assert all(m.meta['success'] for m in reports)

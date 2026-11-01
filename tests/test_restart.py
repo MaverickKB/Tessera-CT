@@ -428,3 +428,98 @@ def test_an_idle_restart_gives_up_on_a_turn_that_has_gone_silent(tmp_path):
 
     states = turn_states(tmp_path, slug)
     assert states['hung'] == ('error', 'Interrupted by a core restart'), states
+
+
+def test_legacy_queued_turn_resumes_without_origin_fields(tmp_path):
+    config = session_config(tmp_path)
+    with SessionManager(config, backend_factory=lambda *args: FakeBackend([])) as manager:
+        slug = manager.create(title='legacy')['slug']
+    journal = tmp_path / 'sessions' / slug / 'turns.jsonl'
+    record = {'op': 'enqueue', 'turn': {'id': 'legacy-turn', 'text': 'Hello', 'state': 'queued'}}
+    journal.write_text(json.dumps(record) + '\n', encoding='utf-8')
+    with SessionManager(config, backend_factory=lambda *args: FakeBackend(['Recovered'])) as manager:
+        assert manager.wait(slug, 10)
+        assert manager.turn(slug, 'legacy-turn')['state'] == 'done'
+        assert manager.runtime(slug).failure is None
+        assert any(message.text == 'Recovered' for message in manager.get(slug).log.iter())
+
+
+def test_session_reuses_directory_without_metadata(tmp_path):
+    config = session_config(tmp_path)
+    with SessionManager(config, backend_factory=lambda *args: FakeBackend([])) as manager:
+        directory = tmp_path / 'sessions' / 'orphan'
+        directory.mkdir()
+        marker = directory / 'existing.txt'
+        marker.write_text('keep', encoding='utf-8')
+        result = manager.ensure('orphan', 'Orphan')
+        assert result['slug'] == 'orphan'
+        assert marker.read_text(encoding='utf-8') == 'keep'
+
+
+def test_a_second_restart_is_refused_with_a_truthful_status(tmp_path):
+    import unittest.mock
+
+    from tessera.server import create_server
+    from test_server import call
+
+    config = session_config(tmp_path)
+    config.server.port = 0
+    config.server.supervised = True
+    server = create_server(config, backend_factory=lambda *args: FakeBackend([]))
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+
+    # The worker would shut the server down once engaged; keep it alive so the
+    # refusal path is what is under test, not the shutdown.
+    with unittest.mock.patch.object(server.manager, 'drain', side_effect=RuntimeError('drain failed')):
+        first_status, first = call(server, 'POST', '/api/core/restart', {})
+        assert first_status == 202, first
+        assert first == {'restarting': True, 'deferred': False, 'drain_seconds': config.server.drain_seconds}
+        assert wait_for(lambda: not server._restarting), 'a failed drain must not wedge the flag'
+        assert wait_for(lambda: call(server, 'GET', '/api/status')[0] == 200), 'still serving after an aborted restart'
+        # The flag is released, so a retry is accepted rather than silently ignored.
+        retry_status, retry = call(server, 'POST', '/api/core/restart', {})
+        assert retry_status == 202, retry
+    server.server_close()
+
+
+def test_an_already_restarting_core_refuses_the_route(tmp_path):
+    from tessera.server import create_server
+    from test_server import call
+
+    config = session_config(tmp_path)
+    config.server.port = 0
+    config.server.supervised = True
+    server = create_server(config, backend_factory=lambda *args: FakeBackend([]))
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+    server._restarting = True
+    status, result = call(server, 'POST', '/api/core/restart', {})
+    assert status == 409, result
+    assert result['error'] == 'already-restarting'
+    server.server_close()
+
+
+def test_a_failed_restart_worker_never_wedges_the_flag(tmp_path):
+    import unittest.mock
+
+    from tessera import server as server_module
+    from tessera.server import create_server
+
+    config = session_config(tmp_path)
+    config.server.port = 0
+    config.server.supervised = True
+    server = create_server(config, backend_factory=lambda *args: FakeBackend([]))
+
+    def refused_start(*args, **kwargs):
+        raise RuntimeError('no thread available')
+
+    with unittest.mock.patch.object(server_module.threading, 'Thread', side_effect=refused_start):
+        result = server.restart('now')
+        assert result['accepted'] is False, result
+        assert 'no thread available' in result['reason'], result
+        assert server._restarting is False, 'a failed start must not wedge the flag'
+    # Once the worker can start again, the restart is accepted.
+    result = server.restart('now')
+    assert result['accepted'] is True, result
+    server.server_close()

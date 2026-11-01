@@ -4,8 +4,8 @@ import hashlib
 import json
 import time
 
-from .board import CARD_STATES, CLAIMABLE_STATES, PROJECT_STATES, BoardError, _MISSING, replay_cards, replay_projects
-from .passive_status import configured_path, read_snapshot, read_snapshot_reasoned
+from .board import CARD_STATES, CLAIMABLE_STATES, BoardError, _MISSING, replay_cards, replay_projects
+from .passive_status import configured_path, read_snapshot_reasoned
 
 
 class BoardRevisionError(BoardError):

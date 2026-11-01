@@ -15,6 +15,15 @@ def arguments_object(value):
     return value
 
 
+class EmptyResponse(ValueError):
+    """A completed provider answer with no text and no tool calls.
+
+    Distinct from a malformed answer: the wire shape was fine, the model simply
+    returned nothing. The backend retries this one and the turn loop fails over
+    to another model, because an empty answer is a failed turn, not a refusal.
+    """
+
+
 class ProviderAdapter(ABC):
     path = ""
 
@@ -74,8 +83,14 @@ class ChatCompletionsAdapter(ProviderAdapter):
             function = call["function"]
             calls.append({"id": call["id"], "name": function["name"],
                           "arguments": arguments_object(function.get("arguments") or "{}")})
+        finish = choice.get("finish_reason")
+        if not calls and not content and finish not in ("length", "content_filter"):
+            # A completed answer with nothing in it is a failed turn, not a
+            # malformed one. The backend retries it and, once retries are
+            # spent, the turn loop fails over to another model.
+            raise EmptyResponse("Provider completed without text or tool calls")
         result = {"content": content, "tool_calls": calls, "usage": data.get("usage", {}),
-                  "finish_reason": choice.get("finish_reason")}
+                  "finish_reason": finish}
         reasoning = message.get("reasoning_content") or message.get("reasoning")
         if isinstance(reasoning, str) and reasoning:
             result["reasoning"] = reasoning
@@ -150,7 +165,18 @@ class ResponsesAdapter(ProviderAdapter):
                 items.extend(replay)
                 continue
             if message.get("content") or not calls:
-                items.append({"role": role, "content": deepcopy(message.get("content", ""))})
+                content = deepcopy(message.get("content", ""))
+                if isinstance(content, list):
+                    translated = []
+                    for part in content:
+                        if part["type"] == "text":
+                            translated.append({"type": "input_text", "text": part["text"]})
+                        elif part["type"] == "image_url":
+                            translated.append({"type": "input_image", "image_url": part["image_url"]["url"]})
+                        else:
+                            translated.append(part)
+                    content = translated
+                items.append({"role": role, "content": content})
             for call in calls:
                 function = call["function"]
                 arguments = arguments_object(function.get("arguments") or "{}")
@@ -248,7 +274,9 @@ class ResponsesAdapter(ProviderAdapter):
             if calls:
                 raise ValueError("Refused provider tool response")
         if status == "completed" and not calls and not any(text):
-            raise ValueError("Provider completed without text or tool calls")
+            # A completed response with nothing in it is a failed answer, not a
+            # refusal. The backend retries it and fails over to another model.
+            raise EmptyResponse("Provider completed without text or tool calls")
         self._remember(calls, data["output"])
         return {"content": "\n".join(text), "tool_calls": calls,
                 "usage": data.get("usage", {}), "finish_reason": finish}
@@ -337,7 +365,7 @@ class AnthropicMessagesAdapter(ProviderAdapter):
         if calls and finish in ("length", "content_filter"):
             raise ValueError("Incomplete provider tool response")
         if not calls and not any(text):
-            raise ValueError("Provider completed without text or tool calls")
+            raise EmptyResponse("Provider completed without text or tool calls")
         self._remember(calls, data["content"])
         return {"content": "\n".join(text), "tool_calls": calls,
                 "usage": data.get("usage", {}), "finish_reason": finish}

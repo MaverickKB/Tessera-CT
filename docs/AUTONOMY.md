@@ -117,6 +117,11 @@ suppress rule says not to call a model:
 - `hold:<cap>` while a wake cap would hold the turn, or a self-prompt is already queued.
 - `answerable` when every open lesson names a file that already exists. Those lessons are absorbed. No model call.
 
+Each lane keeps its own suppression memo. The agenda loop and the floor wake
+loop both suppress the same session, so one shared slot flipped between their
+reasons on every tick and printed a line per tick; the line now appears once
+per real change. The latest reason stays in `suppress` for status and the page.
+
 A specific lesson, question, or intention is the agenda. When none is open and
 `standing_floor` is true, the autonomy thread gets the floor. Measured host
 pressure, unclaimed work and active sessions all inform its next wake. New

@@ -47,7 +47,9 @@ def test_daemon_semantic_gate_and_memory_verdict_are_durable(tmp_path, monkeypat
         assert runtime.session.capture.judgekit is runtime.session.router
         debt = runtime.session.capture.debt()
         assert len(debt) == 1  # Low keep never discards source capture.
-        assert 'Decision: decision' in debt[0]['layer']['body']
+        # A turn that failed its output gate is filed as a failure, not as a decision.
+        expected_decision = 'decision' if complete else 'failure'
+        assert f'Decision: {expected_decision}' in debt[0]['layer']['body']
         assert 'Memory judgment' not in debt[0]['layer']['body']
         root = daemon.manager.path(slug)
         records = [json.loads(line) for line in (root / 'decisions.jsonl').read_text().splitlines()]

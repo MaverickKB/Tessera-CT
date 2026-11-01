@@ -45,6 +45,85 @@ def test_http_config_round_trip_and_restart_needs_supervision(tmp_path):
         thread.join()
 
 
+def test_editing_a_row_that_is_still_an_inline_table_migrates_it(tmp_path):
+    """The operator's live file already holds one inline row; an edit must fix it.
+
+    Reproduced before the fix: the nous backend had been written as
+    `"nous" = {...}` under [backends]. Editing backends.nous.base_url appended
+    [backends.nous] and TOML rejected the file: "Cannot declare
+    ('backends', 'nous') twice".
+    """
+    path = tmp_path / 'config.toml'
+    path.write_text('[backends.primary]\nbase_url = "http://x/v1"\nmodel = "auto"\n\n'
+                    '[backends]\n"nous" = {"base_url" = "http://y/v1", "model" = "auto"}\n')
+    ConfigEditor(path).apply([{'path': ['backends', 'nous', 'base_url'], 'value': 'http://z/v1'}])
+
+    text = path.read_text()
+    assert '[backends.nous]' in text
+    assert '"nous" = {' not in text
+    saved = load_config(tmp_path)
+    assert saved.backends['nous'].base_url == 'http://z/v1'
+    assert saved.backends['primary'].model == 'auto'
+
+
+def test_a_new_table_is_written_as_headers_a_later_edit_can_find(tmp_path):
+    """A dict edit must produce a real table, not an inline row.
+
+    Reproduced before the fix: {"path": ["backends", "nous"], "value": {...}}
+    wrote `"nous" = {...}` under [backends]. A follow-up edit of
+    backends.nous.base_url then found no [backends.nous] header, appended one,
+    and TOML rejected the file as a duplicate declaration.
+    """
+    path = tmp_path / 'config.toml'
+    path.write_text('[backends.primary]\nbase_url = "http://x/v1"\nmodel = "auto"\n')
+    editor = ConfigEditor(path)
+    editor.apply([{'path': ['backends', 'nous'],
+                   'value': {'base_url': 'http://y/v1', 'model': 'auto'}}])
+
+    text = path.read_text()
+    assert '[backends.nous]' in text
+    assert '"nous" = {' not in text
+    assert load_config(tmp_path).backends['nous'].base_url == 'http://y/v1'
+
+    editor.apply([{'path': ['backends', 'nous', 'base_url'], 'value': 'http://z/v1'}])
+
+    text = path.read_text()
+    assert text.count('[backends.nous]') == 1
+    assert load_config(tmp_path).backends['nous'].base_url == 'http://z/v1'
+    assert load_config(tmp_path).backends['primary'].model == 'auto'
+
+
+def test_a_table_edit_reports_a_plain_record_instead_of_failing_to_serialize(tmp_path):
+    """The edits reply must serialize when the edited table became a record.
+
+    Reproduced before the fix: the write and the validation passed, then the
+    reply carried a BackendConfig dataclass that json.dumps cannot encode, so
+    the client got {"error": "Request failed (TypeError)"} for a save that had
+    landed.
+    """
+    path = tmp_path / 'config.toml'
+    path.write_text('[backends.primary]\nbase_url = "http://x/v1"\nmodel = "auto"\n\n[server]\nport = 0\n')
+    config = load_config(tmp_path)
+    config.server.port = 0
+    server = create_server(config)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        code, body = call(server, 'POST', '/api/config', {'edits': [
+            {'path': ['backends', 'nous'],
+             'value': {'base_url': 'http://y/v1', 'model': 'auto', 'timeout': 600}}]})
+        assert code == 200, body
+        assert body['changed'] is True
+        pending = {tuple(row['path']): row for row in body['running_core']['pending']}
+        reported = pending[('backends', 'nous')]['file']
+        assert reported['base_url'] == 'http://y/v1'
+        assert reported['extra'] == {'timeout': 600}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
 def test_null_edit_on_a_table_removes_the_whole_entry(tmp_path):
     path = tmp_path / 'config.toml'
     path.write_text('[backends.keep]\nbase_url = "http://127.0.0.1:1/v1"\nmodel = "m"\n\n'

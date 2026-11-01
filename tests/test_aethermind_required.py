@@ -976,7 +976,11 @@ def test_a_refused_session_does_not_call_the_summarizer(tmp_path, monkeypatch):
         time.sleep(0.6)
         assert backend.calls == []
         assert compactor.calls == []
-        assert not any(thread.is_alive() for thread in session.compactor.threads)
+        # Compaction is never optional, so a refused session still carries
+        # a running compactor (Ken's ruling 2026-10-30T21:53Z).
+        assert any(thread.is_alive() for thread in session.compactor.threads)
+    # Closing the session must shut the compactor down, with no thread left.
+    assert not any(thread.is_alive() for thread in session.compactor.threads)
 
 
 def test_settings_surfaces_a_status_failure():
@@ -1212,7 +1216,9 @@ def test_open_sessions_share_one_hung_probe(tmp_path, monkeypatch):
                 result = action()
                 elapsed = time.monotonic() - started
                 assert len(probes) == before + 1, probes
-                assert len(hung.accepts) == len(probes)
+                # One probe sequence, two bounded attempts: the timeout-class
+                # retry connects once more before the endpoint is declared dead.
+                assert len(hung.accepts) == 2 * len(probes), hung.accepts
                 assert elapsed < bound, elapsed
                 assert elapsed >= probe_timeout * 0.75, elapsed
                 return result
@@ -1270,7 +1276,7 @@ def test_open_sessions_share_one_hung_probe(tmp_path, monkeypatch):
             overlap()
             elapsed = time.monotonic() - started
             assert len(probes) == before + 1, probes
-            assert len(hung.accepts) == len(probes)
+            assert len(hung.accepts) == 2 * len(probes), hung.accepts
             assert elapsed < bound, elapsed
             assert launches == [True]
             for session in opened:

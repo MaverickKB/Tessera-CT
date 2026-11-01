@@ -73,10 +73,13 @@ class Compactor:
     def _next_job(self, merge_first=False):
         # Parents enter the second queue exactly when both children finish. A view
         # over its watermark needs merges first: another leaf summary only adds
-        # detail to a view that is already too large, so a busy session never catches
-        # up while new messages keep arriving. Below the watermark the leaves lead.
-        queues = (self.tree.ready_merges(), self.tree.ready_leaves()) if merge_first \
-            else (self.tree.ready_leaves(), self.tree.ready_merges())
+        # detail to a view that is already too large, so a busy session never
+        # catches up while new messages keep arriving. Below the watermark the
+        # leaves lead, which keeps the tree detailed.
+        if merge_first:
+            queues = (self.tree.ready_merges(), self.tree.ready_leaves())
+        else:
+            queues = (self.tree.ready_leaves(), self.tree.ready_merges())
         for queue in queues:
             try:
                 return queue, queue.get_nowait()

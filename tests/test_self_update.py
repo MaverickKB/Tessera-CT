@@ -99,6 +99,7 @@ def test_restart_route_requires_an_external_or_launcher_owner(update_server, mon
     def restart(when):
         restarts.append(when)
         restarted.set()
+        return {'accepted': True, 'deferred': when == 'idle'}
     monkeypatch.setattr(update_server, 'restart', restart)
     assert request(update_server.url, '/api/settings')['supervised'] is accepted
     assert request(update_server.url, '/api/config')['supervised'] is accepted

@@ -209,7 +209,9 @@ def test_declared_license_cannot_disappear(tmp_path):
 
 
 def test_tracked_release_inputs_pass_hardwire_scan():
+    # The scan walks every tracked file; it takes ~25s idle and longer when
+    # sibling tests are spawning restart/update subprocesses. 30s was a flake.
     result = subprocess.run(["bash", "scripts/check_no_hardwires.sh"], cwd=ROOT,
-                            capture_output=True, text=True, timeout=30)
+                            capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stderr
     assert "Hardwire check passed" in result.stdout

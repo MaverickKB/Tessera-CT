@@ -49,9 +49,9 @@ class SummaryTree:
                         record = json.loads(line)
                     except (json.JSONDecodeError, UnicodeDecodeError):
                         if complete_tail:
-                            # A terminated line that will not parse is a damaged
-                            # record. The tree is derived from the log, so skip the
-                            # node and let it rebuild rather than refusing to start.
+                            # A terminated line that still will not parse is a damaged
+                            # record. The tree is derived from the log, so skip the node
+                            # and let it be rebuilt rather than refusing to start.
                             damaged += 1
                             continue
                         # An interrupted final append is uncommitted work.
@@ -72,6 +72,7 @@ class SummaryTree:
             if complete_tail:
                 self._write_paths[file_level] = path
         if damaged:
+            # Visible, once per open, never silent.
             print(f'tessera: skipped {damaged} damaged summary line(s) in {self.directory}; '
                   'those nodes rebuild from the log', flush=True)
         # One startup replay seeds missing work. Runtime arrivals only touch

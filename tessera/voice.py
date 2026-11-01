@@ -415,7 +415,11 @@ class VoiceSessions:
                         parts.append(session.inherited_view)
                     parts.extend(session._session_context)
                     instructions = '\n'.join(parts)
-                instructions += '\n' + view.render() + VOICE_CONVERSATION_STYLE
+                # The voice broker is a prompt path too: it carries the newest
+                # window of the view, capped at the settle budget, never the whole
+                # render.
+                instructions += ('\n' + view.prompt_render(self.config.view.low_bytes)
+                                 + VOICE_CONVERSATION_STYLE)
                 if self.settings.tools_mode == 'handoff':
                     instructions += HANDOFF_INSTRUCTIONS
             minted = self.client.mint()

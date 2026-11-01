@@ -6,7 +6,6 @@ already produced. Thresholds, scores, hold times and sentences live on the
 definition. Nothing here special-cases a host, a board, or a display name.
 """
 
-from copy import deepcopy
 from datetime import datetime, timezone
 import json
 import os
@@ -783,9 +782,6 @@ def disk_limit_for(row, compose):
     return declared
 
 
-def rule_by_id(definition, rule_id):
-    return next((rule for rule in definition['rules'] if rule['id'] == rule_id), None)
-
 
 def export_text(definition, fmt='json'):
     definition = validate_definition(definition)
@@ -1252,9 +1248,3 @@ def staged_world_view(config, text):
     return definition
 
 
-def write_world_view(config, text, actor='operator'):
-    """Keep a saved definition's world view aligned with the settings field."""
-    staged = staged_world_view(config, text)
-    if staged is None:
-        return
-    save_definition(config, staged, actor)

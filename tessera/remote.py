@@ -7,10 +7,8 @@ yolo) applies to remote commands and writes exactly as it does to local ones.
 """
 
 from contextlib import nullcontext
-import os
 from pathlib import Path
 import shlex
-import signal
 import subprocess
 import tempfile
 

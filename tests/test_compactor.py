@@ -49,7 +49,8 @@ def test_a_view_over_budget_merges_before_it_summarises_more_leaves(tmp_path):
     """A busy session must collapse its view, not keep feeding it new leaves.
 
     A leaf summary adds detail to a view that is already too large, so serving new
-    leaves first lets a chatty session outrun compaction forever.
+    leaves first lets a chatty goblin outrun compaction forever. Once the view is over
+    its merge watermark the parent merges are the work that reduces it.
     """
     with ChatLog(tmp_path / 'log') as log:
         tree = SummaryTree(tmp_path, log, node_bytes=64)
@@ -58,6 +59,8 @@ def test_a_view_over_budget_merges_before_it_summarises_more_leaves(tmp_path):
         for index in range(20):
             log.append('tool', 'x' * 50)
         assert view.over_budget
+        # Both queues hold work: a pair of built leaves can merge, and this long
+        # message is waiting to become a leaf.
         log.append('tool', 'y' * 200)
         assert tree.ready_leaves().qsize() == 1
         assert tree.ready_merges().qsize() > 0

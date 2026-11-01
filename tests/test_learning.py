@@ -1622,10 +1622,48 @@ def test_a_voice_session_is_never_woken_by_the_floor(tmp_path):
         assert voice_slug not in targets, 'a voice session is not a board target'
         queued = []
         original = manager.autonomy._arm_or_post
-        def spy(slug, now, body, last_map, gap, kind='self_prompt', rules=None):
+        def spy(slug, now, body, last_map, gap, kind='self_prompt', rules=None, lane=None):
+            # The signature stays faithful to the real one so this spy cannot
+            # pass by swallowing a new argument the production path passes.
             queued.append(slug)
-            return original(slug, now, body, last_map, gap, kind, rules=rules)
+            return original(slug, now, body, last_map, gap, kind, rules=rules, lane=lane)
         manager.autonomy._arm_or_post = spy
         manager.autonomy._queue_self_prompts(1000.0)
         assert voice_slug not in queued, 'the floor must not wake the voice session'
         assert 'ordinary-chat' in queued, 'an ordinary session with a lesson is still woken'
+
+
+def test_two_suppressing_lanes_do_not_reprint_the_same_line_every_tick(tmp_path, capsys):
+    """The 90k-line core.out: one shared slot, two lanes writing to it.
+
+    The agenda loop reported `agenda_unchanged` and the floor loop reported
+    `busy` for the same slug. Each lane compared its reason against the single
+    shared slot, so every tick saw a change and printed a line, forever. The
+    memo is per lane now: a steady state prints once and then stays quiet.
+    """
+    manager, slug, clock, _ = open_manager(
+        tmp_path, ['quiet'], self_prompt_gap_seconds=0, standing_floor=False,
+        min_wake_gap_seconds=0)
+    with manager:
+        lesson = manager.autonomy.learning.record_lesson(
+            slug, 'rebuild the desk helper', 'the helper was not compiled',
+            'the helper binary exists')
+        for _ in range(6):
+            manager.autonomy.tick()
+            clock.now += 1
+        after_first = capsys.readouterr().err
+        assert 'suppressing self_prompt for ' + slug in after_first
+        # The agenda holds the same unchanged lesson, and the floor lane keeps
+        # reporting its own reason for the same slug.
+        for _ in range(6):
+            manager.autonomy.tick()
+            clock.now += 1
+            manager.autonomy._note_suppress(slug, 'busy', lane='floor')
+        repeated = capsys.readouterr().err
+        assert 'agenda_unchanged' not in repeated, (
+            'the unchanged agenda was announced again on a later tick')
+        # Each lane keeps its own reason, so neither erases the other's memo.
+        lanes = manager.autonomy.state['suppress_lane']
+        assert lanes.get('self_prompt:' + slug) == 'agenda_unchanged'
+        assert lanes.get('floor:' + slug) == 'busy'
+        assert lesson['id']

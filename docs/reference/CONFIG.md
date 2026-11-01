@@ -572,6 +572,8 @@ Default: `{}`. Maps role names to configured backend names.
 | `server.reply_quote_chars` | `600` | `TESSERA_SERVER_REPLY_QUOTE_CHARS` | file-only: no Settings row — set this in config.toml |
 | `server.compress_min_bytes` | `1024` | `TESSERA_SERVER_COMPRESS_MIN_BYTES` | file-only: no Settings row — set this in config.toml |
 | `server.event_replay_limit` | `200` | `TESSERA_SERVER_EVENT_REPLAY_LIMIT` | file-only: no Settings row — set this in config.toml |
+| `server.log_max_bytes` | `10485760` | `TESSERA_SERVER_LOG_MAX_BYTES` | file-only: no Settings row — set this in config.toml |
+| `server.log_keep` | `3` | `TESSERA_SERVER_LOG_KEEP` | file-only: no Settings row — set this in config.toml |
 
 ## `skills`
 

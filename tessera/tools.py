@@ -5,6 +5,7 @@ This registry controls approvals. It is not a process or filesystem sandbox.
 
 from contextlib import contextmanager
 from .http_cancel import CancellableHTTP
+from .web_guard import CappedRedirect, vet_public_host
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import base64
@@ -15,7 +16,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import signal
 import subprocess
 
 from .procutil import kill_group, popen, terminate_group
@@ -24,6 +24,7 @@ import threading
 import urllib.error
 import urllib.request
 import uuid
+from .gitutil import git_dir
 
 
 def clip_output(text, limit=30000):
@@ -469,22 +470,7 @@ def _popen_is_real():
 
 
 def _git_dir(cwd):
-    path = Path(cwd) / '.git'
-    try:
-        if path.is_dir():
-            return path
-        if path.is_file():
-            text = path.read_text(encoding='utf-8', errors='replace').strip()
-            if text.startswith('gitdir:'):
-                raw = text.split(':', 1)[1].strip()
-                located = Path(raw)
-                if not located.is_absolute():
-                    located = (path.parent / located).resolve()
-                if located.is_dir():
-                    return located
-    except OSError:
-        return None
-    return None
+    return git_dir(cwd)
 
 
 def _read_git_head(git_dir):
@@ -1000,7 +986,9 @@ def build_registry(cwd=None, view=None, spawn=None, approval='ask', approve=None
                     raise ValueError('invalid header')
                 extra[key] = value
         request = urllib.request.Request(url, headers=extra, method='GET')
-        transport = CancellableHTTP()
+        # Only this opener vets destinations. Backend and MCP transports keep
+        # the plain CancellableHTTP and still reach their configured endpoints.
+        transport = CancellableHTTP(CappedRedirect(), vet_host=vet_public_host)
         transport.cancel_event = registry.cancelled
         try:
             with registry.cancellation(transport.cancel), transport.opener.open(request, timeout=fetch_timeout) as response:
