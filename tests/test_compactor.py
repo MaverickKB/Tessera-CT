@@ -45,6 +45,31 @@ def test_retry_keeps_shortest_and_cuts_on_utf8_boundary(tmp_path):
             compactor.stop()
 
 
+def test_a_view_over_budget_merges_before_it_summarises_more_leaves(tmp_path):
+    """A busy session must collapse its view, not keep feeding it new leaves.
+
+    A leaf summary adds detail to a view that is already too large, so serving new
+    leaves first lets a chatty goblin outrun compaction forever. Once the view is over
+    its merge watermark the parent merges are the work that reduces it.
+    """
+    with ChatLog(tmp_path / 'log') as log:
+        tree = SummaryTree(tmp_path, log, node_bytes=64)
+        view = View(tmp_path, tree, high_bytes=120, low_bytes=80)
+        log.subscribe(view.on_message)
+        for index in range(20):
+            log.append('tool', 'x' * 50)
+        assert view.over_budget
+        # Both queues hold work: a pair of built leaves can merge, and this long
+        # message is waiting to become a leaf.
+        log.append('tool', 'y' * 200)
+        assert tree.ready_leaves().qsize() == 1
+        assert tree.ready_merges().qsize() > 0
+        compactor = Compactor(tree, view, None, 'system', [], workers=1)
+        queue, key = compactor._next_job(view.over_budget)
+        assert queue is tree.ready_merges()
+        assert key is not None
+
+
 def test_offline_workers_build_full_tree_preserve_user_words_and_restart(tmp_path):
     with ChatLog(tmp_path / 'log') as log:
         tree = SummaryTree(tmp_path, log, node_bytes=64)

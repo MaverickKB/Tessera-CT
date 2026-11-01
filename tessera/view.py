@@ -158,6 +158,15 @@ class View:
         self._compacting = size > self.low_bytes
         self.save()
 
+    @property
+    def over_budget(self):
+        """True while the saved view sits above the merge watermark.
+
+        A plain flag read. Taking the view lock here would invert lock order against
+        the log callback, which holds the view lock and then asks the tree for a node.
+        """
+        return bool(self._compacting)
+
     def save(self):
         with self._lock:
             state = {'version': 1, 'nodes': self.nodes, 'count': self._count,
@@ -183,8 +192,12 @@ class View:
                 if index * count != covered:
                     raise ValueError('Persisted view has a gap or overlap')
                 if level > 0 and not self.tree.is_built(level, index):
-                    raise ValueError('Persisted view references an unbuilt parent')
-                nodes.append((level, index))
+                    # A damaged summary tree must not brick the core. Descend to
+                    # the finest built coverage: a missing summary line only
+                    # coarsens the view to raw messages for that range.
+                    nodes.extend(self._descend_to_built(level, index))
+                else:
+                    nodes.append((level, index))
                 covered += count
             if covered != state['count'] or covered > self.tree.log.count():
                 raise ValueError('Persisted view count disagrees with chat')
@@ -195,6 +208,19 @@ class View:
             # saved prefix, including every merge decision, remains intact.
             for message in self.tree.log.iter(start=covered):
                 self.on_message(message)
+
+    def _descend_to_built(self, level, index):
+        """The finest built coverage for one unbuilt summary node.
+
+        Raw leaves are the floor: they are read from the message log and
+        survive a damaged summary tree, so the descent always terminates.
+        """
+        if level == 0 or self.tree.is_built(level, index):
+            return [(level, index)]
+        result = []
+        for offset in (0, 1):
+            result.extend(self._descend_to_built(level - 1, index * 2 + offset))
+        return result
 
     def zoom(self, start, count, *, offset=0, limit=None):
         if type(start) is not int or type(count) is not int:

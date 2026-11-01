@@ -258,7 +258,7 @@ def test_the_api_saves_previews_and_names_a_bad_rule(tmp_path):
                              {'definition': definition, 'actor': 'ada'})
         assert status == 200
         assert saved['definition']['compose']['footer'] == 'Edited footer for {agent}.'
-        assert saved['audit'][-1]['actor'] == 'ada'
+        assert saved['audit'][-1]['actor'] == 'operator'
         status, preview = call(server, 'POST', '/api/autonomy/floor-definition/preview',
                                {'definition': definition})
         assert status == 200

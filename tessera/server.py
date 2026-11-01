@@ -17,6 +17,7 @@ import re
 import socket
 import subprocess
 import signal
+import sys
 import threading
 import time
 import uuid
@@ -203,29 +204,50 @@ class TesseraServer(ThreadingHTTPServer):
         draining immediately kills the asking turn at drain_seconds instead of
         letting it finish. Waiting first makes the request a request, not a
         suicide.
+
+        Returns a truthful status so the API never claims a restart it will
+        not perform: {'accepted': True, 'deferred': ...} when the restart
+        thread engaged, or {'accepted': False, 'reason': ...} when it did not
+        (already restarting, or the worker could not start).
         """
-        with self._restart_lock:
-            if self._restarting:
-                return
-            self._restarting = True
 
         def run():
-            if when == 'idle':
-                # Stop taking work first: a queued turn that starts during the
-                # wait is a running turn, and then the wait would cover it and
-                # the deadline would fall through to an interruption.
-                self.manager.hold()
-                # Wait while running turns are still producing something. A turn
-                # that goes silent for restart_stall_seconds is treated as wedged
-                # and drained; a turn that keeps working is never interrupted for
-                # merely taking a long time.
-                while self.manager.busy_running():
-                    time.sleep(0.1)
-            result = self.manager.drain()
-            self._restart_drained = result['drained']
-            print(f'Drained for restart: {result}', flush=True)
-            self.shutdown()
-        threading.Thread(target=run, name='tessera-restart', daemon=True).start()
+            try:
+                if when == 'idle':
+                    # Stop taking work first: a queued turn that starts during the
+                    # wait is a running turn, and then the wait would cover it and
+                    # the deadline would fall through to an interruption.
+                    self.manager.hold()
+                    # Wait while running turns are still producing something. A turn
+                    # that goes silent for restart_stall_seconds is treated as wedged
+                    # and drained; a turn that keeps working is never interrupted for
+                    # merely taking a long time.
+                    while self.manager.busy_running():
+                        time.sleep(0.1)
+                result = self.manager.drain()
+                self._restart_drained = result['drained']
+                print(f'Drained for restart: {result}', flush=True)
+                self.shutdown()
+            except Exception as error:
+                # A dead restart worker must not wedge the flag: the core would
+                # then refuse every later restart silently. Log it, release the
+                # flag, and let a retry engage for real.
+                print(f'Restart aborted: {error!r}', flush=True)
+                self._restart_drained = False
+                with self._restart_lock:
+                    self._restarting = False
+
+        with self._restart_lock:
+            if self._restarting:
+                return {'accepted': False, 'reason': 'already-restarting'}
+            self._restarting = True
+        try:
+            threading.Thread(target=run, name='tessera-restart', daemon=True).start()
+        except Exception as error:
+            with self._restart_lock:
+                self._restarting = False
+            return {'accepted': False, 'reason': f'restart worker failed to start: {error!r}'}
+        return {'accepted': True, 'deferred': when == 'idle'}
 
     def shutdown(self):
         self.stopping.set()
@@ -511,7 +533,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/autonomy/floor-definition' and method == 'PUT':
             body = self._body(('definition', 'actor'), ('definition',))
             try:
-                self._json(200, manager.autonomy.floor_save(body['definition'], body.get('actor') or 'operator'))
+                self._json(200, manager.autonomy.floor_save(body['definition'], 'operator'))
             except FloorDefinitionError as error:
                 raise ApiError(400, str(error)) from None
             return
@@ -757,11 +779,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(400, "when must be 'now' or 'idle'")
             if not self.server.restart_capable():
                 raise ApiError(409, 'Core is not supervised; restart it where it was started')
-            self._json(202, {'restarting': True, 'deferred': when == 'idle',
+            # Engage before answering: a 202 written before restart() ran
+            # promised a restart that a failure after the write never delivered.
+            result = self.server.restart(when)
+            if not result['accepted']:
+                raise ApiError(409, result['reason'])
+            self._json(202, {'restarting': True, 'deferred': result['deferred'],
                              'drain_seconds': self.server.config.server.drain_seconds})
-            # Either an external supervisor or this core's own launcher starts
-            # fresh code after the existing drain completes.
-            self.server.restart(when)
             return
         if path == '/api/update/check' and method == 'GET':
             from . import updates
@@ -1376,9 +1400,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         if resource == 'messages' and method == 'POST':
             body = self._body(('text', 'reply_to', 'source', 'client_request_id', 'attachments', 'project_id', 'selected'), ('text',))
-            self._json(202, {'turn_id': manager.submit(slug, body['text'], body.get('reply_to'),
-                source=body.get('source'), client_request_id=body.get('client_request_id'),
-                attachments=body.get('attachments'), project_id=body.get('project_id'), selected=body.get('selected'))})
+            try:
+                turn_id = manager.submit(slug, body['text'], body.get('reply_to'),
+                    source=body.get('source'), client_request_id=body.get('client_request_id'),
+                    attachments=body.get('attachments'), project_id=body.get('project_id'), selected=body.get('selected'))
+            except RuntimeError as error:
+                if str(error) != 'Session manager is stopping' or manager._accepting:
+                    raise
+                self._json(503, {'error': 'Session manager is stopping'}, {'Retry-After': '1'})
+                return
+            self._json(202, {'turn_id': turn_id})
             return
         if resource == 'feedback' and method == 'POST':
             body = self._body(('i', 'rating', 'resolved', 'note'), ('i',))
@@ -1654,6 +1685,7 @@ def serve(config):
         return _run_owned(config, 'serve')
     from .bundled_engine import ensure_local_engine_bundle
     ensure_local_engine_bundle(config)
+    _rotate_core_output(config)
     terminating = []
     with create_server(config) as server:
         server.self_supervised = not config.server.supervised
@@ -1688,6 +1720,25 @@ def serve(config):
     if server._restarting and not terminating:
         from .updates import restart_process
         restart_process(server.config, 'serve', server.server_address[1])
+
+
+def _rotate_core_output(config):
+    """Rotate the core's own stdout/stderr file once at startup.
+
+    The file is the desktop's `logs/core.log` or an operator launcher's
+    `core.out`. Rotation needs a regular file on disk; a terminal or a pipe is
+    left alone. A failure is reported, never fatal: a log that cannot be
+    rotated must not stop the core from serving.
+    """
+    from .log_rotation import rotate_core_streams
+    try:
+        result = rotate_core_streams(config.server.log_max_bytes, config.server.log_keep)
+    except OSError as error:
+        print('core log rotation failed: ' + type(error).__name__, file=sys.stderr, flush=True)
+        return None
+    if result.get('rotated'):
+        print(f'core log rotated: {result["file"]} -> {result["rotated"]}', file=sys.stderr, flush=True)
+    return result
 
 
 def _release_embedded_engine(config):

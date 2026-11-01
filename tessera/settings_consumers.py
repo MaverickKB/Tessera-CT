@@ -78,7 +78,7 @@ CATALOG_READERS = {
     'swarm.max_job_tasks': [Reader('tessera/swarm_bounds.py job_task_limit; tessera/jobs.py refuses a job larger than the effective bound. Unset allows 8 in Safe mode and no cap in Unleashed. A saved integer holds in both modes')],
     'swarm.distinct_workers': [Reader('tessera/swarm_bounds.py require_distinct_workers; tessera/jobs.py requires a distinct backend and account when the guard is on. Unset is on in Safe mode and off in Unleashed. A saved true or false holds in both modes. Overlapping scopes stay refused')],
     'autonomy.infinity_slug': [Reader('tessera/autonomy.py:557 floor_slug keys the floor session and cockpit lane')],
-    'autonomy.world_view': [Reader('tessera/floor_definition.py:775 effective_world_view reads config.autonomy.world_view until a definition file is saved', 'Read until a floor-definition file exists. A saved file owns the text.')],
+    'autonomy.world_view': [Reader('tessera/floor_definition.py:774 effective_world_view reads config.autonomy.world_view until a definition file is saved', 'Read until a floor-definition file exists. A saved file owns the text.')],
     'autonomy.min_wake_gap_seconds': [Reader('tessera/autonomy.py:980 _cap_reason refuses a wake inside the gap')],
     'autonomy.self_prompt_gap_seconds': [Reader('tessera/autonomy.py:1506 and :1563 gate self-prompt refreshes on the gap')],
     'autonomy.oversight_policy': [Reader('tessera/oversight.py:446 selects report content; tessera/sessions.py:1604 echoes it')],

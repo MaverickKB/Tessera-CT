@@ -10,6 +10,11 @@ from tessera import cli, desktop_install as desktop, terminal
 from tessera.config import load_config
 
 
+@pytest.fixture
+def linux_appimage(monkeypatch):
+    monkeypatch.setattr(sys, 'platform', 'linux')
+
+
 def _release(distro, version='', like=''):
     lines = [f'ID={distro}']
     if version:
@@ -77,7 +82,7 @@ def test_appimage_fuse_failure_ignores_other_launch_errors():
     assert desktop.appimage_fuse_failure('') is False
 
 
-def test_missing_fuse2_is_reported_and_does_not_launch(tmp_path, monkeypatch, capsys):
+def test_missing_fuse2_is_reported_and_does_not_launch(tmp_path, monkeypatch, capsys, linux_appimage):
     binary = tmp_path / 'tessera-desktop'
     binary.write_bytes(b'AppImage')
     monkeypatch.setattr(desktop, 'find_binary', lambda: binary)
@@ -98,7 +103,7 @@ def test_missing_fuse2_is_reported_and_does_not_launch(tmp_path, monkeypatch, ca
     assert capsys.readouterr().err == ''
 
 
-def test_extract_setting_is_announced_and_passed_to_the_appimage(tmp_path, monkeypatch, capsys):
+def test_extract_setting_is_announced_and_passed_to_the_appimage(tmp_path, monkeypatch, capsys, linux_appimage):
     binary = tmp_path / 'tessera-desktop'
     binary.write_bytes(b'AppImage')
     monkeypatch.setattr(desktop, 'find_binary', lambda: binary)
@@ -180,7 +185,7 @@ def _quiet_start(monkeypatch):
     monkeypatch.setattr('tessera.server._release_embedded_engine', lambda _: None)
 
 
-def test_start_names_the_fuse_fix_before_the_browser_fallback(tmp_path, monkeypatch, capsys):
+def test_start_names_the_fuse_fix_before_the_browser_fallback(tmp_path, monkeypatch, capsys, linux_appimage):
     (tmp_path / 'config.toml').write_text('')
     _quiet_start(monkeypatch)
     monkeypatch.setattr(desktop, 'find_binary', lambda: tmp_path / 'tessera-desktop')
@@ -203,7 +208,7 @@ def test_start_names_the_fuse_fix_before_the_browser_fallback(tmp_path, monkeypa
     create.assert_called_once()
 
 
-def test_start_with_extract_enabled_does_not_open_a_browser(tmp_path, monkeypatch, capsys):
+def test_start_with_extract_enabled_does_not_open_a_browser(tmp_path, monkeypatch, capsys, linux_appimage):
     (tmp_path / 'config.toml').write_text('desktop_appimage_extract = true\n')
     assert load_config(tmp_path).desktop_appimage_extract is True
     _quiet_start(monkeypatch)
@@ -230,3 +235,18 @@ def test_desktop_appimage_extract_defaults_off_and_loads_from_the_environment(tm
     assert load_config(tmp_path).desktop_appimage_extract is True
     monkeypatch.setenv('TESSERA_DESKTOP_APPIMAGE_EXTRACT', 'false')
     assert load_config(tmp_path).desktop_appimage_extract is False
+
+
+@pytest.mark.parametrize('platform', ['darwin', 'win32'])
+def test_other_platforms_launch_without_a_fuse_probe(tmp_path, monkeypatch, platform):
+    monkeypatch.setattr(sys, 'platform', platform)
+    monkeypatch.setattr(desktop, 'find_binary', lambda: tmp_path / 'tessera-desktop')
+    monkeypatch.setattr(desktop, 'bootstrap_path', lambda: tmp_path / 'desktop-bootstrap.json')
+    probe = Mock(side_effect=AssertionError('FUSE probing belongs to Linux'))
+    monkeypatch.setattr(desktop, 'fuse2_present', probe)
+    launch = Mock()
+    monkeypatch.setattr(desktop, '_launch_native', launch)
+    desktop.launch(tmp_path, extract_appimage=True, startup_timeout=1)
+    probe.assert_not_called()
+    launch.assert_called_once()
+    assert 'APPIMAGE_EXTRACT_AND_RUN' not in launch.call_args.args[1]

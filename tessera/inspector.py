@@ -8,7 +8,7 @@ an inverse record in ``run/inspector-journal.jsonl``. There is no TCP, no port
 and no HTTP. Socket handler failures stay in their own thread.
 """
 
-from dataclasses import asdict, fields as dataclass_fields
+from dataclasses import fields as dataclass_fields
 import hmac
 import json
 import os

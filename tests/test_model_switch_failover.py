@@ -1,9 +1,11 @@
 """Per-session model switching and failover when the default model's service is down."""
-from tessera.backend import BackendError
+import pytest
+
+from fake_backend import FakeBackend, fake_http_server
+from test_loop import session_config
+from tessera.backend import Backend, BackendError
 from tessera.config import BackendConfig, Config
 from tessera.sessions import SessionManager
-
-from fake_backend import FakeBackend
 
 
 class Down:
@@ -32,6 +34,56 @@ def manager_with(tmp_path, primary, failover_on=True):
 
 def notes(manager, slug):
     return [m.text for m in manager.get(slug).log.iter() if m.kind == 'note']
+
+
+def manager_over_loopback(tmp_path, url, failover_on=True):
+    """The 'local' role is a real HTTP backend against the loopback fixture.
+
+    The failover role is a scripted fake, so the two backends are distinct
+    objects with different names, as failover requires.
+    """
+    config = session_config(tmp_path)
+    config.backends = {
+        'local': BackendConfig(name='local', base_url=url, model='test-empty'),
+        'grok-chat': BackendConfig(name='grok-chat', base_url='https://api.example.com/v1', model='grok-test'),
+    }
+    config.roles = {'main': 'local', **({'failover': 'grok-chat'} if failover_on else {})}
+    grok = FakeBackend(['Answered by the failover model.'] * 4)
+    local = Backend('local', url, 'test-empty', extra={'retries': 1, 'retry_delay': 0})
+    backends = {'local': local, None: local, 'grok-chat': grok}
+    manager = SessionManager(config, backend_factory=lambda slug, name: backends[name])
+    return manager, grok
+
+
+EMPTY = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
+
+
+def note_messages(manager, slug):
+    return [m for m in manager.get(slug).log.iter() if m.kind == 'note']
+
+
+def test_a_refusal_is_not_an_empty_answer_and_does_not_fail_over(tmp_path):
+    refusal = {"choices": [{"message": {"content": "I will not."},
+                            "finish_reason": "content_filter"}]}
+    with fake_http_server([(200, refusal)]) as (url, received):
+        manager, grok = manager_over_loopback(tmp_path, url)
+        with manager:
+            slug = manager.create('Notes')['slug']
+            manager.submit(slug, 'Hello')
+            manager.wait(slug, 5)
+            assert not grok.calls and len(received) == 1
+            assert not any('used grok-test' in n for n in notes(manager, slug))
+
+
+def test_exhausted_empty_answers_surface_the_outage_without_failover(tmp_path):
+    with fake_http_server([(200, EMPTY), (200, EMPTY)]) as (url, received):
+        manager, grok = manager_over_loopback(tmp_path, url, failover_on=False)
+        with manager:
+            slug = manager.create('Notes')['slug']
+            manager.submit(slug, 'Hello')
+            manager.wait(slug, 5)
+            assert not grok.calls and len(received) == 2
+            assert not any('used grok-test' in n for n in notes(manager, slug))
 
 
 def test_unreachable_default_fails_over_with_a_notice(tmp_path):
