@@ -252,7 +252,10 @@ def _remove_key_line(lines, path, key):
             first = index + 1
             break
     if first is None:
-        return lines
+        if path:
+            return lines
+        # The top-level table is implicit: it is everything before the first header.
+        first = 0
     end = len(lines)
     for index in range(first, len(lines)):
         if _HEADER.match(lines[index]):
