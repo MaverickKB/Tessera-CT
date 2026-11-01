@@ -72,20 +72,29 @@ def test_torn_final_record_is_preserved_and_missing_work_resumes(tmp_path, tail)
     assert len(list((tmp_path / 'tree').glob('0*.jsonl'))) == 2
 
 
-def test_a_complete_corrupt_record_is_skipped_not_fatal(tmp_path):
-    """A damaged summary line is skipped at startup, never fatal.
-
-    The intact nodes survive and the damaged line rebuilds from the log;
-    raising here used to brick the whole core on one torn write.
-    """
+def test_a_complete_corrupt_record_is_skipped_not_fatal(tmp_path, capsys):
     with ChatLog(tmp_path / 'log') as log:
-        tree = SummaryTree(tmp_path, log)
+        tree = SummaryTree(tmp_path, log, node_bytes=32)
         log.append('user', 'intact')
-    with (tmp_path / 'tree' / '0.jsonl').open('ab') as stream:
-        stream.write(b'{corrupt}\n')
+        log.append('user', 'long original request ' * 10)
+        tree.set_node(0, 1, '[user] original request')
+    damaged = tmp_path / 'tree' / '0.jsonl'
+    records = damaged.read_bytes().splitlines(keepends=True)
+    records[1] = b'{corrupt}\n'
+    damaged.write_bytes(b''.join(records))
     with ChatLog(tmp_path / 'log') as log:
-        restored = SummaryTree(tmp_path, log)
+        restored = SummaryTree(tmp_path, log, node_bytes=32)
         assert restored.node(0, 0) == 'intact'
+        assert restored.node(0, 1) is None
+        assert restored.ready_leaves().get_nowait() == (0, 1)
+        restored.set_node(0, 1, '[user] original request')
+        assert restored.ready_merges().get_nowait() == (1, 0)
+    assert 'skipped 1 damaged summary line(s)' in capsys.readouterr().out
+    with ChatLog(tmp_path / 'log') as log:
+        restored = SummaryTree(tmp_path, log, node_bytes=32)
+        assert restored.node(0, 0) == 'intact'
+        assert restored.node(0, 1) == '[user] original request'
+        assert restored.ready_leaves().empty()
 
 
 def test_node_metadata_is_atomic_detached_immutable_and_survives_restart(tmp_path):

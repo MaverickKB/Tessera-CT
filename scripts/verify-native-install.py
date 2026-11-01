@@ -175,7 +175,8 @@ def main():
         env = {key: value for key, value in os.environ.items()
                if not key.startswith('TESSERA_') and key != 'PYTHONPATH'}
         env['BROWSER'] = f'"{sys.executable}" "{sentinel}" %s'
-        env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+        # Opt in through Tessera's setting; launch sanitizes raw AppImage flags.
+        env['TESSERA_DESKTOP_APPIMAGE_EXTRACT'] = 'true'
         env['TESSERA_DESKTOP_STARTUP_SECONDS'] = '120'
         # The installed interpreter must find the installed package from a clean
         # directory. The release job installs this checkout in its venv first.

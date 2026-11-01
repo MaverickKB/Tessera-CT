@@ -9,6 +9,10 @@ identity_file = ""
 identity_max_bytes = 65536
 desktop_install_timeout = 600.0
 desktop_startup_timeout = 60.0
+# Linux AppImage only. false: a missing FUSE 2 mount is reported and the web
+# UI is the fallback. true: extract the AppImage and run it without FUSE 2.
+# The same switch is Settings → Update → Run the Linux app without FUSE.
+desktop_appimage_extract = false
 # cwd defaults to the directory where Tessera starts.
 # A turn is not stopped by an iteration count. Do not add one back.
 

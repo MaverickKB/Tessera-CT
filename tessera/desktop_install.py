@@ -35,6 +35,157 @@ _SHA256_RE = __import__('re').compile(r'^[0-9a-fA-F]{64}$')
 class NativeShellNotFound(RuntimeError):
     """No installed binary, and none could be obtained or launched."""
 
+    def __init__(self, message, *, fuse=False):
+        super().__init__(message)
+        self.fuse = fuse
+
+
+# Phrases the AppImage runtime prints when fusermount is missing, is FUSE 3,
+# or libfuse.so.2 cannot be loaded. Other launch failures must not match.
+_FUSE_MARKERS = (
+    'no suitable fusermount',
+    'cannot mount appimage',
+    'check your fuse setup',
+    'fusermount_prog',
+    'failed to exec fusermount',
+    'libfuse.so.2',
+)
+
+
+def appimage_fuse_failure(text):
+    """True when an AppImage refused to mount for lack of FUSE 2."""
+    lowered = (text or '').lower()
+    return any(marker in lowered for marker in _FUSE_MARKERS)
+
+
+def _os_release(text=None):
+    if text is None:
+        try:
+            text = Path('/etc/os-release').read_text(encoding='utf-8')
+        except OSError:
+            text = ''
+    info = {}
+    for line in text.splitlines():
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        info[key.strip().lower()] = value.strip().strip('"').strip("'")
+    return info
+
+
+def _version_at_least(version, major, minor=0):
+    parts = []
+    for piece in str(version or '').split('.'):
+        digits = ''
+        for character in piece:
+            if character.isdigit():
+                digits += character
+            else:
+                break
+        if not digits:
+            break
+        parts.append(int(digits))
+    if not parts:
+        return False
+    while len(parts) < 2:
+        parts.append(0)
+    return (parts[0], parts[1]) >= (major, minor)
+
+
+def fuse2_install_command(os_release_text=None):
+    """The one command that installs FUSE 2 on this distro.
+
+    Unknown distros get every known command, each on its own line, so the
+    operator is not handed a guess. Tessera never runs the command.
+    """
+    info = _os_release(os_release_text)
+    distro = info.get('id', '')
+    like = set((info.get('id_like') or '').split())
+    version = info.get('version_id', '')
+    names = {distro} | like
+    if names & {'fedora', 'rhel', 'centos', 'rocky', 'almalinux'}:
+        return 'sudo dnf install fuse fuse-libs'
+    if names & {'arch', 'manjaro', 'endeavouros'}:
+        return 'sudo pacman -S fuse2'
+    debian = names & {'debian', 'ubuntu', 'linuxmint', 'pop'}
+    if debian:
+        modern = (
+            (distro == 'ubuntu' and _version_at_least(version, 24, 4))
+            or (distro == 'debian' and _version_at_least(version, 13))
+            or (distro == 'linuxmint' and _version_at_least(version, 22))
+            or (distro == 'pop' and _version_at_least(version, 24, 4))
+        )
+        if modern:
+            return 'sudo apt install fuse'
+        if version:
+            return 'sudo apt install libfuse2'
+        return 'sudo apt install fuse\nsudo apt install libfuse2'
+    return '\n'.join((
+        'sudo apt install fuse',
+        'sudo apt install libfuse2',
+        'sudo dnf install fuse fuse-libs',
+        'sudo pacman -S fuse2',
+    ))
+
+
+def fuse_mount_lines(extract_enabled, command):
+    """Plain sentences for a missing FUSE 2 mount. No sudo is run."""
+    lines = [
+        'the native AppImage cannot mount because FUSE 2 is missing.',
+        'fusermount on this system is FUSE 3 or is not installed, and the AppImage refuses that.',
+        'Install FUSE 2, then run tessera start again:',
+    ]
+    for part in str(command).splitlines():
+        lines.append('  ' + part)
+    lines.append('Tessera will not run sudo.')
+    if extract_enabled:
+        lines.append('desktop_appimage_extract is on, so Tessera will extract the AppImage and run the native app without mounting.')
+        lines.append('Turn it off in Settings → Update → Run the Linux app without FUSE, or set desktop_appimage_extract = false in config.toml.')
+    else:
+        lines.append('Extract-and-run is off. Turn it on in Settings → Update → Run the Linux app without FUSE, or set desktop_appimage_extract = true in config.toml, to open the native app without installing FUSE 2.')
+    return lines
+
+
+def fuse_mount_message(extract_enabled, command=None):
+    return '\n'.join(fuse_mount_lines(extract_enabled, command if command is not None else fuse2_install_command()))
+
+
+def fuse2_present(lookup=None, runner=None):
+    """True only for a FUSE 2 fusermount. fusermount3 is not accepted."""
+    which = shutil.which if lookup is None else lookup
+    binary = which('fusermount')
+    if not binary:
+        return False
+    try:
+        resolved = os.path.realpath(binary)
+    except OSError:
+        resolved = binary
+    if os.path.basename(resolved) == 'fusermount3':
+        return False
+    run = subprocess.run if runner is None else runner
+    try:
+        result = run([binary, '-V'], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    text = ((getattr(result, 'stdout', '') or '') + (getattr(result, 'stderr', '') or '')).lower()
+    if 'fusermount3' in text or 'version: 3' in text:
+        return False
+    return 'version: 2' in text
+
+
+def _looks_like_appimage(path):
+    try:
+        with open(path, 'rb') as handle:
+            sample = handle.read(1_048_576)
+    except OSError:
+        return False
+    return b'AppImage' in sample
+
+
+def appimage_extract_enabled(config):
+    """The Settings switch. Off unless the operator turns it on."""
+    return getattr(config, 'desktop_appimage_extract', False) is True
+
 
 def candidates() -> list[Path]:
     """Locations where an installed shell binary may live, in lookup order."""
@@ -114,12 +265,19 @@ def remember_install(home: Path, python: str, core_root: str) -> Path:
     return path
 
 
-def launch(home: Path, *, port: int | None = None, startup_timeout: float | None = None) -> None:
+def launch(home: Path, *, port: int | None = None, startup_timeout: float | None = None,
+           extract_appimage: bool = False) -> None:
     """Open and acknowledge the actual native window on every platform.
 
     The shell always owns its Python core. The short-lived public launcher
     waits for the shell's ready record rather than assuming exec success means
     a window opened. A failed launch is cleaned up before browser recovery.
+
+    ``extract_appimage`` is the operator's Settings switch. It is off by
+    default. On, and only when the AppImage cannot mount for lack of FUSE 2,
+    the child is started with ``APPIMAGE_EXTRACT_AND_RUN=1`` and that choice
+    is printed. Off, a stray value of that variable is removed so turning the
+    switch off is what the launch does.
     """
     binary = find_binary()
     if binary is None:
@@ -127,6 +285,7 @@ def launch(home: Path, *, port: int | None = None, startup_timeout: float | None
     home = Path(home).expanduser().resolve()
     home.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
+    env.pop('APPIMAGE_EXTRACT_AND_RUN', None)
     env['TESSERA_HOME'] = str(home)
     env['TESSERA_DESKTOP_HOME'] = str(home)
     env.setdefault('TESSERA_DESKTOP_PYTHON', sys.executable)
@@ -137,7 +296,36 @@ def launch(home: Path, *, port: int | None = None, startup_timeout: float | None
     if startup_timeout is None:
         from .config import Config
         startup_timeout = Config().desktop_startup_timeout
-    _launch_native(binary, env, startup_timeout)
+    extracted = False
+    if sys.platform.startswith('linux') and _looks_like_appimage(binary) and not fuse2_present():
+        if not extract_appimage:
+            raise NativeShellNotFound(fuse_mount_message(False), fuse=True)
+        env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+        _announce_extract()
+        extracted = True
+    try:
+        _launch_native(binary, env, startup_timeout)
+    except NativeShellNotFound as error:
+        if not error.fuse:
+            raise
+        if extract_appimage and not extracted:
+            env['APPIMAGE_EXTRACT_AND_RUN'] = '1'
+            _announce_extract()
+            try:
+                _launch_native(binary, env, startup_timeout)
+            except NativeShellNotFound as retry:
+                if not retry.fuse:
+                    raise
+                raise NativeShellNotFound(
+                    fuse_mount_message(True) + '\nExtract-and-run was already on, and the native window still did not open.',
+                    fuse=True) from retry
+            return
+        raise NativeShellNotFound(fuse_mount_message(extract_appimage), fuse=True) from error
+
+
+def _announce_extract():
+    for line in fuse_mount_lines(True, fuse2_install_command()):
+        print('tessera: ' + line, file=sys.stderr)
 
 
 def _launch_native(binary, env, startup_timeout):
@@ -147,10 +335,12 @@ def _launch_native(binary, env, startup_timeout):
     try:
         process = subprocess.Popen([str(binary)], env=env, close_fds=True,
                                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
                                    start_new_session=os.name != 'nt')
     except OSError as error:
         raise NativeShellNotFound(f'Could not launch {binary}: {error}') from error
     ready = queue.Queue()
+    stderr_chunks = []
 
     def read_events():
         try:
@@ -167,8 +357,18 @@ def _launch_native(binary, env, startup_timeout):
         finally:
             process.stdout.close()
 
+    def read_stderr():
+        try:
+            if process.stderr is not None:
+                stderr_chunks.append(process.stderr.read())
+        finally:
+            if process.stderr is not None:
+                process.stderr.close()
+
     reader = threading.Thread(target=read_events, daemon=True)
     reader.start()
+    stderr_reader = threading.Thread(target=read_stderr, daemon=True)
+    stderr_reader.start()
     try:
         loaded = ready.get(timeout=startup_timeout)
     except queue.Empty:
@@ -206,6 +406,13 @@ def _launch_native(binary, env, startup_timeout):
         except ProcessLookupError:
             pass
     reader.join(timeout=startup_timeout)
+    stderr_reader.join(timeout=startup_timeout)
+    diagnostic = b''.join(stderr_chunks)[:8192].decode('utf-8', 'replace')
+    if diagnostic.strip():
+        # The AppImage's own words stay visible. The explanation is added by launch().
+        print(diagnostic, file=sys.stderr, end='' if diagnostic.endswith('\n') else '\n')
+    if appimage_fuse_failure(diagnostic):
+        raise NativeShellNotFound('The native desktop window did not become ready', fuse=True)
     raise NativeShellNotFound('The native desktop window did not become ready')
 
 
