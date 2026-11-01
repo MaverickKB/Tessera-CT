@@ -72,15 +72,20 @@ def test_torn_final_record_is_preserved_and_missing_work_resumes(tmp_path, tail)
     assert len(list((tmp_path / 'tree').glob('0*.jsonl'))) == 2
 
 
-def test_complete_corrupt_record_is_rejected(tmp_path):
+def test_a_complete_corrupt_record_is_skipped_not_fatal(tmp_path):
+    """A damaged summary line is skipped at startup, never fatal.
+
+    The intact nodes survive and the damaged line rebuilds from the log;
+    raising here used to brick the whole core on one torn write.
+    """
     with ChatLog(tmp_path / 'log') as log:
         tree = SummaryTree(tmp_path, log)
         log.append('user', 'intact')
     with (tmp_path / 'tree' / '0.jsonl').open('ab') as stream:
         stream.write(b'{corrupt}\n')
     with ChatLog(tmp_path / 'log') as log:
-        with pytest.raises(json.JSONDecodeError):
-            SummaryTree(tmp_path, log)
+        restored = SummaryTree(tmp_path, log)
+        assert restored.node(0, 0) == 'intact'
 
 
 def test_node_metadata_is_atomic_detached_immutable_and_survives_restart(tmp_path):
