@@ -12,28 +12,37 @@ import os
 import sys
 
 
+def _darwin_stream_path(fd):
+    """Ask lsof which file this descriptor names; None when it is not a file.
+
+    macOS has no /proc, and the fcntl F_GETPATH call cannot carry its output
+    buffer through ctypes on Apple Silicon, so lsof is the portable answer.
+    Pipes and sockets show up as "->..." and are filtered out here.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['/usr/sbin/lsof', '-a', '-p', str(os.getpid()), '-d', str(fd), '-Fn'],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in result.stdout.splitlines():
+        if line.startswith('n') and line[1:].startswith('/'):
+            return line[1:]
+    return None
+
+
 def stream_file(fd):
     """The regular file this descriptor writes to, or None.
 
     A terminal, a pipe or a socket is not ours to rotate: the operator is
     reading it. Only a real file on disk is bounded here. Linux answers
-    through /proc; macOS answers through F_GETPATH; everywhere else the
+    through /proc; macOS answers through lsof; everywhere else the
     descriptor is left alone.
     """
     target = None
     if sys.platform == 'darwin':
-        import fcntl
-        try:
-            raw = fcntl.fcntl(fd, fcntl.F_GETPATH, bytearray(1024))
-        except TypeError:
-            # Pythons before 3.12 take no buffer argument here, so the path
-            # cannot be resolved; rotation skips the stream rather than failing.
-            return None
-        except (OSError, ValueError):
-            return None
-        if not isinstance(raw, bytes):
-            return None
-        target = raw.split(b'\x00', 1)[0].decode('utf-8', 'replace')
+        target = _darwin_stream_path(fd)
     else:
         try:
             target = os.readlink('/proc/self/fd/' + str(fd))
