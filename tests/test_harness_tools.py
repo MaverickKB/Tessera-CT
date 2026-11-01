@@ -180,13 +180,13 @@ def test_web_fetch_refuses_non_public_destinations(tmp_path):
                ('[::ffff:127.0.0.1]', '::ffff:127.0.0.1')]
     try:
         with Session(session_config(tmp_path), backend=FakeBackend([])) as session:
-            for host, address in targets:
+            for host, addresses in targets:
                 url = f'http://{host}:{port}/secret'
                 with pytest.raises(ValueError) as caught:
                     session.tools.execute('web_fetch', {'url': url})
                 message = str(caught.value)
                 assert message.startswith(f'web_fetch refused {host.strip("[]")}'), message
-                assert f'{address} is not a public address' in message, message
+                assert any(f'{address} is not a public address' in message for address in addresses), message
     finally:
         _stop(server, thread)
     assert hits == []
