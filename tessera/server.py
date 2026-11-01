@@ -203,29 +203,50 @@ class TesseraServer(ThreadingHTTPServer):
         draining immediately kills the asking turn at drain_seconds instead of
         letting it finish. Waiting first makes the request a request, not a
         suicide.
+
+        Returns a truthful status so the API never claims a restart it will
+        not perform: {'accepted': True, 'deferred': ...} when the restart
+        thread engaged, or {'accepted': False, 'reason': ...} when it did not
+        (already restarting, or the worker could not start).
         """
-        with self._restart_lock:
-            if self._restarting:
-                return
-            self._restarting = True
 
         def run():
-            if when == 'idle':
-                # Stop taking work first: a queued turn that starts during the
-                # wait is a running turn, and then the wait would cover it and
-                # the deadline would fall through to an interruption.
-                self.manager.hold()
-                # Wait while running turns are still producing something. A turn
-                # that goes silent for restart_stall_seconds is treated as wedged
-                # and drained; a turn that keeps working is never interrupted for
-                # merely taking a long time.
-                while self.manager.busy_running():
-                    time.sleep(0.1)
-            result = self.manager.drain()
-            self._restart_drained = result['drained']
-            print(f'Drained for restart: {result}', flush=True)
-            self.shutdown()
-        threading.Thread(target=run, name='tessera-restart', daemon=True).start()
+            try:
+                if when == 'idle':
+                    # Stop taking work first: a queued turn that starts during the
+                    # wait is a running turn, and then the wait would cover it and
+                    # the deadline would fall through to an interruption.
+                    self.manager.hold()
+                    # Wait while running turns are still producing something. A turn
+                    # that goes silent for restart_stall_seconds is treated as wedged
+                    # and drained; a turn that keeps working is never interrupted for
+                    # merely taking a long time.
+                    while self.manager.busy_running():
+                        time.sleep(0.1)
+                result = self.manager.drain()
+                self._restart_drained = result['drained']
+                print(f'Drained for restart: {result}', flush=True)
+                self.shutdown()
+            except Exception as error:
+                # A dead restart worker must not wedge the flag: the core would
+                # then refuse every later restart silently. Log it, release the
+                # flag, and let a retry engage for real.
+                print(f'Restart aborted: {error!r}', flush=True)
+                self._restart_drained = False
+                with self._restart_lock:
+                    self._restarting = False
+
+        with self._restart_lock:
+            if self._restarting:
+                return {'accepted': False, 'reason': 'already-restarting'}
+            self._restarting = True
+        try:
+            threading.Thread(target=run, name='tessera-restart', daemon=True).start()
+        except Exception as error:
+            with self._restart_lock:
+                self._restarting = False
+            return {'accepted': False, 'reason': f'restart worker failed to start: {error!r}'}
+        return {'accepted': True, 'deferred': when == 'idle'}
 
     def shutdown(self):
         self.stopping.set()
@@ -757,11 +778,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(400, "when must be 'now' or 'idle'")
             if not self.server.restart_capable():
                 raise ApiError(409, 'Core is not supervised; restart it where it was started')
-            self._json(202, {'restarting': True, 'deferred': when == 'idle',
+            # Engage before answering: a 202 written before restart() ran
+            # promised a restart that a failure after the write never delivered.
+            result = self.server.restart(when)
+            if not result['accepted']:
+                raise ApiError(409, result['reason'])
+            self._json(202, {'restarting': True, 'deferred': result['deferred'],
                              'drain_seconds': self.server.config.server.drain_seconds})
-            # Either an external supervisor or this core's own launcher starts
-            # fresh code after the existing drain completes.
-            self.server.restart(when)
             return
         if path == '/api/update/check' and method == 'GET':
             from . import updates

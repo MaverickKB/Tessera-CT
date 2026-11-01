@@ -454,3 +454,72 @@ def test_goblin_session_reuses_directory_without_metadata(tmp_path):
         result = manager.ensure_bot('goblin-orphan', 'Orphan', goblin_id='orphan')
         assert result['slug'] == 'goblin-orphan'
         assert marker.read_text(encoding='utf-8') == 'keep'
+
+
+def test_a_second_restart_is_refused_with_a_truthful_status(tmp_path):
+    import unittest.mock
+
+    from tessera.server import create_server
+    from test_server import call
+
+    config = session_config(tmp_path)
+    config.server.port = 0
+    config.server.supervised = True
+    server = create_server(config, backend_factory=lambda *args: FakeBackend([]))
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+
+    # The worker would shut the server down once engaged; keep it alive so the
+    # refusal path is what is under test, not the shutdown.
+    with unittest.mock.patch.object(server.manager, 'drain', side_effect=RuntimeError('drain failed')):
+        first_status, first = call(server, 'POST', '/api/core/restart', {})
+        assert first_status == 202, first
+        assert first == {'restarting': True, 'deferred': False, 'drain_seconds': config.server.drain_seconds}
+        assert wait_for(lambda: not server._restarting), 'a failed drain must not wedge the flag'
+        assert wait_for(lambda: call(server, 'GET', '/api/status')[0] == 200), 'still serving after an aborted restart'
+        # The flag is released, so a retry is accepted rather than silently ignored.
+        retry_status, retry = call(server, 'POST', '/api/core/restart', {})
+        assert retry_status == 202, retry
+    server.server_close()
+
+
+def test_an_already_restarting_core_refuses_the_route(tmp_path):
+    from tessera.server import create_server
+    from test_server import call
+
+    config = session_config(tmp_path)
+    config.server.port = 0
+    config.server.supervised = True
+    server = create_server(config, backend_factory=lambda *args: FakeBackend([]))
+    serving = threading.Thread(target=server.serve_forever, daemon=True)
+    serving.start()
+    server._restarting = True
+    status, result = call(server, 'POST', '/api/core/restart', {})
+    assert status == 409, result
+    assert result['error'] == 'already-restarting'
+    server.server_close()
+
+
+def test_a_failed_restart_worker_never_wedges_the_flag(tmp_path):
+    import unittest.mock
+
+    from tessera import server as server_module
+    from tessera.server import create_server
+
+    config = session_config(tmp_path)
+    config.server.port = 0
+    config.server.supervised = True
+    server = create_server(config, backend_factory=lambda *args: FakeBackend([]))
+
+    def refused_start(*args, **kwargs):
+        raise RuntimeError('no thread available')
+
+    with unittest.mock.patch.object(server_module.threading, 'Thread', side_effect=refused_start):
+        result = server.restart('now')
+        assert result['accepted'] is False, result
+        assert 'no thread available' in result['reason'], result
+        assert server._restarting is False, 'a failed start must not wedge the flag'
+    # Once the worker can start again, the restart is accepted.
+    result = server.restart('now')
+    assert result['accepted'] is True, result
+    server.server_close()
