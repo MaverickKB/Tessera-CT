@@ -874,7 +874,6 @@ class SessionManager:
                 runtime.close()
             self._owner.close()
             raise
-        self.goblin_scheduler.start()
         self.autonomy.start()
 
     def path(self, slug):
