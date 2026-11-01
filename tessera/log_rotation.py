@@ -25,6 +25,10 @@ def stream_file(fd):
         import fcntl
         try:
             raw = fcntl.fcntl(fd, fcntl.F_GETPATH, bytearray(1024))
+        except TypeError:
+            # Pythons before 3.12 take no buffer argument here, so the path
+            # cannot be resolved; rotation skips the stream rather than failing.
+            return None
         except (OSError, ValueError):
             return None
         if not isinstance(raw, bytes):
