@@ -134,6 +134,22 @@ def tree_read_display(result):
     return result
 
 
+def _probe_timeout(error):
+    """True when a probe failed by timeout rather than by refusal or rejection.
+
+    The MCP transport wraps a socket timeout as McpError('MCP timeout after
+    ...') with the original TimeoutError as __cause__, so both shapes count.
+    A refusal, an HTTP error, or a schema mismatch must not be retried.
+    """
+    cause = error
+    while cause is not None:
+        if isinstance(cause, TimeoutError):
+            return True
+        cause = cause.__cause__
+    text = str(error)
+    return 'MCP timeout' in text or 'deadline exceeded' in text
+
+
 class AetherMindClient:
     def __init__(self, url="", token_env="", timeout=15, *, endpoints=None, bundled_path="",
                  endpoint_factory=None, probe_timeout=2, probe_interval=30, create_project=False,
@@ -179,6 +195,17 @@ class AetherMindClient:
                                   retry_on=(McpError, OSError), clock=clock)
 
     def _probe(self, endpoint, timeout):
+        try:
+            self._probe_once(endpoint, timeout)
+        except Exception as error:
+            if not _probe_timeout(error):
+                raise
+            # One slow reply is a stall, not a dead endpoint. The bounded
+            # second attempt is what keeps a busy service from refusing a
+            # turn; every session still waits on this same probe sequence.
+            self._probe_once(endpoint, timeout)
+
+    def _probe_once(self, endpoint, timeout):
         client = self._clients[endpoint]
         previous = client.timeout
         client.timeout = timeout

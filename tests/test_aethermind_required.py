@@ -1216,7 +1216,9 @@ def test_open_sessions_share_one_hung_probe(tmp_path, monkeypatch):
                 result = action()
                 elapsed = time.monotonic() - started
                 assert len(probes) == before + 1, probes
-                assert len(hung.accepts) == len(probes)
+                # One probe sequence, two bounded attempts: the timeout-class
+                # retry connects once more before the endpoint is declared dead.
+                assert len(hung.accepts) == 2 * len(probes), hung.accepts
                 assert elapsed < bound, elapsed
                 assert elapsed >= probe_timeout * 0.75, elapsed
                 return result
@@ -1274,7 +1276,7 @@ def test_open_sessions_share_one_hung_probe(tmp_path, monkeypatch):
             overlap()
             elapsed = time.monotonic() - started
             assert len(probes) == before + 1, probes
-            assert len(hung.accepts) == len(probes)
+            assert len(hung.accepts) == 2 * len(probes), hung.accepts
             assert elapsed < bound, elapsed
             assert launches == [True]
             for session in opened:
